@@ -35,6 +35,7 @@ interface Branch {
   is_active: boolean;
   latitude: number | null;
   longitude: number | null;
+  geofence_radius: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -571,6 +572,7 @@ function BranchModal({ branch, onClose, onSaved }: { branch?: Branch; onClose: (
     region: branch?.region || '',
     latitude: branch?.latitude?.toString() || '',
     longitude: branch?.longitude?.toString() || '',
+    geofence_radius: branch?.geofence_radius?.toString() || '200',
   });
   const [loading, setLoading] = useState(false);
 
@@ -580,6 +582,7 @@ function BranchModal({ branch, onClose, onSaved }: { branch?: Branch; onClose: (
       ...form,
       latitude: form.latitude ? parseFloat(form.latitude) : null,
       longitude: form.longitude ? parseFloat(form.longitude) : null,
+      geofence_radius: parseInt(form.geofence_radius) || 200,
       is_active: true,
     };
     if (branch) {
@@ -591,13 +594,14 @@ function BranchModal({ branch, onClose, onSaved }: { branch?: Branch; onClose: (
     onSaved();
   };
 
-  const fields: { key: keyof typeof form; label: string; type?: string }[] = [
+  const fields: { key: keyof typeof form; label: string; type?: string; min?: number; max?: number; placeholder?: string }[] = [
     { key: 'name', label: 'Branch Name' },
     { key: 'location', label: 'Location / Address' },
     { key: 'city', label: 'City' },
     { key: 'region', label: 'Region' },
     { key: 'latitude', label: 'Latitude', type: 'number' },
     { key: 'longitude', label: 'Longitude', type: 'number' },
+    { key: 'geofence_radius', label: 'Geofence Radius (metres)', type: 'number', min: 50, max: 5000, placeholder: '200' },
   ];
 
   return (
@@ -609,7 +613,16 @@ function BranchModal({ branch, onClose, onSaved }: { branch?: Branch; onClose: (
           <option value="Store">Store</option>
         </select>
         {fields.map(f => (
-          <input key={f.key} className="input w-full" placeholder={f.label} type={f.type || 'text'} value={form[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} />
+          <input
+            key={f.key}
+            className="input w-full"
+            placeholder={f.placeholder || f.label}
+            type={f.type || 'text'}
+            min={f.min}
+            max={f.max}
+            value={form[f.key]}
+            onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+          />
         ))}
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>

@@ -45,8 +45,9 @@ const nowTime = () => {
 };
 
 export default function ChecklistScreen() {
-  const { branchId, branchName, branchType } = useLocalSearchParams<{
+  const { branchId, branchName, branchType, officerLat, officerLon } = useLocalSearchParams<{
     branchId: string; branchName: string; branchType: string;
+    officerLat: string; officerLon: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -219,6 +220,8 @@ export default function ChecklistScreen() {
                   time_in: timeIn || null,
                   time_out: timeOut || null,
                   status: 'draft',
+                  officer_latitude: officerLat ? parseFloat(officerLat) : null,
+                  officer_longitude: officerLon ? parseFloat(officerLon) : null,
                 })
                 .select('id')
                 .single();

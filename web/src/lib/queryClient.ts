@@ -15,9 +15,7 @@ let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 export function setupRealtimeSubscription(
   onNewInspection?: (payload: Record<string, unknown>) => void
 ) {
-  if (realtimeChannel) {
-    supabase.removeChannel(realtimeChannel);
-  }
+  if (realtimeChannel) return realtimeChannel;
 
   realtimeChannel = supabase
     .channel('inspections-realtime')

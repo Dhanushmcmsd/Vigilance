@@ -6,10 +6,14 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  ToastAndroid,
+  Platform,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
 import { BranchCard } from '../../components/BranchCard';
 import { useLocationGate } from '../../lib/useLocationGate';
@@ -23,6 +27,7 @@ interface Branch {
   latitude: number | null;
   longitude: number | null;
   geofence_radius: number;
+  distance_metres?: number; // set only when nearMeActive
 }
 
 const SkeletonCard = () => (
@@ -40,6 +45,14 @@ const SkeletonCard = () => (
   </View>
 );
 
+function showToast(message: string) {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  } else {
+    Alert.alert('', message);
+  }
+}
+
 export default function SelectBranchScreen() {
   const { branchType } = useLocalSearchParams<{ branchType: string }>();
   const router = useRouter();
@@ -53,6 +66,12 @@ export default function SelectBranchScreen() {
   const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
   const [officerCoords, setOfficerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
+  // ── Batch 16: Near Me state ──────────────────────────────────────────────
+  const [nearMeActive, setNearMeActive] = useState(false);
+  const [nearMeBranches, setNearMeBranches] = useState<Branch[]>([]);
+  const [nearMeLoading, setNearMeLoading] = useState(false);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const locationGate = useLocationGate(
     pendingBranch?.latitude ?? null,
     pendingBranch?.longitude ?? null,
@@ -64,6 +83,7 @@ export default function SelectBranchScreen() {
   }, [branchType]);
 
   useEffect(() => {
+    if (nearMeActive) return; // FlatList uses nearMeBranches when active
     const q = search.toLowerCase();
     setFiltered(
       q
@@ -75,7 +95,7 @@ export default function SelectBranchScreen() {
           )
         : branches
     );
-  }, [search, branches]);
+  }, [search, branches, nearMeActive]);
 
   useEffect(() => {
     if (locationGate.status === 'within_range' && locationGate.officerCoords) {
@@ -100,6 +120,62 @@ export default function SelectBranchScreen() {
     setBranches((data as unknown as Branch[]) || []);
   };
 
+  // ── Batch 16: Near Me fetch ──────────────────────────────────────────────
+  const fetchNearMe = async () => {
+    setNearMeLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showToast('Location permission denied');
+        setNearMeLoading(false);
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      const { data, error: rpcError } = await supabase.rpc('branches_within_radius', {
+        lat,
+        lon,
+        radius_metres: 10000,
+      });
+
+      if (rpcError || !data) {
+        throw new Error(rpcError?.message ?? 'RPC error');
+      }
+
+      // Map RPC result to Branch objects
+      const mapped: Branch[] = (data as any[]).map((row) => ({
+        id: row.id,
+        branch_name: row.branch_name,
+        location: row.location ?? '',
+        city: row.city ?? '',
+        latitude: null,
+        longitude: null,
+        geofence_radius: 200,
+        distance_metres: row.distance_metres,
+      }));
+
+      setNearMeBranches(mapped);
+      setNearMeActive(true);
+    } catch (_err) {
+      // Non-breaking fallback — PostGIS may not be active yet
+      showToast('Could not fetch nearby branches');
+      setNearMeActive(false);
+    } finally {
+      setNearMeLoading(false);
+    }
+  };
+
+  const cancelNearMe = () => {
+    setNearMeActive(false);
+    setNearMeBranches([]);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const handleBranchPress = (item: Branch) => {
     setPendingBranch(item);
     locationGate.check();
@@ -120,16 +196,14 @@ export default function SelectBranchScreen() {
     setPendingBranch(null);
   };
 
-  const handleRetry = () => {
-    locationGate.check();
-  };
-
-  const handleCancel = () => {
-    setPendingBranch(null);
-  };
+  const handleRetry = () => { locationGate.check(); };
+  const handleCancel = () => { setPendingBranch(null); };
 
   const gateModalVisible =
     pendingBranch !== null && locationGate.status !== 'idle';
+
+  // The active list to render in FlatList
+  const listData = nearMeActive ? nearMeBranches : filtered;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc', paddingTop: insets.top }}>
@@ -155,6 +229,45 @@ export default function SelectBranchScreen() {
         <Text style={{ fontSize: 18, fontWeight: '700', color: '#1f2937', flex: 1 }}>
           Select {branchType} Branch
         </Text>
+
+        {/* ── Batch 16: Near Me button ─────────────────────────── */}
+        {nearMeLoading ? (
+          <ActivityIndicator size="small" color="#2563eb" style={{ marginLeft: 8 }} />
+        ) : nearMeActive ? (
+          <TouchableOpacity
+            onPress={cancelNearMe}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#2563eb',
+              borderRadius: 20,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              marginLeft: 8,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>📍 Near Me</Text>
+            <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>✕</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={fetchNearMe}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#eff6ff',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              marginLeft: 8,
+            }}
+          >
+            <Text style={{ color: '#2563eb', fontSize: 13, fontWeight: '600' }}>📍 Near Me</Text>
+          </TouchableOpacity>
+        )}
+        {/* ──────────────────────────────────────────────────────── */}
       </View>
 
       {/* Search */}
@@ -179,7 +292,7 @@ export default function SelectBranchScreen() {
           <Ionicons name="search" size={18} color="#9ca3af" />
           <TextInput
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(t) => { setSearch(t); if (nearMeActive) cancelNearMe(); }}
             placeholder="Search branches..."
             placeholderTextColor="#9ca3af"
             style={{
@@ -196,6 +309,14 @@ export default function SelectBranchScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* ── Batch 16: Near Me subtitle ───────────────────────── */}
+        {nearMeActive && (
+          <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginLeft: 2 }}>
+            📍 Showing branches within 10 km
+          </Text>
+        )}
+        {/* ──────────────────────────────────────────────────────── */}
       </View>
 
       {/* List */}
@@ -222,7 +343,7 @@ export default function SelectBranchScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={listData}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16 }}
           renderItem={({ item }) => (
@@ -231,12 +352,20 @@ export default function SelectBranchScreen() {
               location={item.location}
               city={item.city}
               onPress={() => handleBranchPress(item)}
+              // Pass distance_metres as subtitle when nearMeActive
+              subtitle={
+                nearMeActive && item.distance_metres !== undefined
+                  ? `${(item.distance_metres / 1000).toFixed(1)} km away`
+                  : undefined
+              }
             />
           )}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
               <Ionicons name="search-outline" size={40} color="#d1d5db" />
-              <Text style={{ color: '#9ca3af', marginTop: 12 }}>No branches found</Text>
+              <Text style={{ color: '#9ca3af', marginTop: 12 }}>
+                {nearMeActive ? 'No branches found within 10 km' : 'No branches found'}
+              </Text>
             </View>
           }
         />

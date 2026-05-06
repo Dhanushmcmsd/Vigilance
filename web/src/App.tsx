@@ -5,6 +5,7 @@ import HeadDashboard from './pages/HeadDashboard';
 import HeadReview from './pages/HeadReview';
 import ManagementDashboard from './pages/ManagementDashboard';
 import AdminPanel from './pages/AdminPanel';
+import MapView from './pages/MapView'; // Phase 6 scaffold
 import Layout from './components/Layout';
 import { useEffect } from 'react';
 import { setupRealtimeSubscription, teardownRealtimeSubscription } from './lib/queryClient';
@@ -87,6 +88,16 @@ function AppRoutes() {
         element={
           <RoleGuard allowedRoles={['admin']}>
             <Layout><AdminPanel /></Layout>
+          </RoleGuard>
+        }
+      />
+      {/* Phase 6 scaffold — registered but not in sidebar nav yet */}
+      {/* FUTURE: Map View — add to sidebar when ready */}
+      <Route
+        path="/map"
+        element={
+          <RoleGuard allowedRoles={['management', 'admin']}>
+            <Layout><MapView /></Layout>
           </RoleGuard>
         }
       />

@@ -19,6 +19,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { saveDraft, loadDraft, deleteDraft, enqueueOfflineSubmission } from '../../lib/storage';
+import { useLocationPing } from '../../lib/useLocationPing';
 import { ChecklistItem } from '../../components/ChecklistItem';
 import { ProgressBar } from '../../components/ProgressBar';
 import { ToastMessage } from '../../components/ToastMessage';
@@ -68,6 +69,11 @@ export default function ChecklistScreen() {
     visible: false, message: '', type: 'success',
   });
 
+  // Location ping state
+  const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
+  const [inspectionActive, setInspectionActive] = useState(false);
+  const { pingCount } = useLocationPing({ inspectionId: activeInspectionId, isActive: inspectionActive });
+
   const showToast = (message: string, type: 'success' | 'error' | 'warning') =>
     setToast({ visible: true, message, type });
 
@@ -81,10 +87,8 @@ export default function ChecklistScreen() {
       .then(({ data }) => {
         if (data) {
           setItems(data);
-          // Expand all sections by default
           const sections = new Set(data.map((i: ChecklistTemplateItem) => i.section));
           setExpandedSections(sections);
-          // Init responses
           const init: Record<string, { response: ResponseType; remark: string }> = {};
           data.forEach((i: ChecklistTemplateItem) => { init[i.id] = { response: null, remark: '' }; });
           setResponses(init);
@@ -178,7 +182,6 @@ export default function ChecklistScreen() {
   };
 
   const handleSubmit = async () => {
-    // Validate
     const unanswered = items.filter((i) => responses[i.id]?.response === null);
     if (unanswered.length > 0) {
       showToast(`${unanswered.length} item(s) unanswered. Please complete all items.`, 'warning');
@@ -233,6 +236,10 @@ export default function ChecklistScreen() {
               if (inspErr || !inspection) throw new Error(inspErr?.message || 'Inspection creation failed');
               const inspectionId = inspection.id;
 
+              // Start location pings now that we have a real inspectionId
+              setActiveInspectionId(inspectionId);
+              setInspectionActive(true);
+
               // 2. Batch insert responses
               const responseRows = items.map((item) => ({
                 inspection_id: inspectionId,
@@ -270,11 +277,13 @@ export default function ChecklistScreen() {
                 });
               }
 
-              // 5. Submit
+              // 5. Submit — stop location pings immediately after
               await supabase
                 .from('inspections')
                 .update({ status: 'submitted', submitted_at: new Date().toISOString() })
                 .eq('id', inspectionId);
+
+              setInspectionActive(false);
 
               await deleteDraft(branchId, today);
               setSubmitting(false);
@@ -293,6 +302,7 @@ export default function ChecklistScreen() {
                 },
               });
             } catch (e: any) {
+              setInspectionActive(false);
               setSubmitting(false);
               showToast(e.message || 'Submission failed. Please try again.', 'error');
             }
@@ -373,6 +383,9 @@ export default function ChecklistScreen() {
         <Text style={{ fontSize: 12, color: '#6b7280' }}>Date: <Text style={{ fontWeight: '600', color: '#374151' }}>{date}</Text></Text>
         <Text style={{ fontSize: 12, color: '#d1d5db' }}>|</Text>
         <Text style={{ fontSize: 12, color: '#6b7280' }}>In: <Text style={{ fontWeight: '600', color: '#374151' }}>{timeIn}</Text></Text>
+        {pingCount > 0 && (
+          <Text style={{ fontSize: 11, color: '#16a34a' }}>📍 {pingCount} pings</Text>
+        )}
       </View>
 
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}

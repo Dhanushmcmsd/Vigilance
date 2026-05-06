@@ -17,7 +17,8 @@ module.exports = {
       infoPlist: {
         NSCameraUsageDescription: 'Used to capture inspection photos.',
         NSPhotoLibraryUsageDescription: 'Used to attach photos to inspection reports.',
-        NSLocationWhenInUseUsageDescription: 'Used to tag inspections with location.',
+        NSLocationWhenInUseUsageDescription:
+          'Vigilance needs your location to verify you are at the branch before starting an inspection.',
       },
     },
     android: {
@@ -38,7 +39,12 @@ module.exports = {
     plugins: [
       'expo-router',
       'expo-image-picker',
-      ['expo-location', { locationAlwaysAndWhenInUsePermission: 'Used for GPS tagging inspections.' }],
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission: 'Allow Vigilance to use your location.',
+        },
+      ],
     ],
     extra: {
       eas: { projectId: 'YOUR_EAS_PROJECT_ID' },

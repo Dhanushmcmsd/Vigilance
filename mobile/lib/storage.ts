@@ -11,6 +11,8 @@ export interface DraftForm {
   generalRemark: string;
   fileUris: string[];
   savedAt: string;
+  officerLat: number | null;
+  officerLon: number | null;
 }
 
 const DRAFT_PREFIX = 'draft_';
@@ -24,7 +26,14 @@ export const saveDraft = async (branchId: string, date: string, data: DraftForm)
 export const loadDraft = async (branchId: string, date: string): Promise<DraftForm | null> => {
   const key = `${DRAFT_PREFIX}${branchId}_${date}`;
   const raw = await AsyncStorage.getItem(key);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  // Gracefully handle older drafts that don't have GPS fields
+  return {
+    ...parsed,
+    officerLat: parsed.officerLat ?? null,
+    officerLon: parsed.officerLon ?? null,
+  };
 };
 
 export const deleteDraft = async (branchId: string, date: string): Promise<void> => {
@@ -39,10 +48,22 @@ export const getAllDrafts = async (): Promise<{ key: string; draft: DraftForm }[
   const pairs = await AsyncStorage.multiGet(draftKeys);
   return pairs
     .filter(([, v]) => v != null)
-    .map(([k, v]) => ({ key: k, draft: JSON.parse(v!) }));
+    .map(([k, v]) => {
+      const parsed = JSON.parse(v!);
+      return {
+        key: k,
+        draft: {
+          ...parsed,
+          officerLat: parsed.officerLat ?? null,
+          officerLon: parsed.officerLon ?? null,
+        },
+      };
+    });
 };
 
-export const enqueueOfflineSubmission = async (data: DraftForm & { inspectionId?: string }): Promise<void> => {
+export const enqueueOfflineSubmission = async (
+  data: DraftForm & { inspectionId?: string }
+): Promise<void> => {
   const raw = await AsyncStorage.getItem(QUEUE_KEY);
   const queue: typeof data[] = raw ? JSON.parse(raw) : [];
   queue.push(data);
@@ -51,7 +72,14 @@ export const enqueueOfflineSubmission = async (data: DraftForm & { inspectionId?
 
 export const getOfflineQueue = async (): Promise<(DraftForm & { inspectionId?: string })[]> => {
   const raw = await AsyncStorage.getItem(QUEUE_KEY);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const queue = JSON.parse(raw);
+  // Gracefully handle older queued items that don't have GPS fields
+  return queue.map((item: any) => ({
+    ...item,
+    officerLat: item.officerLat ?? null,
+    officerLon: item.officerLon ?? null,
+  }));
 };
 
 export const clearOfflineQueue = async (): Promise<void> => {

@@ -143,6 +143,8 @@ export default function ChecklistScreen() {
       generalRemark,
       fileUris: files.map((f) => f.uri),
       savedAt: new Date().toISOString(),
+      officerLat: officerLat ? parseFloat(officerLat) : null,
+      officerLon: officerLon ? parseFloat(officerLon) : null,
     });
     showToast('Draft saved successfully', 'success');
   };
@@ -203,6 +205,8 @@ export default function ChecklistScreen() {
                 generalRemark,
                 fileUris: files.map((f) => f.uri),
                 savedAt: new Date().toISOString(),
+                officerLat: officerLat ? parseFloat(officerLat) : null,
+                officerLon: officerLon ? parseFloat(officerLon) : null,
               });
               setSubmitting(false);
               showToast('Saved offline — will sync when connected', 'warning');

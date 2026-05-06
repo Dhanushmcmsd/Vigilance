@@ -12,12 +12,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { BranchCard } from '../../components/BranchCard';
+import { useLocationGate } from '../../lib/useLocationGate';
+import { LocationGateModal } from '../../components/LocationGateModal';
 
 interface Branch {
   id: string;
   branch_name: string;
   location: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
+  geofence_radius: number;
 }
 
 const SkeletonCard = () => (
@@ -45,6 +50,14 @@ export default function SelectBranchScreen() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
+  const [officerCoords, setOfficerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  const locationGate = useLocationGate(
+    pendingBranch?.latitude ?? null,
+    pendingBranch?.longitude ?? null,
+    pendingBranch?.geofence_radius ?? 200,
+  );
 
   useEffect(() => {
     fetchBranches();
@@ -64,12 +77,18 @@ export default function SelectBranchScreen() {
     );
   }, [search, branches]);
 
+  useEffect(() => {
+    if (locationGate.status === 'within_range' && locationGate.officerCoords) {
+      setOfficerCoords(locationGate.officerCoords);
+    }
+  }, [locationGate.status, locationGate.officerCoords]);
+
   const fetchBranches = async () => {
     setLoading(true);
     setError('');
     const { data, error: err } = await supabase
       .from('branches')
-      .select('id, branch_name, location, city, branch_types!inner(type_name)')
+      .select('id, branch_name, location, city, latitude, longitude, geofence_radius, branch_types!inner(type_name)')
       .eq('is_active', true)
       .eq('branch_types.type_name', branchType)
       .order('branch_name');
@@ -80,6 +99,37 @@ export default function SelectBranchScreen() {
     }
     setBranches((data as unknown as Branch[]) || []);
   };
+
+  const handleBranchPress = (item: Branch) => {
+    setPendingBranch(item);
+    locationGate.check();
+  };
+
+  const handleConfirm = () => {
+    if (!pendingBranch) return;
+    router.push({
+      pathname: '/(officer)/checklist',
+      params: {
+        branchId: pendingBranch.id,
+        branchName: pendingBranch.branch_name,
+        branchType,
+        officerLat: officerCoords?.latitude?.toString() ?? '',
+        officerLon: officerCoords?.longitude?.toString() ?? '',
+      },
+    });
+    setPendingBranch(null);
+  };
+
+  const handleRetry = () => {
+    locationGate.check();
+  };
+
+  const handleCancel = () => {
+    setPendingBranch(null);
+  };
+
+  const gateModalVisible =
+    pendingBranch !== null && locationGate.status !== 'idle';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc', paddingTop: insets.top }}>
@@ -180,16 +230,7 @@ export default function SelectBranchScreen() {
               branchName={item.branch_name}
               location={item.location}
               city={item.city}
-              onPress={() =>
-                router.push({
-                  pathname: '/(officer)/checklist',
-                  params: {
-                    branchId: item.id,
-                    branchName: item.branch_name,
-                    branchType,
-                  },
-                })
-              }
+              onPress={() => handleBranchPress(item)}
             />
           )}
           ListEmptyComponent={
@@ -200,6 +241,18 @@ export default function SelectBranchScreen() {
           }
         />
       )}
+
+      <LocationGateModal
+        visible={gateModalVisible}
+        status={locationGate.status}
+        distanceMetres={locationGate.distanceMetres}
+        branchName={pendingBranch?.branch_name ?? ''}
+        branchLocation={pendingBranch?.location ?? ''}
+        radiusMetres={pendingBranch?.geofence_radius ?? 200}
+        onConfirm={handleConfirm}
+        onRetry={handleRetry}
+        onCancel={handleCancel}
+      />
     </View>
   );
 }

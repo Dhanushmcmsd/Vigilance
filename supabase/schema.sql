@@ -472,3 +472,90 @@ WHERE bt.type_name = 'Store';
 -- ============================================================
 -- END OF SCHEMA
 -- ============================================================
+
+-- ============================================================
+-- STORE + OFFICER VIGILANCE ARCHITECTURE (COMPATIBILITY PATCH)
+-- Safe to run multiple times
+-- ============================================================
+
+-- 1) Ensure stores table exists
+CREATE TABLE IF NOT EXISTS public.stores (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name           text NOT NULL,
+  store_incharge text,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- 2) Add requested store columns
+ALTER TABLE public.stores
+  ADD COLUMN IF NOT EXISTS store_code   text,
+  ADD COLUMN IF NOT EXISTS store_phone  text,
+  ADD COLUMN IF NOT EXISTS am           text,
+  ADD COLUMN IF NOT EXISTS am_number    text,
+  ADD COLUMN IF NOT EXISTS address      text,
+  ADD COLUMN IF NOT EXISTS lat          double precision,
+  ADD COLUMN IF NOT EXISTS lng          double precision;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'stores_store_code_key'
+      AND conrelid = 'public.stores'::regclass
+  ) THEN
+    ALTER TABLE public.stores
+      ADD CONSTRAINT stores_store_code_key UNIQUE (store_code);
+  END IF;
+END
+$$;
+
+-- 3) Create requested inspections shape when table does not exist
+CREATE TABLE IF NOT EXISTS public.inspections (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id      uuid REFERENCES public.stores(id) ON DELETE CASCADE,
+  officer_id    uuid REFERENCES auth.users(id),
+  checklist     jsonb NOT NULL DEFAULT '{}'::jsonb,
+  remarks       text,
+  officer_lat   double precision,
+  officer_lng   double precision,
+  submitted_at  timestamptz NOT NULL DEFAULT now(),
+  status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected'))
+);
+
+-- 4) Add requested columns for compatibility when inspections already exists
+ALTER TABLE public.inspections
+  ADD COLUMN IF NOT EXISTS store_id     uuid REFERENCES public.stores(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS checklist    jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS remarks      text,
+  ADD COLUMN IF NOT EXISTS officer_lat  double precision,
+  ADD COLUMN IF NOT EXISTS officer_lng  double precision;
+
+-- 5) Enable Realtime publication safely
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+  ) THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime'
+        AND schemaname = 'public'
+        AND tablename = 'inspections'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.inspections;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime'
+        AND schemaname = 'public'
+        AND tablename = 'stores'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.stores;
+    END IF;
+  END IF;
+END
+$$;

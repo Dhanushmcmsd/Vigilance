@@ -12,6 +12,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import * as bcrypt from 'https://deno.land/x/bcrypt@v0.4.1/mod.ts';
 
+import { rateLimit } from '../_shared/rateLimit.ts';
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -50,8 +52,34 @@ serve(async (req: Request) => {
   }
 
   try {
-    const body = (await req.json()) as Payload;
+    // Two-stage limiter:
+    //   send   — strict (5/min/caller): generates an OTP + sends an email,
+    //            so an attacker triggering it floods the supervisor's inbox.
+    //   verify — looser (30/min/caller): we want legitimate retries with
+    //            wrong digits to work, but still block brute-forcing the
+    //            6-digit space.
+    // We can't read the body twice, so peek at the URL/header for a coarse
+    // routing hint before parsing. Falls back to the strict bucket.
+    const bodyText = await req.text();
+    let parsed: Payload;
+    try {
+      parsed = JSON.parse(bodyText) as Payload;
+    } catch {
+      return new Response(JSON.stringify({ error: 'invalid JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+      });
+    }
+
+    const limiterBucket =
+      parsed.action === 'verify'
+        ? { id: 'supervisor-otp:verify', limit: 30, windowSeconds: 60 }
+        : { id: 'supervisor-otp:send', limit: 5, windowSeconds: 60 };
+    const rl = await rateLimit(req, limiterBucket);
+    if (!rl.allowed) return rl.response!;
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const body = parsed;
 
     if (body.action === 'send') {
       return await handleSend(supabase, body);

@@ -1,0 +1,95 @@
+# =============================================================================
+# Supabase project configuration.
+#
+# Anything here that controls Auth / API behaviour is also reflected in the
+# Supabase dashboard. Setting it in this file gives us version control over
+# the change: the next `supabase db push` (or a manual sync via the dashboard
+# settings) keeps env parity.
+#
+# Apply with:
+#   supabase link --project-ref <ref>   # one-time
+#   supabase config push                # syncs this file to the project
+#
+# Some settings (sign-up enable, JWT expiry, refresh-rotation) ONLY take
+# effect after `supabase config push`. See SECURITY.md for the rotation
+# runbook.
+# =============================================================================
+
+project_id = "vigilance"
+
+[auth]
+# Project URL — only used for redirect validation. Replace with the prod URL.
+site_url = "https://vigilance.app"
+additional_redirect_urls = [
+  "vigilancems://*",        # mobile deep link
+  "https://vigilance.app/*",
+]
+
+# ── Public sign-ups: HARD-OFF ─────────────────────────────────────────────
+# Officers, heads, management and admin accounts are provisioned exclusively
+# from the Admin Panel. Anyone signing up via the public Supabase form would
+# bypass our role-based RLS and end up as a "no role" ghost account.
+enable_signup = false
+
+# ── Sessions: short-lived JWT + rotating refresh ──────────────────────────
+# 3600s = 1 hour access token, refresh tokens reused once then rotated. Compromised
+# access tokens are only valid for an hour; reuse of a refresh token after
+# rotation immediately invalidates the chain (Supabase Auth detects replay).
+jwt_expiry = 3600
+refresh_token_rotation_enabled = true
+# Window during which the previous refresh token is still accepted (for slow
+# networks racing against rotation). 10s is the Supabase recommended default.
+refresh_token_reuse_interval = 10
+
+# ── Email auth ────────────────────────────────────────────────────────────
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = true
+
+# ── Phone OTP / external providers: disabled until the org needs them ─────
+[auth.sms]
+enable_signup = false
+
+[auth.external.google]
+enabled = false
+
+[auth.external.azure]
+enabled = false
+
+# ── API / db settings (informational; managed in the dashboard) ───────────
+[api]
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+# Match the live project — informational only, dashboard is authoritative.
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[storage]
+file_size_limit = "50MiB"
+
+# ── Edge function dirs that should be deployed ────────────────────────────
+[functions.on-inspection-submit]
+verify_jwt = false   # invoked via DB webhook; auth via service-role payload
+
+[functions.weekly-report]
+verify_jwt = false   # cron-triggered, no caller JWT
+
+[functions.red-alert]
+verify_jwt = true
+
+[functions.supervisor-otp]
+verify_jwt = true
+
+[functions.notify-officer]
+verify_jwt = true
+
+[functions.export-csv]
+verify_jwt = true   # role-aware export; caller JWT enforces RLS
+
+[functions.health-check]
+verify_jwt = false  # uptime probe — must be callable without a session

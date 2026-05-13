@@ -2,12 +2,34 @@
 node_modules/
 **/node_modules/
 
-# Env files
+# Env files — defence in depth.
+# .env / .env.* covers root + nested files via gitignore's recursive default.
+# The explicit per-directory entries below are NOT redundant: they survive
+# even if someone (or a tool) adds a sub-folder .gitignore that re-includes
+# .env files. Keep both.
 .env
 .env.*
 !.env.example
 mobile/.env
+mobile/.env.*
+!mobile/.env.example
 web/.env
+web/.env.*
+!web/.env.example
+
+# Local Supabase functions secrets
+supabase/.env
+supabase/functions/.env
+
+# Vercel local dev secrets
+.vercel/
+
+# Credentials accidentally written by various tools
+*credentials*.json
+*service-account*.json
+*-private.pem
+*.pem
+!*.example.pem
 
 # Build output
 dist/

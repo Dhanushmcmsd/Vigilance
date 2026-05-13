@@ -1,92 +1,86 @@
 /**
- * Accessibility constants for the Vigilance mobile app.
+ * @deprecated Import from `./theme` instead.
  *
- * The officer user base in a Kerala supermarket context includes older field
- * staff. Every screen in this app MUST honour these floors:
- *   - Body text  ≥ 16sp
- *   - Headings   ≥ 20sp
- *   - Touch targets ≥ 56×56dp
- *   - Solid, high-contrast colours (no rgba transparency on text)
- *   - No icon-only buttons — every action carries a visible label
+ * This file is now a thin compatibility shim over `./theme`. The constants
+ * here keep the legacy short names (`FONT`, `TOUCH`, `COLOR`, etc.) used
+ * across the existing mobile screens. New code should import the canonical
+ * design tokens from `./theme`:
  *
- * Importing FONT / TOUCH / COLOR from this file is the canonical way to keep
- * those floors in sync across the codebase. Do not hard-code smaller values.
+ *   import { theme } from '@/lib/theme';
+ *   const color = theme.colors.primary;
+ *
+ * Both files share the same underlying values — `theme` is the single source
+ * of truth.
  */
 
+import { theme, riskPalette as _riskPalette, type RiskColor as _RiskColor } from './theme';
+
 export const FONT = {
-  xs: 14,
-  body: 16,
-  bodyLg: 18,
+  xs: theme.typography.xs,
+  body: theme.typography.sm,
+  bodyLg: theme.typography.md,
   h2: 20,
   h1: 24,
   display: 32,
 } as const;
 
 export const LINE_HEIGHT = {
-  body: 24,
-  h2: 28,
-  h1: 32,
+  body: theme.lineHeight.body,
+  h2: theme.lineHeight.h2,
+  h1: theme.lineHeight.h1,
 } as const;
 
 export const TOUCH = {
-  minHeight: 56,
-  minWidth: 56,
-  iconButton: 56,
+  minHeight: theme.spacing.touchTarget,
+  minWidth: theme.spacing.touchTarget,
+  iconButton: theme.spacing.touchTarget,
   rowHeight: 64,
 } as const;
 
 export const RADIUS = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  pill: 999,
+  sm: theme.radius.sm,
+  md: theme.radius.md,
+  lg: theme.radius.lg,
+  xl: theme.radius.card,
+  pill: theme.radius.pill,
 } as const;
 
 export const SPACING = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  '2xl': 32,
+  xs: theme.spacing.xs,
+  sm: theme.spacing.sm,
+  md: theme.spacing.md,
+  lg: theme.spacing.lg,
+  xl: theme.spacing.xl,
+  '2xl': theme.spacing.xxl,
 } as const;
 
 export const COLOR = {
-  bg: '#f1f5f9',
-  surface: '#ffffff',
-  surfaceMuted: '#f9fafb',
-  border: '#e5e7eb',
-  borderStrong: '#d1d5db',
+  bg: theme.colors.background,
+  surface: theme.colors.surface,
+  surfaceMuted: theme.colors.surfaceMuted,
+  border: theme.colors.border,
+  borderStrong: theme.colors.borderStrong,
 
-  text: '#111827',
-  textMuted: '#374151',
-  textOnPrimary: '#ffffff',
-  textOnPrimaryMuted: '#e2e8f0',
+  text: theme.colors.textPrimary,
+  textMuted: theme.colors.textSecondary,
+  textOnPrimary: theme.colors.textOnPrimary,
+  textOnPrimaryMuted: theme.colors.textOnPrimaryMuted,
 
-  brand: '#1e40af',
-  brandStrong: '#1d4ed8',
-  brandSoft: '#dbeafe',
+  brand: theme.colors.primary,
+  brandStrong: theme.colors.primaryStrong,
+  brandSoft: theme.colors.primarySoft,
 
   success: '#15803d',
-  successSoft: '#dcfce7',
-  warning: '#b45309',
-  warningSoft: '#fef3c7',
+  successSoft: theme.colors.successSoft,
+  warning: theme.colors.warning,
+  warningSoft: theme.colors.warningSoft,
   danger: '#b91c1c',
-  dangerSoft: '#fee2e2',
+  dangerSoft: theme.colors.dangerSoft,
 
-  redRisk: '#dc2626',
-  yellowRisk: '#d97706',
-  greenRisk: '#16a34a',
+  redRisk: theme.colors.risk.red,
+  yellowRisk: theme.colors.risk.yellow,
+  greenRisk: theme.colors.risk.green,
 } as const;
 
-export type RiskColor = 'red' | 'yellow' | 'green';
-
-export const riskPalette: Record<
-  RiskColor,
-  { fg: string; bg: string; border: string }
-> = {
-  red: { fg: '#b91c1c', bg: '#fee2e2', border: '#fecaca' },
-  yellow: { fg: '#a16207', bg: '#fef3c7', border: '#fde68a' },
-  green: { fg: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
-};
+export type RiskColor = _RiskColor;
+export const riskPalette = _riskPalette;

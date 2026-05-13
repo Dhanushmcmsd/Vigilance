@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+import { rateLimit } from '../_shared/rateLimit.ts';
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://your-dashboard.com';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -8,6 +10,27 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 serve(async (req: Request) => {
   try {
+    // Rate limit BEFORE parsing the body. Two buckets:
+    //   1. Per-caller (JWT sub if signed-in, else IP) — generous limit since
+    //      this is normally invoked from the DB webhook, not direct clients.
+    //   2. Global emergency brake — if the webhook ever loops (we've seen
+    //      this happen during status churn), this stops a runaway from
+    //      DOSing Resend.
+    const perCaller = await rateLimit(req, {
+      id: 'on-inspection-submit:caller',
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!perCaller.allowed) return perCaller.response!;
+
+    const global = await rateLimit(req, {
+      id: 'on-inspection-submit:global',
+      limit: 600,
+      windowSeconds: 60,
+      identifier: 'global',
+    });
+    if (!global.allowed) return global.response!;
+
     const payload = await req.json();
     const record = payload.record;
     if (!record || record.status !== 'submitted') {

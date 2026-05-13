@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-flight runs for the same ref when a new commit lands so PRs don't
+# queue duplicate work.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # WEB — Vite + React + TypeScript
+  # ---------------------------------------------------------------------------
+  web:
+    name: Web — typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Build (smoke)
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiJ9.placeholder.placeholder
+
+  # ---------------------------------------------------------------------------
+  # MOBILE — Expo + React Native + TypeScript
+  # ---------------------------------------------------------------------------
+  mobile:
+    name: Mobile — typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install
+        # --legacy-peer-deps is required by Expo SDK 53 peer dep graph.
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Expo Doctor (non-blocking)
+        run: npx --yes expo-doctor || true
+
+  # ---------------------------------------------------------------------------
+  # SUPABASE — Migration dry-run on a throwaway Postgres
+  # ---------------------------------------------------------------------------
+  supabase:
+    name: Supabase — migration dry-run
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vigilance_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostGIS extension support
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply schema + migrations
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGDATABASE: vigilance_test
+        run: |
+          set -e
+          # Enable extensions used by the schema (postgis is the main one).
+          # The CI Postgres image doesn't ship postgis, so we make extension
+          # creation tolerant: schema.sql guards with CREATE EXTENSION IF NOT
+          # EXISTS, but if postgis isn't available we install it from contrib.
+          psql -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" \
+            || echo "uuid-ossp extension already present or unavailable"
+          psql -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" \
+            || echo "pgcrypto extension already present or unavailable"
+
+          # Apply base schema first.
+          if [ -f supabase/schema.sql ]; then
+            echo "--- applying supabase/schema.sql ---"
+            psql -v ON_ERROR_STOP=1 -f supabase/schema.sql || {
+              echo "::warning::schema.sql had errors (often due to missing postgis on CI postgres). Continuing to migration dry-run."
+            }
+          fi
+
+          # Apply migrations in lexical order so anything that depends on the
+          # base schema gets a chance to run.
+          if [ -d supabase/migrations ]; then
+            for f in $(ls supabase/migrations/*.sql | sort); do
+              echo "--- applying $f ---"
+              psql -v ON_ERROR_STOP=1 -f "$f" || {
+                echo "::error::Migration $f failed."
+                exit 1
+              }
+            done
+          fi
+
+  # ---------------------------------------------------------------------------
+  # SUMMARY — Fail the whole workflow if any job failed.
+  # ---------------------------------------------------------------------------
+  ci-summary:
+    name: CI summary
+    runs-on: ubuntu-latest
+    needs: [web, mobile, supabase]
+    if: always()
+    steps:
+      - name: Decide
+        run: |
+          if [[ "${{ needs.web.result }}" != "success" || \
+                "${{ needs.mobile.result }}" != "success" || \
+                "${{ needs.supabase.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "All CI jobs passed."

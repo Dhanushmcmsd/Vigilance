@@ -654,14 +654,14 @@ export default function ChecklistScreen() {
                 marginBottom: expandedSections.has(section) ? 8 : 0,
               }}
             >
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#fff' }}>{section}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginRight: 8 }}>
+              <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: '#ffffff' }}>{section}</Text>
+              <Text style={{ color: '#e2e8f0', fontSize: 14, marginRight: 8, fontWeight: '600' }}>
                 {sectionItems.filter((i) => responses[i.id]?.response !== null).length}/{sectionItems.length}
               </Text>
               <Ionicons
                 name={expandedSections.has(section) ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color="rgba(255,255,255,0.8)"
+                size={22}
+                color="#ffffff"
               />
             </TouchableOpacity>
             {expandedSections.has(section) &&

@@ -1,11 +1,13 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": { "simulator": true },
       "android": { "buildType": "apk" },
       "env": {
@@ -15,10 +17,13 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
+      "autoIncrement": true,
       "android": { "buildType": "apk" },
       "ios": { "simulator": false }
     },
     "production": {
+      "channel": "production",
       "autoIncrement": true,
       "android": { "buildType": "app-bundle" }
     }
@@ -34,6 +39,14 @@
         "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
         "appleTeamId": "YOUR_APPLE_TEAM_ID"
       }
+    }
+  },
+  "update": {
+    "production": {
+      "channel": "production"
+    },
+    "preview": {
+      "channel": "preview"
     }
   }
 }

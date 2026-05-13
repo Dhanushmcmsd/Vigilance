@@ -1,6 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
 import { supabase } from '../lib/supabase';
+import { branchSchema, type BranchFormValues } from '../lib/schemas';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '../components/ui/form';
 
 type Tab = 'users' | 'checklists' | 'branches' | 'reports';
 type ChecklistSubTab = 'CFC' | 'Store' | 'Common';
@@ -147,7 +162,13 @@ function UsersTab() {
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from('user_roles').update({ is_active }).eq('id', id);
+      // Soft delete pattern: when deactivating, also stamp deleted_at so we
+      // can distinguish "temporarily disabled" from "removed from the org"
+      // when running audit queries later. Re-activating clears it.
+      const { error } = await supabase
+        .from('user_roles')
+        .update({ is_active, deleted_at: is_active ? null : new Date().toISOString() })
+        .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
@@ -474,7 +495,11 @@ function ChecklistsTab() {
 
   const softDelete = async (id: string) => {
     if (!window.confirm('Delete this item? It will be hidden from future inspections.')) return;
-    await supabase.from('checklist_templates').update({ is_active: false }).eq('id', id);
+    // Soft delete — past inspection_responses still reference this row.
+    await supabase
+      .from('checklist_templates')
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
+      .eq('id', id);
     qc.invalidateQueries({ queryKey: ['admin-checklist'] });
   };
 
@@ -897,7 +922,13 @@ function BranchesTab() {
 
   const toggleBranch = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      await supabase.from('branches').update({ is_active }).eq('id', id);
+      // Soft delete pattern matches users/checklist_templates: deactivating
+      // stamps deleted_at, re-activating clears it. Past inspections keep
+      // their FK reference either way.
+      await supabase
+        .from('branches')
+        .update({ is_active, deleted_at: is_active ? null : new Date().toISOString() })
+        .eq('id', id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-branches'] }),
   });
@@ -967,71 +998,223 @@ function BranchesTab() {
   );
 }
 
-function BranchModal({ branch, onClose, onSaved }: { branch?: Branch; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    name: branch?.name || '',
-    branch_type: branch?.branch_type || 'CFC',
-    location: branch?.location || '',
-    city: branch?.city || '',
-    region: branch?.region || '',
-    latitude: branch?.latitude?.toString() || '',
-    longitude: branch?.longitude?.toString() || '',
-    geofence_radius: branch?.geofence_radius?.toString() || '200',
+/**
+ * BranchModal — zod-validated, react-hook-form-driven.
+ *
+ * Pattern reference: this is the canonical example we want every other admin
+ * form (users, checklist items, ...) to follow. See `web/src/lib/schemas.ts`
+ * for the zod schema and `components/ui/form.tsx` for the shadcn wrappers.
+ */
+function BranchModal({
+  branch,
+  onClose,
+  onSaved,
+}: {
+  branch?: Branch;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const form = useForm<BranchFormValues>({
+    resolver: zodResolver(branchSchema),
+    defaultValues: {
+      name: branch?.name ?? '',
+      branch_type: (branch?.branch_type as 'CFC' | 'Store') ?? 'CFC',
+      location: branch?.location ?? '',
+      city: branch?.city ?? '',
+      region: branch?.region ?? '',
+      latitude: branch?.latitude ?? undefined,
+      longitude: branch?.longitude ?? undefined,
+      geofence_radius: branch?.geofence_radius ?? 200,
+    },
   });
-  const [loading, setLoading] = useState(false);
 
-  const handleSave = async () => {
-    setLoading(true);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const onSubmit = async (values: BranchFormValues) => {
+    setSubmitError(null);
     const payload = {
-      ...form,
-      latitude: form.latitude ? parseFloat(form.latitude) : null,
-      longitude: form.longitude ? parseFloat(form.longitude) : null,
-      geofence_radius: parseInt(form.geofence_radius) || 200,
+      name: values.name,
+      branch_type: values.branch_type,
+      location: values.location ?? null,
+      city: values.city ?? null,
+      region: values.region ?? null,
+      latitude: values.latitude ?? null,
+      longitude: values.longitude ?? null,
+      geofence_radius: values.geofence_radius,
       is_active: true,
     };
-    if (branch) {
-      await supabase.from('branches').update(payload).eq('id', branch.id);
-    } else {
-      await supabase.from('branches').insert(payload);
+    const op = branch
+      ? supabase.from('branches').update(payload).eq('id', branch.id)
+      : supabase.from('branches').insert(payload);
+    const { error } = await op;
+    if (error) {
+      setSubmitError(error.message);
+      return;
     }
-    setLoading(false);
     onSaved();
   };
 
-  const fields: { key: keyof typeof form; label: string; type?: string; min?: number; max?: number; placeholder?: string }[] = [
-    { key: 'name', label: 'Branch Name' },
-    { key: 'location', label: 'Location / Address' },
-    { key: 'city', label: 'City' },
-    { key: 'region', label: 'Region' },
-    { key: 'latitude', label: 'Latitude', type: 'number' },
-    { key: 'longitude', label: 'Longitude', type: 'number' },
-    { key: 'geofence_radius', label: 'Geofence Radius (metres)', type: 'number', min: 50, max: 5000, placeholder: '200' },
-  ];
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full space-y-3">
-        <h3 className="font-bold text-xl">{branch ? 'Edit Branch' : 'Add Branch'}</h3>
-        <select className="input w-full" value={form.branch_type} onChange={e => setForm(f => ({ ...f, branch_type: e.target.value }))}>
-          <option value="CFC">CFC</option>
-          <option value="Store">Store</option>
-        </select>
-        {fields.map(f => (
-          <input
-            key={f.key}
-            className="input w-full"
-            placeholder={f.placeholder || f.label}
-            type={f.type || 'text'}
-            min={f.min}
-            max={f.max}
-            value={form[f.key]}
-            onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-          />
-        ))}
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={handleSave} disabled={loading} className="btn-primary flex-1">{loading ? 'Saving…' : 'Save'}</button>
-        </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <h3 className="font-bold text-xl mb-4">{branch ? 'Edit Branch' : 'Add Branch'}</h3>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Branch name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Aluva CFC" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="branch_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type</FormLabel>
+                    <FormControl>
+                      <select className="input w-full h-10" {...field}>
+                        <option value="CFC">CFC</option>
+                        <option value="Store">Store</option>
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="geofence_radius"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Geofence radius (m)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={50}
+                        max={5000}
+                        step={50}
+                        placeholder="200"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormDescription>How close officers must be to start an inspection.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Door #, street, landmark" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Kochi" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Region</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ernakulam" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="latitude"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Latitude</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="10.1076"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="longitude"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Longitude</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="76.3475"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {submitError && (
+              <div className="rounded-md bg-destructive/10 text-destructive text-sm px-3 py-2">
+                {submitError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { ToastMessage } from '../../components/ToastMessage';
+import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
+import { haptics } from '../../lib/haptics';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -34,6 +36,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
+      haptics.warning();
       showError('Please enter your email and password.');
       return;
     }
@@ -41,16 +44,18 @@ export default function LoginScreen() {
     const { error } = await signIn(email.trim().toLowerCase(), password);
     setLoading(false);
     if (error) {
+      haptics.error();
       showError('Invalid email or password. Please try again.');
       return;
     }
+    haptics.success();
     router.replace('/(officer)');
   };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, backgroundColor: '#1e40af' }}
+      style={{ flex: 1, backgroundColor: COLOR.brand }}
     >
       <ToastMessage
         visible={toast.visible}
@@ -83,10 +88,10 @@ export default function LoginScreen() {
           >
             <Text style={{ fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: 2 }}>VMS</Text>
           </View>
-          <Text style={{ fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: 0.5 }}>
+          <Text style={{ fontSize: FONT.display, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>
             Vigilance
           </Text>
-          <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>
+          <Text style={{ fontSize: FONT.body, color: COLOR.textOnPrimaryMuted, marginTop: 6, fontWeight: '600' }}>
             Field Officer Portal
           </Text>
         </View>
@@ -104,12 +109,14 @@ export default function LoginScreen() {
             elevation: 10,
           }}
         >
-          <Text style={{ fontSize: 20, fontWeight: '700', color: '#1f2937', marginBottom: 24 }}>
+          <Text style={{ fontSize: FONT.h1, fontWeight: '800', color: COLOR.text, marginBottom: SPACING.lg }}>
             Sign In
           </Text>
 
           {/* Email */}
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Email</Text>
+          <Text style={{ fontSize: FONT.body, fontWeight: '700', color: COLOR.textMuted, marginBottom: SPACING.xs }}>
+            Email
+          </Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
@@ -118,80 +125,112 @@ export default function LoginScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="Email address"
             style={{
               borderWidth: 1.5,
-              borderColor: '#e5e7eb',
-              borderRadius: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 14,
-              fontSize: 16,
-              color: '#1f2937',
-              marginBottom: 16,
-              minHeight: 52,
-              backgroundColor: '#f9fafb',
+              borderColor: COLOR.border,
+              borderRadius: RADIUS.md,
+              paddingHorizontal: SPACING.lg,
+              paddingVertical: SPACING.md,
+              fontSize: FONT.body,
+              color: COLOR.text,
+              marginBottom: SPACING.md,
+              minHeight: TOUCH.minHeight,
+              backgroundColor: COLOR.surfaceMuted,
             }}
           />
 
           {/* Password */}
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Password</Text>
-          <View style={{ position: 'relative', marginBottom: 24 }}>
+          <Text style={{ fontSize: FONT.body, fontWeight: '700', color: COLOR.textMuted, marginBottom: SPACING.xs }}>
+            Password
+          </Text>
+          <View style={{ position: 'relative', marginBottom: SPACING.md }}>
             <TextInput
               value={password}
               onChangeText={setPassword}
-              placeholder="••••••••"
+              placeholder="Your password"
               placeholderTextColor="#9ca3af"
               secureTextEntry={!showPassword}
+              accessibilityLabel="Password"
               style={{
                 borderWidth: 1.5,
-                borderColor: '#e5e7eb',
-                borderRadius: 12,
-                paddingHorizontal: 16,
-                paddingRight: 52,
-                paddingVertical: 14,
-                fontSize: 16,
-                color: '#1f2937',
-                minHeight: 52,
-                backgroundColor: '#f9fafb',
+                borderColor: COLOR.border,
+                borderRadius: RADIUS.md,
+                paddingHorizontal: SPACING.lg,
+                paddingRight: 64,
+                paddingVertical: SPACING.md,
+                fontSize: FONT.body,
+                color: COLOR.text,
+                minHeight: TOUCH.minHeight,
+                backgroundColor: COLOR.surfaceMuted,
               }}
             />
             <TouchableOpacity
               onPress={() => setShowPassword(!showPassword)}
-              style={{ position: 'absolute', right: 14, top: 14 }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: TOUCH.minHeight,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
             >
-              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color="#6b7280" />
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={24} color={COLOR.textMuted} />
             </TouchableOpacity>
           </View>
+
+          {/* Forgot password */}
+          <TouchableOpacity
+            onPress={() => router.push('/(auth)/forgot-password')}
+            accessibilityRole="link"
+            accessibilityLabel="Forgot password?"
+            style={{ alignSelf: 'flex-end', minHeight: TOUCH.minHeight, justifyContent: 'center', marginBottom: SPACING.sm }}
+          >
+            <Text style={{ color: COLOR.brandStrong, fontSize: FONT.body, fontWeight: '700' }}>
+              Forgot password?
+            </Text>
+          </TouchableOpacity>
 
           {/* Submit */}
           <TouchableOpacity
             onPress={handleLogin}
             disabled={loading}
             style={{
-              backgroundColor: loading ? '#93c5fd' : '#2563eb',
-              borderRadius: 14,
-              minHeight: 54,
+              backgroundColor: loading ? '#93c5fd' : COLOR.brandStrong,
+              borderRadius: RADIUS.lg,
+              minHeight: 56,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: '#2563eb',
+              flexDirection: 'row',
+              gap: SPACING.sm,
+              shadowColor: COLOR.brandStrong,
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.3,
               shadowRadius: 8,
               elevation: 4,
             }}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Sign In"
           >
             {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.5 }}>
-                Sign In
-              </Text>
+              <>
+                <Ionicons name="log-in-outline" size={22} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: FONT.bodyLg, fontWeight: '800', letterSpacing: 0.5 }}>
+                  Sign In
+                </Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
 
-        <Text style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 32 }}>
+        <Text style={{ textAlign: 'center', color: COLOR.textOnPrimaryMuted, fontSize: FONT.body, marginTop: SPACING.xl, fontWeight: '600' }}>
           Vigilance Management System v1.0
         </Text>
       </ScrollView>

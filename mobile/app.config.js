@@ -2,10 +2,12 @@ module.exports = {
   expo: {
     name: 'Vigilance MS',
     slug: 'vigilance-ms',
-    version: '1.0.0',
+    version: '1.1.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'automatic',
+    scheme: 'vigilancems',
+    newArchEnabled: true,
     splash: {
       image: './assets/splash.png',
       resizeMode: 'contain',
@@ -39,6 +41,9 @@ module.exports = {
     plugins: [
       'expo-router',
       'expo-image-picker',
+      'expo-secure-store',
+      'expo-haptics',
+      'react-native-mmkv',
       [
         'expo-location',
         {

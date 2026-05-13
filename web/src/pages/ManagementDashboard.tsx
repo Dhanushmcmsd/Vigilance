@@ -4,7 +4,7 @@ import StatCard from '../components/StatCard';
 import ComplianceChart from '../components/ComplianceChart';
 import BranchHeatmap from '../components/BranchHeatmap';
 import InspectionTable, { type BranchRow } from '../components/InspectionTable';
-import InspectionModal from '../components/InspectionModal';
+import BranchDetailDrawer from '../components/BranchDetailDrawer';
 import { supabase } from '../lib/supabase';
 
 type RangeKey = 'today' | 'week' | 'month' | 'quarter' | 'custom';
@@ -348,7 +348,13 @@ export default function ManagementDashboard() {
             </div>
           )}
           <button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">Export CSV</button>
-          <button onClick={() => window.print()} className="px-4 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white text-sm font-medium">Print Report</button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white text-sm font-medium"
+            title="Print this dashboard. For an itemised PDF of a single inspection, open it in Head Review and press P."
+          >
+            Print Dashboard
+          </button>
         </div>
       </div>
 
@@ -417,11 +423,12 @@ export default function ManagementDashboard() {
         </div>
       </div>
 
-      <InspectionModal
+      <BranchDetailDrawer
+        branchName={selectedBranch?.branchName ?? null}
         open={Boolean(selectedBranch)}
-        onClose={() => setSelectedBranch(null)}
-        branch={selectedBranch}
-        inspections={filtered}
+        onOpenChange={(open) => {
+          if (!open) setSelectedBranch(null);
+        }}
       />
     </div>
   );

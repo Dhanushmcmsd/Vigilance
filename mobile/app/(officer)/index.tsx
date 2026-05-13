@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -6,188 +6,315 @@ import {
   ScrollView,
   StatusBar,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
 import { useAuth } from '../../context/AuthContext';
 import { getAllDrafts } from '../../lib/storage';
+import { peekQueue } from '../../lib/syncQueue';
+import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
+import { haptics } from '../../lib/haptics';
 
-const GREETING = () => {
+const greeting = (): string => {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
 };
 
-const DATE_STR = new Date().toLocaleDateString('en-IN', {
-  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-});
+const dateStr = (): string =>
+  new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 
 export default function BranchTypeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userName, signOut } = useAuth();
+  const { userName } = useAuth();
   const [draftCount, setDraftCount] = useState(0);
+  const [queueCount, setQueueCount] = useState(0);
 
-  useEffect(() => {
-    getAllDrafts().then((d) => setDraftCount(d.length));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void Promise.all([getAllDrafts(), peekQueue()]).then(([d, q]) => {
+        setDraftCount(d.length);
+        setQueueCount(q.length);
+      });
+    }, []),
+  );
 
-  const navigate = (type: 'CFC' | 'Store') => {
-    router.push({ pathname: '/(officer)/select-branch', params: { branchType: type } });
+  const goto = (path: '/(officer)/drafts' | '/(officer)/submissions' | '/(officer)/profile') => {
+    haptics.tap();
+    router.push(path);
+  };
+
+  const selectType = (type: 'CFC' | 'Store') => {
+    haptics.tap();
+    router.push({
+      pathname: '/(officer)/select-branch',
+      params: { branchType: type },
+    });
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f1f5f9', paddingTop: insets.top }}>
-      <StatusBar barStyle="dark-content" />
+    <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
+      <StatusBar barStyle="light-content" />
 
       {/* Header */}
-      <View
-        style={{
-          backgroundColor: '#1e40af',
-          paddingHorizontal: 20,
-          paddingTop: 16,
-          paddingBottom: 20,
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#fff' }}>
-              {GREETING()}, {userName.split(' ')[0]}!
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              {greeting()}, {(userName || 'Officer').split(' ')[0]}
             </Text>
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{DATE_STR}</Text>
+            <Text style={styles.dateLine}>{dateStr()}</Text>
           </View>
           <TouchableOpacity
-            onPress={signOut}
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.15)',
-              borderRadius: 10,
-              padding: 8,
-            }}
+            onPress={() => goto('/(officer)/profile')}
+            style={styles.profileButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
           >
-            <Ionicons name="log-out-outline" size={22} color="#fff" />
+            <Ionicons name="person-circle-outline" size={26} color="#fff" />
+            <Text style={styles.profileButtonLabel}>Profile</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 20 }}
+        contentContainerStyle={{
+          padding: SPACING.lg,
+          paddingBottom: insets.bottom + SPACING.xl,
+        }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={{ fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 16 }}>
-          Select Branch Type
-        </Text>
+        <Text style={styles.sectionTitle}>Start a new inspection</Text>
 
         {/* CFC Card */}
         <TouchableOpacity
-          onPress={() => navigate('CFC')}
+          onPress={() => selectType('CFC')}
           activeOpacity={0.85}
-          style={{
-            backgroundColor: '#1e40af',
-            borderRadius: 20,
-            padding: 28,
-            marginBottom: 16,
-            minHeight: 160,
-            justifyContent: 'space-between',
-            shadowColor: '#1e40af',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.35,
-            shadowRadius: 12,
-            elevation: 6,
-          }}
+          accessibilityRole="button"
+          accessibilityLabel="Start CFC inspection"
+          style={[styles.bigCard, { backgroundColor: COLOR.brand }]}
         >
-          <View
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 16,
-              backgroundColor: 'rgba(255,255,255,0.15)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <View style={styles.bigCardIcon}>
             <Ionicons name="storefront-outline" size={30} color="#fff" />
           </View>
           <View>
-            <Text style={{ fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>CFC</Text>
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 4 }}>
-              Central Fulfillment Centre
-            </Text>
+            <Text style={styles.bigCardTitle}>CFC</Text>
+            <Text style={styles.bigCardSub}>Central Fulfillment Centre</Text>
           </View>
-          <Ionicons name="arrow-forward" size={22} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="arrow-forward" size={24} color="#fff" />
         </TouchableOpacity>
 
         {/* Store Card */}
         <TouchableOpacity
-          onPress={() => navigate('Store')}
+          onPress={() => selectType('Store')}
           activeOpacity={0.85}
-          style={{
-            backgroundColor: '#0f766e',
-            borderRadius: 20,
-            padding: 28,
-            marginBottom: 24,
-            minHeight: 160,
-            justifyContent: 'space-between',
-            shadowColor: '#0f766e',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.35,
-            shadowRadius: 12,
-            elevation: 6,
-          }}
+          accessibilityRole="button"
+          accessibilityLabel="Start Store inspection"
+          style={[styles.bigCard, { backgroundColor: '#0f766e' }]}
         >
-          <View
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 16,
-              backgroundColor: 'rgba(255,255,255,0.15)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <View style={styles.bigCardIcon}>
             <Ionicons name="bag-outline" size={30} color="#fff" />
           </View>
           <View>
-            <Text style={{ fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>Store</Text>
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 4 }}>
-              Retail Store Branch
-            </Text>
+            <Text style={styles.bigCardTitle}>Store</Text>
+            <Text style={styles.bigCardSub}>Retail Store Branch</Text>
           </View>
-          <Ionicons name="arrow-forward" size={22} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="arrow-forward" size={24} color="#fff" />
         </TouchableOpacity>
 
-        {/* Drafts Button */}
-        <TouchableOpacity
-          onPress={() => {}}
-          style={{
-            backgroundColor: '#fff',
-            borderRadius: 14,
-            padding: 16,
-            flexDirection: 'row',
-            alignItems: 'center',
-            borderWidth: 1.5,
-            borderColor: '#e5e7eb',
-          }}
-        >
-          <Ionicons name="document-text-outline" size={22} color="#6b7280" />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#374151', marginLeft: 12, flex: 1 }}>
-            My Drafts
-          </Text>
-          {draftCount > 0 && (
-            <View
-              style={{
-                backgroundColor: '#ef4444',
-                borderRadius: 12,
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{draftCount}</Text>
-            </View>
-          )}
-          <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>My work</Text>
+
+        <NavRow
+          icon="document-text-outline"
+          label="My Drafts"
+          sub="Resume inspections you started"
+          badge={draftCount > 0 ? draftCount : undefined}
+          badgeColor={COLOR.brand}
+          onPress={() => goto('/(officer)/drafts')}
+        />
+        <NavRow
+          icon="cloud-upload-outline"
+          label="Pending sync"
+          sub="Submissions waiting to upload"
+          badge={queueCount > 0 ? queueCount : undefined}
+          badgeColor={COLOR.warning}
+          onPress={() => goto('/(officer)/drafts')}
+        />
+        <NavRow
+          icon="checkmark-done-outline"
+          label="My Submissions"
+          sub="History of completed inspections"
+          onPress={() => goto('/(officer)/submissions')}
+        />
       </ScrollView>
     </View>
   );
 }
+
+function NavRow({
+  icon,
+  label,
+  sub,
+  badge,
+  badgeColor,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub: string;
+  badge?: number;
+  badgeColor?: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={styles.navRow}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={styles.navIcon}>
+        <Ionicons name={icon} size={24} color={COLOR.brand} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.navLabel}>{label}</Text>
+        <Text style={styles.navSub}>{sub}</Text>
+      </View>
+      {badge != null && (
+        <View style={[styles.badge, { backgroundColor: badgeColor ?? COLOR.brand }]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      )}
+      <Ionicons name="chevron-forward" size={22} color={COLOR.borderStrong} />
+    </TouchableOpacity>
+  );
+}
+
+const styles = {
+  header: {
+    backgroundColor: COLOR.brand,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+  } as const,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  } as const,
+  greeting: {
+    fontSize: FONT.h1,
+    fontWeight: '800',
+    color: '#fff',
+  } as const,
+  dateLine: {
+    fontSize: FONT.body,
+    color: COLOR.textOnPrimaryMuted,
+    marginTop: 2,
+  } as const,
+  profileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    minHeight: TOUCH.minHeight,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  } as const,
+  profileButtonLabel: {
+    color: '#fff',
+    fontSize: FONT.body,
+    fontWeight: '700',
+  } as const,
+  sectionTitle: {
+    fontSize: FONT.h2,
+    fontWeight: '800',
+    color: COLOR.text,
+    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
+  } as const,
+  bigCard: {
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginBottom: SPACING.md,
+    minHeight: 160,
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  } as const,
+  bigCardIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as const,
+  bigCardTitle: {
+    fontSize: FONT.display,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 1,
+  } as const,
+  bigCardSub: {
+    fontSize: FONT.body,
+    color: COLOR.textOnPrimaryMuted,
+    marginTop: 4,
+  } as const,
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: COLOR.surface,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    minHeight: TOUCH.rowHeight,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLOR.border,
+  } as const,
+  navIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLOR.brandSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as const,
+  navLabel: {
+    fontSize: FONT.bodyLg,
+    fontWeight: '700',
+    color: COLOR.text,
+  } as const,
+  navSub: {
+    fontSize: FONT.body,
+    color: COLOR.textMuted,
+    marginTop: 2,
+  } as const,
+  badge: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as const,
+  badgeText: {
+    color: '#fff',
+    fontSize: FONT.body,
+    fontWeight: '800',
+  } as const,
+};

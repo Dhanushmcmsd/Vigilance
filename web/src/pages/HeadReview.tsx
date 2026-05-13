@@ -4,6 +4,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import Filters from '../components/Filters';
 import RiskBadge from '../components/RiskBadge';
+import {
+  generateInspectionPdf,
+  type InspectionPdfData,
+} from '../components/InspectionPdfReport';
 
 interface ReviewResponse {
   id: string;
@@ -52,6 +56,7 @@ export default function HeadReview() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const { data = [], isLoading, error } = useQuery<ReviewInspection[]>({
     queryKey: ['inspections', 'head-review'],
@@ -131,6 +136,45 @@ export default function HeadReview() {
   const branchTypes = Array.from(new Set(data.map((item) => item.branch_type)));
   const branchNames = Array.from(new Set(data.map((item) => item.branch_name)));
 
+  const exportPdf = async () => {
+    if (!selected) return;
+    setToast('Generating PDF…');
+    try {
+      const data: InspectionPdfData = {
+        id: selected.id,
+        branchName: selected.branch_name,
+        branchType: selected.branch_type,
+        officerName: selected.officer_name,
+        city: selected.city,
+        inspectionDate: selected.inspection_date,
+        submittedAt: selected.submitted_at,
+        timeIn: selected.time_in,
+        timeOut: selected.time_out,
+        complianceScore: selected.compliance_score,
+        riskLevel: selected.risk_level,
+        status: selected.status,
+        headComment: null,
+        generalRemark: selected.general_remarks,
+        responses: selected.responses.map((r) => ({
+          section: r.section,
+          item_text: r.item_text,
+          response: r.response,
+          remarks: r.remarks,
+        })),
+        photos: selected.files
+          .filter((f) => /\.(jpe?g|png|webp)$/i.test(f))
+          .map((url) => ({ url })),
+      };
+      const filename = await generateInspectionPdf(data);
+      setToast(`Downloaded ${filename}`);
+    } catch (err) {
+      console.error(err);
+      setToast('Failed to generate PDF.');
+    } finally {
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
   const doAction = async (action: 'approved' | 'rejected' | 'submitted') => {
     if (!selected) return;
     if (!comment.trim()) {
@@ -154,6 +198,27 @@ export default function HeadReview() {
       return;
     }
 
+    // Fire-and-forget officer notification. We don't block the UI on this;
+    // the in-app notifications row is the source of truth (push/email are
+    // best-effort side channels). Network failures are surfaced as a quieter
+    // toast so the supervisor knows their action succeeded but the notify
+    // didn't.
+    void supabase.functions
+      .invoke('notify-officer', {
+        body: {
+          inspection_id: selected.id,
+          status: action,
+          head_comment: comment.trim(),
+        },
+      })
+      .then(({ error: notifyErr }) => {
+        if (notifyErr) {
+          console.warn('notify-officer failed', notifyErr);
+          setToast('Action saved — officer notification queued for retry.');
+          setTimeout(() => setToast(null), 3500);
+        }
+      });
+
     await queryClient.invalidateQueries({ queryKey: ['inspections'] });
     setToast(action === 'submitted' ? 'Clarification requested.' : `Inspection ${action}.`);
     setComment('');
@@ -166,8 +231,23 @@ export default function HeadReview() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const tag = (event.target as HTMLElement)?.tagName;
+      const typing = tag === 'TEXTAREA' || tag === 'INPUT';
+
+      // Help overlay — always available, even while typing-context-aware
+      // shortcuts are off. Shift+/ is the canonical "?".
+      if (!typing && (event.key === '?' || (event.shiftKey && event.key === '/'))) {
+        event.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+        return;
+      }
+      if (event.key === 'Escape' && shortcutsOpen) {
+        setShortcutsOpen(false);
+        return;
+      }
+      if (typing) return;
       if (!selected) return;
-      if ((event.target as HTMLElement)?.tagName === 'TEXTAREA' || (event.target as HTMLElement)?.tagName === 'INPUT') return;
+
       const currentIndex = filtered.findIndex((item) => item.id === selected.id);
       if (event.key === 'ArrowDown' && currentIndex < filtered.length - 1) {
         setSelectedId(filtered[currentIndex + 1].id);
@@ -177,11 +257,13 @@ export default function HeadReview() {
       }
       if (event.key.toLowerCase() === 'a') void doAction('approved');
       if (event.key.toLowerCase() === 'r') void doAction('rejected');
+      if (event.key.toLowerCase() === 'c') void doAction('submitted');
+      if (event.key.toLowerCase() === 'p') void exportPdf();
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [filtered, selected, comment]);
+  }, [filtered, selected, comment, shortcutsOpen]);
 
   if (error) {
     return <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-4">Failed to load review data.</div>;
@@ -194,6 +276,8 @@ export default function HeadReview() {
           {toast}
         </div>
       )}
+
+      <ShortcutsHelpOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       <div className="lg:hidden flex justify-end no-print">
         <button onClick={() => setMobileListOpen(true)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium">Open Inspection List</button>
@@ -224,6 +308,12 @@ export default function HeadReview() {
             <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-full text-sm border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800" />
           </div>
           <div className="overflow-y-auto h-[calc(100%-170px)]">
+            {isLoading && (
+              <div className="px-4 py-6 text-sm text-gray-500 flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-brand-500 border-r-transparent animate-spin" />
+                Loading inspections…
+              </div>
+            )}
             {filtered.map((item) => (
               <button
                 key={item.id}
@@ -354,12 +444,71 @@ export default function HeadReview() {
                   <button onClick={() => void doAction('approved')} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium">Approve</button>
                   <button onClick={() => void doAction('rejected')} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium">Reject</button>
                   <button onClick={() => void doAction('submitted')} className="px-4 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium">Request Clarification</button>
+                  <button onClick={() => void exportPdf()} className="ml-auto px-4 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white text-sm font-medium">Export PDF</button>
                 </div>
-                <div className="text-xs text-gray-500">Keyboard shortcuts: A = approve, R = reject, ↑/↓ = navigate.</div>
+                <div className="text-xs text-gray-500">Keyboard shortcuts: <kbd className="px-1.5 py-0.5 rounded border bg-gray-50 text-[10px] font-mono">A</kbd> approve · <kbd className="px-1.5 py-0.5 rounded border bg-gray-50 text-[10px] font-mono">R</kbd> reject · <kbd className="px-1.5 py-0.5 rounded border bg-gray-50 text-[10px] font-mono">↑↓</kbd> navigate · <kbd className="px-1.5 py-0.5 rounded border bg-gray-50 text-[10px] font-mono">?</kbd> show all</div>
               </div>
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const SHORTCUTS: Array<{ key: string; label: string }> = [
+  { key: 'A', label: 'Approve current inspection' },
+  { key: 'R', label: 'Reject current inspection' },
+  { key: 'C', label: 'Request clarification' },
+  { key: 'P', label: 'Export PDF report' },
+  { key: '↑ / ↓', label: 'Move between inspections' },
+  { key: '?', label: 'Show / hide this overlay' },
+  { key: 'Esc', label: 'Close any open dialog' },
+];
+
+function ShortcutsHelpOverlay({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+    >
+      <div
+        className="w-full max-w-md rounded-xl border bg-white dark:bg-gray-900 p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Keyboard shortcuts</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            aria-label="Close shortcuts overlay"
+          >
+            ✕
+          </button>
+        </div>
+        <ul className="space-y-2">
+          {SHORTCUTS.map((s) => (
+            <li key={s.key} className="flex items-center justify-between text-sm">
+              <span className="text-gray-700 dark:text-gray-300">{s.label}</span>
+              <kbd className="font-mono text-xs px-2 py-0.5 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                {s.key}
+              </kbd>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs text-gray-500">
+          Shortcuts are disabled while typing in the comment box.
+        </p>
       </div>
     </div>
   );

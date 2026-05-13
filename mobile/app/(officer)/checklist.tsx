@@ -18,6 +18,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { saveDraft, loadDraft, deleteDraft, enqueueOfflineSubmission } from '../../lib/storage';
+import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ChecklistItem } from '../../components/ChecklistItem';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -187,6 +188,7 @@ export default function ChecklistScreen() {
   const ensureInspection = useCallback(async (): Promise<string | null> => {
     if (activeInspectionId) return activeInspectionId;
     if (!userRolesId || !branchId) return null;
+    const audit = await getDeviceAudit();
     const { data, error } = await supabase
       .from('inspections')
       .insert({
@@ -195,6 +197,9 @@ export default function ChecklistScreen() {
         inspection_date: date,
         time_in: timeIn || null,
         status: 'draft',
+        sync_status: 'synced',
+        device_id: audit.deviceId,
+        app_version: audit.appVersion,
         officer_latitude: officerLat ? parseFloat(officerLat) : null,
         officer_longitude: officerLon ? parseFloat(officerLon) : null,
       })
@@ -471,12 +476,16 @@ export default function ChecklistScreen() {
               }
 
               // Mark submitted — stop pings immediately afterwards.
+              const submitAudit = await getDeviceAudit();
               await supabase
                 .from('inspections')
                 .update({
                   status: 'submitted',
                   time_out: timeOut || null,
                   submitted_at: new Date().toISOString(),
+                  sync_status: 'synced',
+                  device_id: submitAudit.deviceId,
+                  app_version: submitAudit.appVersion,
                 })
                 .eq('id', inspectionId);
 

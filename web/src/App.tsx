@@ -52,8 +52,10 @@ function RoleGuard({
 
 function AppRoutes() {
   useEffect(() => {
-    const channel = setupRealtimeSubscription();
-    return () => { teardownRealtimeSubscription(); };
+    setupRealtimeSubscription();
+    return () => {
+      teardownRealtimeSubscription();
+    };
   }, []);
 
   return (

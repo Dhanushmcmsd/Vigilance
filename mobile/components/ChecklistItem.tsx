@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Animated } from 'react-native';
+import { haptics } from '../lib/haptics';
 
 type ResponseType = 'Yes' | 'No' | 'N/A' | null;
 type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
@@ -108,7 +109,10 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
     const isActive = response === value;
     return (
       <TouchableOpacity
-        onPress={() => onResponseChange(itemId, value)}
+        onPress={() => {
+          haptics.tap();
+          onResponseChange(itemId, value);
+        }}
         activeOpacity={0.7}
         style={{
           flex: 1,

@@ -4,9 +4,14 @@ import { View, Text, Animated } from 'react-native';
 interface ProgressBarProps {
   answered: number;
   total: number;
+  /**
+   * When true, force the bar into a RED state regardless of progress —
+   * used to signal pending RED-risk supervisor acknowledgements.
+   */
+  red?: boolean;
 }
 
-export const ProgressBar: React.FC<ProgressBarProps> = ({ answered, total }) => {
+export const ProgressBar: React.FC<ProgressBarProps> = ({ answered, total, red = false }) => {
   const animatedWidth = useRef(new Animated.Value(0)).current;
   const percent = total > 0 ? (answered / total) * 100 : 0;
 
@@ -18,7 +23,13 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ answered, total }) => 
     }).start();
   }, [percent]);
 
-  const barColor = percent === 100 ? '#16a34a' : percent >= 60 ? '#2563eb' : '#f59e0b';
+  const barColor = red
+    ? '#DC2626'
+    : percent === 100
+    ? '#16a34a'
+    : percent >= 60
+    ? '#2563eb'
+    : '#f59e0b';
 
   return (
     <View className="px-4 py-2 bg-white border-b border-gray-100">

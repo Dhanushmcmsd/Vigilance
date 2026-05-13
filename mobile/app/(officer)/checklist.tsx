@@ -7,7 +7,6 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
-  Platform,
   Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,14 +22,20 @@ import { useLocationPing } from '../../lib/useLocationPing';
 import { ChecklistItem } from '../../components/ChecklistItem';
 import { ProgressBar } from '../../components/ProgressBar';
 import { ToastMessage } from '../../components/ToastMessage';
+import { SupervisorOtpModal } from '../../components/SupervisorOtpModal';
 
 type ResponseType = 'Yes' | 'No' | 'N/A' | null;
+type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
 
 interface ChecklistTemplateItem {
   id: string;
   section: string;
   item_text: string;
   item_order: number;
+  risk_level?: RiskLevel;
+  trigger_on_no?: boolean;
+  min_remark_chars?: number;
+  requires_photo?: boolean;
 }
 
 interface SelectedFile {
@@ -45,6 +50,8 @@ const nowTime = () => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
+const YELLOW_REALTIME_THRESHOLD = 3;
+
 export default function ChecklistScreen() {
   const { branchId, branchName, branchType, officerLat, officerLon } = useLocalSearchParams<{
     branchId: string; branchName: string; branchType: string;
@@ -58,8 +65,8 @@ export default function ChecklistScreen() {
   const [items, setItems] = useState<ChecklistTemplateItem[]>([]);
   const [responses, setResponses] = useState<Record<string, { response: ResponseType; remark: string }>>({});
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [date, setDate] = useState(today);
-  const [timeIn, setTimeIn] = useState(nowTime());
+  const [date] = useState(today);
+  const [timeIn] = useState(nowTime());
   const [timeOut, setTimeOut] = useState('');
   const [generalRemark, setGeneralRemark] = useState('');
   const [files, setFiles] = useState<SelectedFile[]>([]);
@@ -69,7 +76,15 @@ export default function ChecklistScreen() {
     visible: false, message: '', type: 'success',
   });
 
-  // Location ping state
+  // Risk-flow state
+  const [triggeredRedItems, setTriggeredRedItems] = useState<Set<string>>(new Set());
+  const [acknowledgedRedItems, setAcknowledgedRedItems] = useState<Set<string>>(new Set());
+  const [yellowCount, setYellowCount] = useState(0);
+  const [yellowAlertSent, setYellowAlertSent] = useState(false);
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [activeOtpItemId, setActiveOtpItemId] = useState<string | null>(null);
+
+  // Location ping + lazy inspection state
   const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
   const [inspectionActive, setInspectionActive] = useState(false);
   const { pingCount } = useLocationPing({ inspectionId: activeInspectionId, isActive: inspectionActive });
@@ -77,25 +92,62 @@ export default function ChecklistScreen() {
   const showToast = (message: string, type: 'success' | 'error' | 'warning') =>
     setToast({ visible: true, message, type });
 
-  // Fetch checklist items
+  // Fetch checklist items + risk classifications.
   useEffect(() => {
-    supabase
-      .from('checklist_templates')
-      .select('id, section, item_text, item_order')
-      .eq('is_active', true)
-      .order('item_order')
-      .then(({ data }) => {
-        if (data) {
-          setItems(data);
-          const sections = new Set(data.map((i: ChecklistTemplateItem) => i.section));
-          setExpandedSections(sections);
-          const init: Record<string, { response: ResponseType; remark: string }> = {};
-          data.forEach((i: ChecklistTemplateItem) => { init[i.id] = { response: null, remark: '' }; });
-          setResponses(init);
-        }
+    (async () => {
+      const { data, error } = await supabase
+        .from('checklist_templates')
+        .select(`
+          id, section, item_text, item_order, risk_level, trigger_on_no,
+          risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
+            risk_level, trigger_on_no, min_remark_chars, requires_photo
+          )
+        `)
+        .eq('is_active', true)
+        .order('item_order');
+
+      if (error) {
+        // Fallback: older schemas may not yet have risk_classifications joined.
+        const fallback = await supabase
+          .from('checklist_templates')
+          .select('id, section, item_text, item_order, risk_level, trigger_on_no')
+          .eq('is_active', true)
+          .order('item_order');
+        if (fallback.data) hydrateItems(fallback.data as any);
         setLoading(false);
-      });
+        return;
+      }
+
+      hydrateItems(data as any);
+      setLoading(false);
+    })();
   }, []);
+
+  const hydrateItems = (rows: any[]) => {
+    const mapped: ChecklistTemplateItem[] = rows.map((r) => {
+      const rc = Array.isArray(r.risk_classifications)
+        ? r.risk_classifications[0]
+        : r.risk_classifications;
+      return {
+        id: r.id,
+        section: r.section,
+        item_text: r.item_text,
+        item_order: r.item_order,
+        risk_level: (rc?.risk_level ?? r.risk_level) as RiskLevel | undefined,
+        trigger_on_no: rc?.trigger_on_no ?? r.trigger_on_no ?? false,
+        min_remark_chars: rc?.min_remark_chars ?? undefined,
+        requires_photo: rc?.requires_photo ?? false,
+      };
+    });
+    setItems(mapped);
+    const sections = new Set(mapped.map((i) => i.section));
+    setExpandedSections(sections);
+    const init: Record<string, { response: ResponseType; remark: string }> = {};
+    mapped.forEach((i) => {
+      init[i.id] = { response: null, remark: '' };
+    });
+    setResponses(init);
+  };
 
   // Restore draft
   useEffect(() => {
@@ -107,7 +159,6 @@ export default function ChecklistScreen() {
             text: 'Resume', onPress: () => {
               setResponses(draft.responses as any);
               setGeneralRemark(draft.generalRemark);
-              setTimeIn(draft.timeIn);
               setTimeOut(draft.timeOut);
             },
           },
@@ -131,13 +182,151 @@ export default function ChecklistScreen() {
     [responses]
   );
 
-  const handleResponse = useCallback((itemId: string, response: ResponseType) => {
-    setResponses((prev) => ({ ...prev, [itemId]: { ...prev[itemId], response } }));
-  }, []);
+  // Lazily create an inspection row so RED escalation/OTP/notification log
+  // can reference a real inspection_id BEFORE the officer submits.
+  const ensureInspection = useCallback(async (): Promise<string | null> => {
+    if (activeInspectionId) return activeInspectionId;
+    if (!userRolesId || !branchId) return null;
+    const { data, error } = await supabase
+      .from('inspections')
+      .insert({
+        officer_id: userRolesId,
+        branch_id: branchId,
+        inspection_date: date,
+        time_in: timeIn || null,
+        status: 'draft',
+        officer_latitude: officerLat ? parseFloat(officerLat) : null,
+        officer_longitude: officerLon ? parseFloat(officerLon) : null,
+      })
+      .select('id')
+      .single();
+    if (error || !data) {
+      showToast('Could not initialise inspection for escalation', 'error');
+      return null;
+    }
+    setActiveInspectionId(data.id);
+    setInspectionActive(true);
+    return data.id;
+  }, [activeInspectionId, userRolesId, branchId, date, timeIn, officerLat, officerLon]);
+
+  const handleRedTriggered = useCallback(
+    async (itemId: string) => {
+      // Idempotent: only fire side-effects the first time this item triggers.
+      let firstTime = false;
+      setTriggeredRedItems((prev) => {
+        if (prev.has(itemId)) return prev;
+        firstTime = true;
+        const next = new Set(prev);
+        next.add(itemId);
+        return next;
+      });
+
+      setActiveOtpItemId(itemId);
+      setOtpModalVisible(true);
+
+      if (!firstTime) return;
+
+      const inspId = await ensureInspection();
+      if (!inspId) return;
+
+      const redCount = triggeredRedItems.size + 1;
+
+      // Fire supervisor alert (emails) and OTP send in parallel — failures
+      // should NOT block the modal from opening.
+      Promise.all([
+        supabase.functions.invoke('red-alert', {
+          body: {
+            inspection_id: inspId,
+            checklist_item_id: itemId,
+            officer_id: userRolesId,
+            branch_id: branchId,
+            red_count: redCount,
+          },
+        }),
+        supabase.functions.invoke('supervisor-otp', {
+          body: {
+            action: 'send',
+            inspection_id: inspId,
+            checklist_item_id: itemId,
+          },
+        }),
+      ]).catch(() => {
+        showToast('Supervisor alert queued — retrying in background', 'warning');
+      });
+    },
+    [ensureInspection, triggeredRedItems, userRolesId, branchId]
+  );
+
+  const handleOtpAcknowledged = useCallback(() => {
+    if (!activeOtpItemId) {
+      setOtpModalVisible(false);
+      return;
+    }
+    setAcknowledgedRedItems((prev) => {
+      const next = new Set(prev);
+      next.add(activeOtpItemId);
+      return next;
+    });
+    setOtpModalVisible(false);
+    setActiveOtpItemId(null);
+    showToast('Supervisor acknowledgement recorded', 'success');
+  }, [activeOtpItemId]);
+
+  const handleResponse = useCallback(
+    (itemId: string, response: ResponseType) => {
+      setResponses((prev) => {
+        const previous = prev[itemId]?.response ?? null;
+        const next = { ...prev, [itemId]: { ...prev[itemId], response } };
+
+        const item = items.find((i) => i.id === itemId);
+        if (item?.risk_level === 'YELLOW') {
+          const triggers =
+            (item.trigger_on_no && response === 'No') ||
+            (!item.trigger_on_no && response === 'Yes');
+          const previouslyTriggered =
+            (item.trigger_on_no && previous === 'No') ||
+            (!item.trigger_on_no && previous === 'Yes');
+          if (triggers && !previouslyTriggered) {
+            setYellowCount((c) => c + 1);
+          } else if (!triggers && previouslyTriggered) {
+            setYellowCount((c) => Math.max(0, c - 1));
+          }
+        }
+        return next;
+      });
+    },
+    [items]
+  );
 
   const handleRemark = useCallback((itemId: string, remark: string) => {
     setResponses((prev) => ({ ...prev, [itemId]: { ...prev[itemId], remark } }));
   }, []);
+
+  // YELLOW real-time alert when threshold is crossed.
+  useEffect(() => {
+    if (yellowCount < YELLOW_REALTIME_THRESHOLD || yellowAlertSent) return;
+    setYellowAlertSent(true);
+    (async () => {
+      const inspId = await ensureInspection();
+      if (!inspId) return;
+      supabase.functions
+        .invoke('red-alert', {
+          body: {
+            inspection_id: inspId,
+            officer_id: userRolesId,
+            branch_id: branchId,
+            template: 'YELLOW_REALTIME',
+            yellow_count: yellowCount,
+          },
+        })
+        .catch(() => {
+          // Non-fatal — the supervisor will see them on submit anyway.
+        });
+    })();
+  }, [yellowCount, yellowAlertSent, ensureInspection, userRolesId, branchId]);
+
+  const pendingRedCount = triggeredRedItems.size - acknowledgedRedItems.size;
+  const submitBlocked = pendingRedCount > 0;
 
   const handleSaveDraft = async () => {
     await saveDraft(branchId, today, {
@@ -189,6 +378,26 @@ export default function ChecklistScreen() {
       return;
     }
 
+    if (submitBlocked) {
+      showToast(
+        `${pendingRedCount} RED item(s) pending supervisor acknowledgement`,
+        'error'
+      );
+      return;
+    }
+
+    // RED-item minimum-remark validation.
+    const shortRed = items.find((i) => {
+      if (i.risk_level !== 'RED') return false;
+      const min = i.min_remark_chars ?? 50;
+      const len = responses[i.id]?.remark?.length ?? 0;
+      return len < min;
+    });
+    if (shortRed) {
+      showToast('RED items require a detailed remark (min 50 chars)', 'warning');
+      return;
+    }
+
     Alert.alert(
       'Submit Inspection',
       'Submit this inspection? You cannot edit after submitting.',
@@ -201,6 +410,9 @@ export default function ChecklistScreen() {
             setSubmitting(true);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
+              // If a RED already triggered while online, an inspections row
+              // exists in draft state — pass its id so the offline queue can
+              // UPDATE that row instead of inserting a duplicate.
               await enqueueOfflineSubmission({
                 branchId, branchName, branchType: branchType || '',
                 date, timeIn, timeOut,
@@ -210,6 +422,7 @@ export default function ChecklistScreen() {
                 savedAt: new Date().toISOString(),
                 officerLat: officerLat ? parseFloat(officerLat) : null,
                 officerLon: officerLon ? parseFloat(officerLon) : null,
+                inspectionId: activeInspectionId ?? undefined,
               });
               setSubmitting(false);
               showToast('Saved offline — will sync when connected', 'warning');
@@ -217,30 +430,10 @@ export default function ChecklistScreen() {
             }
 
             try {
-              // 1. Create inspection
-              const { data: inspection, error: inspErr } = await supabase
-                .from('inspections')
-                .insert({
-                  officer_id: userRolesId,
-                  branch_id: branchId,
-                  inspection_date: date,
-                  time_in: timeIn || null,
-                  time_out: timeOut || null,
-                  status: 'draft',
-                  officer_latitude: officerLat ? parseFloat(officerLat) : null,
-                  officer_longitude: officerLon ? parseFloat(officerLon) : null,
-                })
-                .select('id')
-                .single();
+              const inspectionId = await ensureInspection();
+              if (!inspectionId) throw new Error('Inspection creation failed');
 
-              if (inspErr || !inspection) throw new Error(inspErr?.message || 'Inspection creation failed');
-              const inspectionId = inspection.id;
-
-              // Start location pings now that we have a real inspectionId
-              setActiveInspectionId(inspectionId);
-              setInspectionActive(true);
-
-              // 2. Batch insert responses
+              // Batch insert responses
               const responseRows = items.map((item) => ({
                 inspection_id: inspectionId,
                 checklist_item_id: item.id,
@@ -250,7 +443,7 @@ export default function ChecklistScreen() {
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
-              // 3. Upload files
+              // Upload files
               for (const file of files) {
                 const ext = file.name.split('.').pop();
                 const path = `inspections/${inspectionId}/${Date.now()}_${file.name}`;
@@ -269,7 +462,7 @@ export default function ChecklistScreen() {
                 }
               }
 
-              // 4. General remarks
+              // General remarks
               if (generalRemark.trim()) {
                 await supabase.from('general_remarks').insert({
                   inspection_id: inspectionId,
@@ -277,14 +470,17 @@ export default function ChecklistScreen() {
                 });
               }
 
-              // 5. Submit — stop location pings immediately after
+              // Mark submitted — stop pings immediately afterwards.
               await supabase
                 .from('inspections')
-                .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+                .update({
+                  status: 'submitted',
+                  time_out: timeOut || null,
+                  submitted_at: new Date().toISOString(),
+                })
                 .eq('id', inspectionId);
 
               setInspectionActive(false);
-
               await deleteDraft(branchId, today);
               setSubmitting(false);
 
@@ -330,6 +526,17 @@ export default function ChecklistScreen() {
         onHide={() => setToast((p) => ({ ...p, visible: false }))}
       />
 
+      {/* OTP Modal */}
+      {activeOtpItemId && activeInspectionId && (
+        <SupervisorOtpModal
+          visible={otpModalVisible}
+          inspectionId={activeInspectionId}
+          checklistItemId={activeOtpItemId}
+          onAcknowledged={handleOtpAcknowledged}
+          onClose={() => setOtpModalVisible(false)}
+        />
+      )}
+
       {/* Header */}
       <View
         style={{
@@ -362,7 +569,34 @@ export default function ChecklistScreen() {
       </View>
 
       {/* Progress */}
-      <ProgressBar answered={answeredCount} total={items.length} />
+      <ProgressBar answered={answeredCount} total={items.length} red={triggeredRedItems.size > 0} />
+
+      {/* Risk summary strip */}
+      {(triggeredRedItems.size > 0 || yellowCount >= YELLOW_REALTIME_THRESHOLD) && (
+        <View
+          style={{
+            backgroundColor: triggeredRedItems.size > 0 ? '#FEF2F2' : '#FFFBEB',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: triggeredRedItems.size > 0 ? '#FCA5A5' : '#FCD34D',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '700', color: triggeredRedItems.size > 0 ? '#DC2626' : '#D97706' }}>
+            {triggeredRedItems.size > 0
+              ? `🔴 ${triggeredRedItems.size} RED triggered • ${acknowledgedRedItems.size} acknowledged`
+              : `🟡 ${yellowCount} YELLOW items — supervisor notified`}
+          </Text>
+          {pendingRedCount > 0 && (
+            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
+              {pendingRedCount} pending OTP
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Meta info */}
       <View
@@ -431,6 +665,11 @@ export default function ChecklistScreen() {
                   remark={responses[item.id]?.remark ?? ''}
                   onResponseChange={handleResponse}
                   onRemarkChange={handleRemark}
+                  risk_level={item.risk_level}
+                  trigger_on_no={item.trigger_on_no}
+                  min_remark_chars={item.min_remark_chars}
+                  isRedAcknowledged={acknowledgedRedItems.has(item.id)}
+                  onRedTriggered={handleRedTriggered}
                 />
               ))}
           </View>
@@ -563,12 +802,31 @@ export default function ChecklistScreen() {
           }}
         />
 
+        {/* Pending-RED notice above submit */}
+        {submitBlocked && (
+          <View
+            style={{
+              backgroundColor: '#FEF2F2',
+              borderWidth: 1,
+              borderColor: '#FCA5A5',
+              borderRadius: 10,
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '700' }}>
+              {pendingRedCount} RED item{pendingRedCount === 1 ? '' : 's'} pending supervisor acknowledgement
+            </Text>
+          </View>
+        )}
+
         {/* Submit Button */}
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || submitBlocked}
           style={{
-            backgroundColor: submitting ? '#86efac' : '#16a34a',
+            backgroundColor: submitBlocked ? '#9ca3af' : submitting ? '#86efac' : '#16a34a',
             borderRadius: 14,
             minHeight: 54,
             alignItems: 'center',
@@ -585,7 +843,7 @@ export default function ChecklistScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={{ color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: 0.5 }}>
-              SUBMIT INSPECTION
+              {submitBlocked ? 'SUPERVISOR ACK REQUIRED' : 'SUBMIT INSPECTION'}
             </Text>
           )}
         </TouchableOpacity>

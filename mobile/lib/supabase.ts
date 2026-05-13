@@ -60,3 +60,136 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// ============================================================
+// DATABASE TYPES
+// Mirrors the public schema in supabase/schema.sql and the
+// 20260513_risk_classification.sql migration.
+// ============================================================
+
+export type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
+export type InspectionRisk = 'low' | 'medium' | 'high' | 'critical';
+export type InspectionStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+export type ChecklistResponse = 'Yes' | 'No' | 'N/A';
+export type EscalationStatus = 'open' | 'in_progress' | 'closed';
+export type NotificationChannel = 'push' | 'sms' | 'email';
+export type NotificationStatus = 'sent' | 'failed' | 'pending';
+
+export interface UserRole {
+  id: string;
+  user_id: string | null;
+  role: 'officer' | 'head' | 'management' | 'admin';
+  name: string;
+  phone?: string | null;
+  is_active?: boolean;
+  fcm_token?: string | null;
+  created_at?: string;
+}
+
+export interface BranchType {
+  id: string;
+  type_name: 'CFC' | 'Store' | string;
+}
+
+export interface Branch {
+  id: string;
+  branch_type_id: string | null;
+  branch_name: string;
+  location?: string | null;
+  city?: string | null;
+  region?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface ChecklistTemplate {
+  id: string;
+  branch_type_id: string | null;
+  section: string;
+  item_text: string;
+  item_order: number;
+  is_active?: boolean;
+  created_at?: string;
+  risk_level?: RiskLevel;
+  statutory_act?: string;
+  trigger_on_no?: boolean;
+}
+
+export interface Inspection {
+  id: string;
+  officer_id: string | null;
+  branch_id: string | null;
+  inspection_date: string;
+  time_in?: string | null;
+  time_out?: string | null;
+  status: InspectionStatus;
+  compliance_score?: number | null;
+  risk_level?: InspectionRisk | null;
+  head_comment?: string | null;
+  officer_latitude?: number | null;
+  officer_longitude?: number | null;
+  device_info?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  submitted_at?: string | null;
+}
+
+export interface InspectionResponseRow {
+  id: string;
+  inspection_id: string;
+  checklist_item_id: string;
+  response: ChecklistResponse;
+  remarks?: string | null;
+  created_at?: string;
+}
+
+export interface RiskClassification {
+  id: string;
+  checklist_item_id: string;
+  risk_level: RiskLevel;
+  trigger_on_no: boolean;
+  statutory_act?: string | null;
+  legal_notes?: string | null;
+  requires_photo: boolean;
+  min_remark_chars: number;
+}
+
+export interface EscalationTicket {
+  id: string;
+  inspection_id: string;
+  checklist_item_id: string;
+  risk_level: RiskLevel;
+  status: EscalationStatus;
+  assigned_to?: string | null;
+  sla_deadline?: string | null;
+  reinspection_deadline?: string | null;
+  resolved_at?: string | null;
+  resolution_notes?: string | null;
+  created_at: string;
+}
+
+export interface SupervisorAcknowledgement {
+  id: string;
+  inspection_id: string;
+  checklist_item_id: string;
+  supervisor_id: string;
+  otp_hash: string;
+  otp_expires_at: string;
+  acknowledged_at?: string | null;
+  supervisor_lat?: number | null;
+  supervisor_lng?: number | null;
+}
+
+export interface NotificationLog {
+  id: string;
+  inspection_id?: string | null;
+  escalation_id?: string | null;
+  recipient_id: string;
+  channel: NotificationChannel;
+  template?: string | null;
+  status: NotificationStatus;
+  sent_at?: string | null;
+  error_message?: string | null;
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
@@ -16,14 +16,47 @@ interface UserRow {
   created_at: string;
 }
 
+type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
+
 interface ChecklistItem {
   id: string;
   section: string;
   item_text: string;
   item_order: number;
-  applicable_to: string;
+  /** Derived view of branch_type_id: 'CFC' | 'Store' | 'Common' (= branch_type_id IS NULL). */
+  applicable_to: ChecklistSubTab;
+  branch_type_id: string | null;
   is_active: boolean;
+  risk_classification?: RiskClassificationRow | null;
 }
+
+interface BranchTypeRow {
+  id: string;
+  type_name: 'CFC' | 'Store' | string;
+}
+
+interface RiskClassificationRow {
+  id?: string;
+  checklist_item_id: string;
+  risk_level: RiskLevel;
+  trigger_on_no: boolean;
+  statutory_act: string | null;
+  legal_notes: string | null;
+  requires_photo: boolean;
+  min_remark_chars: number;
+}
+
+const RISK_PILL: Record<RiskLevel, string> = {
+  RED: 'bg-red-100 text-red-700 border border-red-200',
+  YELLOW: 'bg-amber-100 text-amber-700 border border-amber-200',
+  GREEN: 'bg-green-100 text-green-700 border border-green-200',
+};
+
+const RISK_TEXT: Record<RiskLevel, string> = {
+  RED: 'text-red-600',
+  YELLOW: 'text-amber-600',
+  GREEN: 'text-green-600',
+};
 
 interface Branch {
   id: string;
@@ -345,20 +378,95 @@ function ChecklistsTab() {
   const qc = useQueryClient();
   const [subTab, setSubTab] = useState<ChecklistSubTab>('CFC');
   const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
+  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null);
+
+  // Branch types are stable — fetch once and reuse for filtering + inserts.
+  const { data: branchTypes = [] } = useQuery<BranchTypeRow[]>({
+    queryKey: ['admin-branch-types'],
+    staleTime: 30 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('branch_types').select('id, type_name');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const branchTypeIdByName = useMemo(() => {
+    const map: Record<string, string> = {};
+    branchTypes.forEach((bt) => {
+      map[bt.type_name] = bt.id;
+    });
+    return map;
+  }, [branchTypes]);
+
+  const branchTypeNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    branchTypes.forEach((bt) => {
+      map[bt.id] = bt.type_name;
+    });
+    return map;
+  }, [branchTypes]);
+
+  const cfcId = branchTypeIdByName.CFC;
+  const storeId = branchTypeIdByName.Store;
 
   const { data: items = [] } = useQuery<ChecklistItem[]>({
-    queryKey: ['admin-checklist', subTab],
+    queryKey: ['admin-checklist', subTab, cfcId, storeId],
+    enabled: branchTypes.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('checklist_items')
-        .select('*')
-        .eq('is_active', true)
-        .in('applicable_to', subTab === 'Common' ? ['Common'] : [subTab, 'Common'])
-        .order('section').order('item_order');
+      // checklist_templates uses branch_type_id; NULL means "applies to all types"
+      // (the schema.sql convention) — i.e. our Common bucket.
+      const targetTypeId =
+        subTab === 'CFC' ? cfcId : subTab === 'Store' ? storeId : null;
+
+      let query = supabase
+        .from('checklist_templates')
+        .select(`
+          id, section, item_text, item_order, branch_type_id, is_active,
+          risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
+            id, risk_level, trigger_on_no, statutory_act, legal_notes,
+            requires_photo, min_remark_chars
+          )
+        `)
+        .eq('is_active', true);
+
+      // Show items targeted at the selected type PLUS Common (branch_type_id IS NULL).
+      if (subTab === 'Common') {
+        query = query.is('branch_type_id', null);
+      } else if (targetTypeId) {
+        query = query.or(`branch_type_id.eq.${targetTypeId},branch_type_id.is.null`);
+      }
+
+      const { data, error } = await query
+        .order('section', { ascending: true })
+        .order('item_order', { ascending: true });
       if (error) throw error;
-      return (data ?? []).filter((i: ChecklistItem) => subTab === 'Common' ? i.applicable_to === 'Common' : i.applicable_to === subTab);
+
+      return (data ?? []).map((i: any): ChecklistItem => {
+        const rc = Array.isArray(i.risk_classifications) ? i.risk_classifications[0] : i.risk_classifications;
+        const typeName = i.branch_type_id ? branchTypeNameById[i.branch_type_id] : 'Common';
+        return {
+          id: i.id,
+          section: i.section,
+          item_text: i.item_text,
+          item_order: i.item_order,
+          branch_type_id: i.branch_type_id,
+          applicable_to: (typeName === 'CFC' || typeName === 'Store' ? typeName : 'Common') as ChecklistSubTab,
+          is_active: i.is_active,
+          risk_classification: rc
+            ? {
+                id: rc.id,
+                checklist_item_id: i.id,
+                risk_level: rc.risk_level,
+                trigger_on_no: !!rc.trigger_on_no,
+                statutory_act: rc.statutory_act ?? null,
+                legal_notes: rc.legal_notes ?? null,
+                requires_photo: !!rc.requires_photo,
+                min_remark_chars: rc.min_remark_chars ?? 0,
+              }
+            : null,
+        };
+      });
     },
   });
 
@@ -366,13 +474,7 @@ function ChecklistsTab() {
 
   const softDelete = async (id: string) => {
     if (!window.confirm('Delete this item? It will be hidden from future inspections.')) return;
-    await supabase.from('checklist_items').update({ is_active: false }).eq('id', id);
-    qc.invalidateQueries({ queryKey: ['admin-checklist'] });
-  };
-
-  const saveEdit = async (id: string) => {
-    await supabase.from('checklist_items').update({ item_text: editText }).eq('id', id);
-    setEditingId(null);
+    await supabase.from('checklist_templates').update({ is_active: false }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['admin-checklist'] });
   };
 
@@ -383,8 +485,8 @@ function ChecklistsTab() {
     if (swapIdx < 0 || swapIdx >= sectionItems.length) return;
     const a = sectionItems[idx];
     const b = sectionItems[swapIdx];
-    await supabase.from('checklist_items').update({ item_order: b.item_order }).eq('id', a.id);
-    await supabase.from('checklist_items').update({ item_order: a.item_order }).eq('id', b.id);
+    await supabase.from('checklist_templates').update({ item_order: b.item_order }).eq('id', a.id);
+    await supabase.from('checklist_templates').update({ item_order: a.item_order }).eq('id', b.id);
     qc.invalidateQueries({ queryKey: ['admin-checklist'] });
   };
 
@@ -407,21 +509,20 @@ function ChecklistsTab() {
             {items.filter(i => i.section === section).sort((a, b) => a.item_order - b.item_order).map(item => (
               <li key={item.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                 <span className="text-gray-400 w-6 text-right">{item.item_order}</span>
-                {editingId === item.id ? (
-                  <input
-                    className="input flex-1"
-                    value={editText}
-                    onChange={e => setEditText(e.target.value)}
-                    onBlur={() => saveEdit(item.id)}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="flex-1">{item.item_text}</span>
-                )}
+                <span className="flex-1">{item.item_text}</span>
+                <span className="w-24 text-center">
+                  {item.risk_classification?.risk_level ? (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide ${RISK_PILL[item.risk_classification.risk_level]}`}>
+                      {item.risk_classification.risk_level}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wide">unset</span>
+                  )}
+                </span>
                 <div className="flex gap-1">
                   <button onClick={() => reorder(item.id, 'up', section)} className="btn-xs">↑</button>
                   <button onClick={() => reorder(item.id, 'down', section)} className="btn-xs">↓</button>
-                  <button onClick={() => { setEditingId(item.id); setEditText(item.item_text); }} className="btn-xs">✏</button>
+                  <button onClick={() => setEditingItem(item)} className="btn-xs">✏</button>
                   <button onClick={() => softDelete(item.id)} className="btn-xs btn-xs-red">🗑</button>
                 </div>
               </li>
@@ -430,26 +531,269 @@ function ChecklistsTab() {
         </div>
       ))}
 
-      {showAdd && <AddChecklistItemModal subTab={subTab} sections={sections} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); qc.invalidateQueries({ queryKey: ['admin-checklist'] }); }} />}
+      {showAdd && (
+        <AddChecklistItemModal
+          subTab={subTab}
+          sections={sections}
+          branchTypeIdByName={branchTypeIdByName}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => {
+            setShowAdd(false);
+            qc.invalidateQueries({ queryKey: ['admin-checklist'] });
+          }}
+        />
+      )}
+
+      {editingItem && (
+        <EditChecklistItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => {
+            setEditingItem(null);
+            qc.invalidateQueries({ queryKey: ['admin-checklist'] });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function AddChecklistItemModal({ subTab, sections, onClose, onSaved }: { subTab: string; sections: string[]; onClose: () => void; onSaved: () => void }) {
+function EditChecklistItemModal({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: ChecklistItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const existing = item.risk_classification;
+  const [itemText, setItemText] = useState(item.item_text);
+  const [section, setSection] = useState(item.section);
+  const [riskLevel, setRiskLevel] = useState<RiskLevel | ''>(existing?.risk_level ?? '');
+  const [statutoryAct, setStatutoryAct] = useState(existing?.statutory_act ?? '');
+  const [legalNotes, setLegalNotes] = useState(existing?.legal_notes ?? '');
+  const [triggerOnNo, setTriggerOnNo] = useState(existing?.trigger_on_no ?? false);
+  const [requiresPhoto, setRequiresPhoto] = useState(existing?.requires_photo ?? false);
+  const [minRemarkChars, setMinRemarkChars] = useState(existing?.min_remark_chars ?? 0);
+  const [touchedMin, setTouchedMin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleRiskChange = (next: RiskLevel | '') => {
+    setRiskLevel(next);
+    // Auto-default min remark chars to 50 when first switching to RED.
+    if (next === 'RED' && !touchedMin && minRemarkChars < 50) {
+      setMinRemarkChars(50);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      // 1. Persist base item edits (text + section) on checklist_templates.
+      const { error: itemErr } = await supabase
+        .from('checklist_templates')
+        .update({ item_text: itemText, section })
+        .eq('id', item.id);
+      if (itemErr) throw itemErr;
+
+      if (!riskLevel) {
+        // Clear any existing classification
+        if (existing) {
+          await supabase
+            .from('risk_classifications')
+            .delete()
+            .eq('checklist_item_id', item.id);
+        }
+      } else {
+        // 2. Upsert the risk_classifications row (NOT checklist_items)
+        const payload = {
+          checklist_item_id: item.id,
+          risk_level: riskLevel,
+          trigger_on_no: triggerOnNo,
+          statutory_act: statutoryAct.trim() || null,
+          legal_notes: legalNotes.trim() || null,
+          requires_photo: requiresPhoto,
+          min_remark_chars: Math.max(0, Number(minRemarkChars) || 0),
+        };
+        const { error: rcErr } = await supabase
+          .from('risk_classifications')
+          .upsert(payload, { onConflict: 'checklist_item_id' });
+        if (rcErr) throw rcErr;
+      }
+
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-bold text-xl">Edit Checklist Item</h3>
+
+        <div>
+          <label className="label">Section</label>
+          <input className="input w-full" value={section} onChange={e => setSection(e.target.value)} />
+        </div>
+
+        <div>
+          <label className="label">Item text</label>
+          <textarea
+            className="input w-full h-20"
+            value={itemText}
+            onChange={e => setItemText(e.target.value)}
+          />
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+          <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200">Risk Classification</h4>
+
+          <div>
+            <label className="label">Risk Level</label>
+            <select
+              className={`input w-full font-semibold ${riskLevel ? RISK_TEXT[riskLevel] : ''}`}
+              value={riskLevel}
+              onChange={e => handleRiskChange(e.target.value as RiskLevel | '')}
+            >
+              <option value="">— None —</option>
+              <option value="RED" className="text-red-600 font-bold">RED — Statutory / Critical</option>
+              <option value="YELLOW" className="text-amber-600 font-bold">YELLOW — Operational</option>
+              <option value="GREEN" className="text-green-600 font-bold">GREEN — Informational</option>
+            </select>
+          </div>
+
+          {riskLevel && (
+            <>
+              <div>
+                <label className="label">Statutory Act</label>
+                <input
+                  className="input w-full"
+                  placeholder="e.g. FSSAI Act 2006 Sec 26"
+                  value={statutoryAct}
+                  onChange={e => setStatutoryAct(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="label">Legal Notes</label>
+                <textarea
+                  className="input w-full h-16"
+                  placeholder="Optional context shown to the supervisor"
+                  value={legalNotes}
+                  onChange={e => setLegalNotes(e.target.value)}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={triggerOnNo}
+                  onChange={e => setTriggerOnNo(e.target.checked)}
+                />
+                Fire alert when officer answers NO (compliance-required items)
+              </label>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={requiresPhoto}
+                  onChange={e => setRequiresPhoto(e.target.checked)}
+                />
+                Requires photo evidence (in-app camera only)
+              </label>
+
+              <div>
+                <label className="label">Min Remark Characters</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  min={0}
+                  value={minRemarkChars}
+                  onChange={e => {
+                    setTouchedMin(true);
+                    setMinRemarkChars(Number(e.target.value));
+                  }}
+                />
+                {riskLevel === 'RED' && minRemarkChars < 50 && (
+                  <p className="text-xs text-red-600 mt-1">
+                    RED items typically require at least 50 characters of explanation.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+
+        <div className="flex gap-2 pt-2">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={handleSave} disabled={saving || !itemText.trim()} className="btn-primary flex-1">
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddChecklistItemModal({
+  subTab,
+  sections,
+  branchTypeIdByName,
+  onClose,
+  onSaved,
+}: {
+  subTab: ChecklistSubTab;
+  sections: string[];
+  branchTypeIdByName: Record<string, string>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [section, setSection] = useState(sections[0] || '');
   const [newSection, setNewSection] = useState('');
   const [useNew, setUseNew] = useState(false);
   const [itemText, setItemText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleAdd = async () => {
     setLoading(true);
-    const finalSection = useNew ? newSection : section;
-    const { data: existing } = await supabase.from('checklist_items').select('item_order').eq('section', finalSection).order('item_order', { ascending: false }).limit(1);
-    const nextOrder = (existing?.[0]?.item_order ?? 0) + 1;
-    await supabase.from('checklist_items').insert({ section: finalSection, item_text: itemText, item_order: nextOrder, applicable_to: subTab, is_active: true });
-    setLoading(false);
-    onSaved();
+    setError('');
+    try {
+      const finalSection = useNew ? newSection : section;
+      // Common items map to branch_type_id = NULL (schema convention).
+      const branchTypeId =
+        subTab === 'Common' ? null : branchTypeIdByName[subTab] ?? null;
+
+      const { data: existing } = await supabase
+        .from('checklist_templates')
+        .select('item_order')
+        .eq('section', finalSection)
+        .order('item_order', { ascending: false })
+        .limit(1);
+      const nextOrder = (existing?.[0]?.item_order ?? 0) + 1;
+
+      const { error: insertErr } = await supabase.from('checklist_templates').insert({
+        section: finalSection,
+        item_text: itemText,
+        item_order: nextOrder,
+        branch_type_id: branchTypeId,
+        is_active: true,
+      });
+      if (insertErr) throw insertErr;
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to add item');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -465,6 +809,7 @@ function AddChecklistItemModal({ subTab, sections, onClose, onSaved }: { subTab:
           </select>
         )}
         <textarea className="input w-full h-20" placeholder="Item text" value={itemText} onChange={e => setItemText(e.target.value)} />
+        {error && <p className="text-red-500 text-sm">{error}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
           <button onClick={handleAdd} disabled={loading || !itemText} className="btn-primary flex-1">{loading ? 'Adding…' : 'Add Item'}</button>

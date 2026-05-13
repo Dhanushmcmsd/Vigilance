@@ -87,10 +87,8 @@ interface Branch {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function generatePassword(len = 12) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#!';
-  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
+// Password generation lives in the `admin-create-user` Edge Function — the
+// browser must never see / generate auth credentials directly.
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -300,29 +298,32 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     e.preventDefault();
     setLoading(true);
     setError('');
-    const pwd = autoGen ? generatePassword() : form.password;
+    // User provisioning is delegated to the `admin-create-user` Edge
+    // Function: `supabase.auth.admin` requires the service-role key, which
+    // must never live in browser bundles. The edge function does the auth
+    // creation + user_roles row atomically (with rollback) and returns the
+    // password — either the one we passed, or one it auto-generated.
     try {
-      const { data, error: authErr } = await supabase.auth.admin.createUser({
-        email: form.email,
-        password: pwd,
-        email_confirm: true,
-      });
-      if (authErr) throw authErr;
-      const userId = data.user?.id;
-      if (userId) {
-        await supabase.from('user_roles').insert({
-          id: userId,
-          email: form.email,
-          name: form.name,
+      const { data, error: invokeErr } = await supabase.functions.invoke<{
+        user_id: string;
+        password: string;
+        generated: boolean;
+      }>('admin-create-user', {
+        body: {
+          email: form.email.trim().toLowerCase(),
+          name: form.name.trim(),
           role: form.role,
-          phone: form.phone,
-          is_active: true,
-        });
-      }
-      onCreated(pwd);
+          phone: form.phone.trim() || undefined,
+          password: autoGen ? undefined : form.password,
+        },
+      });
+      if (invokeErr) throw invokeErr;
+      if (!data?.user_id) throw new Error('User creation failed.');
+      onCreated(data.password);
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create user.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

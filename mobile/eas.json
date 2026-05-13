@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -9,11 +9,7 @@
       "distribution": "internal",
       "channel": "development",
       "ios": { "simulator": true },
-      "android": { "buildType": "apk" },
-      "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "FILL_IN",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "FILL_IN"
-      }
+      "android": { "buildType": "apk" }
     },
     "preview": {
       "distribution": "internal",
@@ -42,11 +38,7 @@
     }
   },
   "update": {
-    "production": {
-      "channel": "production"
-    },
-    "preview": {
-      "channel": "preview"
-    }
+    "production": { "channel": "production" },
+    "preview": { "channel": "preview" }
   }
 }

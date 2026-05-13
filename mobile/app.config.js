@@ -1,21 +1,18 @@
-// Expo app config — values are resolved at build time.
+// Expo app config — resolved at build time by Expo / EAS.
 //
 // Versioning strategy:
-//   - `version` (the user-facing semver string shown in the OS settings) is
-//     derived from the most recent git tag, e.g. `v1.2.3` → "1.2.3". This
-//     ties releases to git history so every store build is reproducible.
-//   - `buildNumber` (iOS) / `versionCode` (Android) is a monotonically
-//     increasing integer derived from the git commit count. EAS's
-//     `autoIncrement: true` flag in `eas.json` still works as a fallback for
-//     local-without-git builds.
-//   - For OTA updates (`eas update`), `runtimeVersion` is bound to `version`
-//     using the `appVersion` policy. Any change to the major/minor/patch
-//     version requires a fresh native build; patch-level bugfixes that don't
-//     touch native modules can ship as OTA updates.
+//   - `version` (user-facing semver) is derived from the most recent git tag
+//     (e.g. `v1.2.3` → "1.2.3"), tying releases to git history.
+//   - `versionCode` (Android) / `buildNumber` (iOS) is a monotonically
+//     increasing integer derived from `git rev-list --count HEAD`. EAS's
+//     `autoIncrement` flag in `eas.json` is still honoured as a fallback when
+//     git history isn't available (e.g. on a managed EAS worker).
 //
-// Override via env vars in CI:
+// Override via env vars in CI / EAS:
 //   APP_VERSION         — overrides the version string (e.g. "1.2.3")
 //   APP_BUILD_NUMBER    — overrides the integer build number
+//   EAS_PROJECT_ID      — links this config to an EAS project for builds + updates
+//   EXPO_OWNER          — Expo account that owns the project (required for EAS builds)
 
 const { execSync } = require('child_process');
 
@@ -52,49 +49,45 @@ function resolveBuildNumber() {
 
 const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
+const easProjectId = process.env.EAS_PROJECT_ID;
+const expoOwner = process.env.EXPO_OWNER;
 
-module.exports = {
+const config = {
   expo: {
-    name: 'Vigilance MS',
-    slug: 'vigilance-ms',
+    name: 'Vigilance',
+    slug: 'vigilance',
     version,
     orientation: 'portrait',
-    icon: './assets/icon.png',
-    userInterfaceStyle: 'automatic',
-    scheme: 'vigilancems',
+    userInterfaceStyle: 'light',
+    scheme: 'vigilance',
     newArchEnabled: true,
-
-    runtimeVersion: { policy: 'appVersion' },
-    updates: {
-      url: 'https://u.expo.dev/YOUR_EAS_PROJECT_ID',
-      enabled: true,
-      checkAutomatically: 'ON_LOAD',
-      fallbackToCacheTimeout: 0,
-    },
+    assetBundlePatterns: ['**/*'],
 
     splash: {
-      image: './assets/splash.png',
       resizeMode: 'contain',
-      backgroundColor: '#0f172a',
+      backgroundColor: '#1e40af',
     },
+
     ios: {
-      supportsTablet: true,
-      bundleIdentifier: 'com.yourcompany.vigilancems',
+      supportsTablet: false,
+      bundleIdentifier: 'com.vigilance.kerala',
       buildNumber: String(buildNumber),
       infoPlist: {
-        NSCameraUsageDescription: 'Used to capture inspection photos.',
-        NSPhotoLibraryUsageDescription: 'Used to attach photos to inspection reports.',
+        NSCameraUsageDescription:
+          'Allow Vigilance to use the camera for inspection photos.',
+        NSPhotoLibraryUsageDescription:
+          'Allow Vigilance to access your photos for inspection reports.',
         NSLocationWhenInUseUsageDescription:
           'Vigilance needs your location to verify you are at the branch before starting an inspection.',
       },
     },
+
     android: {
-      adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#0f172a',
-      },
-      package: 'com.yourcompany.vigilancems',
+      package: 'com.vigilance.kerala',
       versionCode: buildNumber,
+      adaptiveIcon: {
+        backgroundColor: '#1e40af',
+      },
       permissions: [
         'CAMERA',
         'READ_EXTERNAL_STORAGE',
@@ -104,23 +97,55 @@ module.exports = {
       ],
       minSdkVersion: 26,
     },
+
     plugins: [
       'expo-router',
-      'expo-image-picker',
       'expo-secure-store',
       'expo-haptics',
-      'react-native-mmkv',
+      [
+        'expo-image-picker',
+        {
+          photosPermission:
+            'Allow Vigilance to access your photos for inspection reports.',
+          cameraPermission:
+            'Allow Vigilance to use the camera for inspection photos.',
+        },
+      ],
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'Allow Vigilance to use your location.',
+          locationAlwaysAndWhenInUsePermission:
+            'Allow Vigilance to use your location for inspection records.',
         },
       ],
     ],
+
+    web: {
+      bundler: 'metro',
+    },
+
     extra: {
-      eas: { projectId: 'YOUR_EAS_PROJECT_ID' },
+      eas: easProjectId ? { projectId: easProjectId } : {},
       gitSha: safe('git rev-parse --short HEAD', 'unknown'),
     },
-    owner: 'YOUR_EXPO_ACCOUNT',
   },
 };
+
+// Only attach owner / EAS Update URL when we actually have a project ID.
+// EAS will refuse to build if `owner` points at an account the CLI isn't
+// signed in as, and a placeholder `updates.url` makes the production app
+// crash on first load.
+if (expoOwner) {
+  config.expo.owner = expoOwner;
+}
+if (easProjectId) {
+  config.expo.runtimeVersion = { policy: 'appVersion' };
+  config.expo.updates = {
+    url: `https://u.expo.dev/${easProjectId}`,
+    enabled: true,
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+  };
+}
+
+module.exports = config;

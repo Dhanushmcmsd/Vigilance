@@ -558,6 +558,131 @@ function ChecklistsTab() {
   );
 }
 
+// ── Shared risk-fields block ─────────────────────────────────────────────────
+interface RiskFieldsValue {
+  riskLevel: RiskLevel;
+  statutoryAct: string;
+  legalNotes: string;
+  triggerOnNo: boolean;
+  requiresPhoto: boolean;
+  minRemarkChars: number;
+}
+
+const DEFAULT_RISK_FIELDS: RiskFieldsValue = {
+  riskLevel: 'GREEN',
+  statutoryAct: '',
+  legalNotes: '',
+  triggerOnNo: false,
+  requiresPhoto: false,
+  minRemarkChars: 0,
+};
+
+function RiskFieldsBlock({
+  value,
+  onChange,
+}: {
+  value: RiskFieldsValue;
+  onChange: (next: RiskFieldsValue) => void;
+}) {
+  const handleRiskChange = (next: RiskLevel) => {
+    // Auto-adjust min remark chars: 50 on RED, 0 on YELLOW/GREEN.
+    const nextMin = next === 'RED' ? Math.max(50, value.minRemarkChars) : 0;
+    onChange({ ...value, riskLevel: next, minRemarkChars: nextMin });
+  };
+
+  const showStatutory = value.riskLevel === 'RED' || value.riskLevel === 'YELLOW';
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+      <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200">Risk Classification</h4>
+
+      <div>
+        <label className="label">Risk Level</label>
+        <select
+          className={`input w-full font-semibold ${RISK_TEXT[value.riskLevel]}`}
+          value={value.riskLevel}
+          onChange={e => handleRiskChange(e.target.value as RiskLevel)}
+        >
+          <option value="GREEN" className="text-green-600 font-bold">GREEN — Informational</option>
+          <option value="YELLOW" className="text-amber-600 font-bold">YELLOW — Operational</option>
+          <option value="RED" className="text-red-600 font-bold">RED — Statutory / Critical</option>
+        </select>
+      </div>
+
+      {showStatutory && (
+        <>
+          <div>
+            <label className="label">Statutory Act</label>
+            <input
+              className="input w-full"
+              placeholder="e.g. FSSAI Act 2006 Sec 26"
+              value={value.statutoryAct}
+              onChange={e => onChange({ ...value, statutoryAct: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="label">Legal Notes</label>
+            <textarea
+              className="input w-full h-16"
+              placeholder="Optional context shown to the supervisor"
+              value={value.legalNotes}
+              onChange={e => onChange({ ...value, legalNotes: e.target.value })}
+            />
+          </div>
+        </>
+      )}
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={value.triggerOnNo}
+          onChange={e => onChange({ ...value, triggerOnNo: e.target.checked })}
+        />
+        Fire alert when officer answers NO (compliance items)
+      </label>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={value.requiresPhoto}
+          onChange={e => onChange({ ...value, requiresPhoto: e.target.checked })}
+        />
+        Requires photo evidence (in-app camera only)
+      </label>
+
+      <div>
+        <label className="label">Min Remark Characters</label>
+        <input
+          className="input w-full"
+          type="number"
+          min={0}
+          value={value.minRemarkChars}
+          onChange={e => onChange({ ...value, minRemarkChars: Number(e.target.value) || 0 })}
+        />
+        {value.riskLevel === 'RED' && value.minRemarkChars < 50 && (
+          <p className="text-xs text-red-600 mt-1">
+            RED items typically require at least 50 characters of explanation.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function buildRiskPayload(checklistItemId: string, fields: RiskFieldsValue) {
+  return {
+    checklist_item_id: checklistItemId,
+    risk_level: fields.riskLevel,
+    trigger_on_no: fields.triggerOnNo,
+    statutory_act: fields.statutoryAct.trim() || null,
+    legal_notes: fields.legalNotes.trim() || null,
+    requires_photo: fields.requiresPhoto,
+    min_remark_chars: Math.max(0, Number(fields.minRemarkChars) || 0),
+  };
+}
+
+// ── Edit modal ───────────────────────────────────────────────────────────────
 function EditChecklistItemModal({
   item,
   onClose,
@@ -570,23 +695,16 @@ function EditChecklistItemModal({
   const existing = item.risk_classification;
   const [itemText, setItemText] = useState(item.item_text);
   const [section, setSection] = useState(item.section);
-  const [riskLevel, setRiskLevel] = useState<RiskLevel | ''>(existing?.risk_level ?? '');
-  const [statutoryAct, setStatutoryAct] = useState(existing?.statutory_act ?? '');
-  const [legalNotes, setLegalNotes] = useState(existing?.legal_notes ?? '');
-  const [triggerOnNo, setTriggerOnNo] = useState(existing?.trigger_on_no ?? false);
-  const [requiresPhoto, setRequiresPhoto] = useState(existing?.requires_photo ?? false);
-  const [minRemarkChars, setMinRemarkChars] = useState(existing?.min_remark_chars ?? 0);
-  const [touchedMin, setTouchedMin] = useState(false);
+  const [risk, setRisk] = useState<RiskFieldsValue>({
+    riskLevel: existing?.risk_level ?? 'GREEN',
+    statutoryAct: existing?.statutory_act ?? '',
+    legalNotes: existing?.legal_notes ?? '',
+    triggerOnNo: existing?.trigger_on_no ?? false,
+    requiresPhoto: existing?.requires_photo ?? false,
+    minRemarkChars: existing?.min_remark_chars ?? 0,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  const handleRiskChange = (next: RiskLevel | '') => {
-    setRiskLevel(next);
-    // Auto-default min remark chars to 50 when first switching to RED.
-    if (next === 'RED' && !touchedMin && minRemarkChars < 50) {
-      setMinRemarkChars(50);
-    }
-  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -599,30 +717,11 @@ function EditChecklistItemModal({
         .eq('id', item.id);
       if (itemErr) throw itemErr;
 
-      if (!riskLevel) {
-        // Clear any existing classification
-        if (existing) {
-          await supabase
-            .from('risk_classifications')
-            .delete()
-            .eq('checklist_item_id', item.id);
-        }
-      } else {
-        // 2. Upsert the risk_classifications row (NOT checklist_items)
-        const payload = {
-          checklist_item_id: item.id,
-          risk_level: riskLevel,
-          trigger_on_no: triggerOnNo,
-          statutory_act: statutoryAct.trim() || null,
-          legal_notes: legalNotes.trim() || null,
-          requires_photo: requiresPhoto,
-          min_remark_chars: Math.max(0, Number(minRemarkChars) || 0),
-        };
-        const { error: rcErr } = await supabase
-          .from('risk_classifications')
-          .upsert(payload, { onConflict: 'checklist_item_id' });
-        if (rcErr) throw rcErr;
-      }
+      // 2. Upsert the risk_classifications row (FK → checklist_templates.id).
+      const { error: rcErr } = await supabase
+        .from('risk_classifications')
+        .upsert(buildRiskPayload(item.id, risk), { onConflict: 'checklist_item_id' });
+      if (rcErr) throw rcErr;
 
       onSaved();
     } catch (e: any) {
@@ -651,84 +750,7 @@ function EditChecklistItemModal({
           />
         </div>
 
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
-          <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200">Risk Classification</h4>
-
-          <div>
-            <label className="label">Risk Level</label>
-            <select
-              className={`input w-full font-semibold ${riskLevel ? RISK_TEXT[riskLevel] : ''}`}
-              value={riskLevel}
-              onChange={e => handleRiskChange(e.target.value as RiskLevel | '')}
-            >
-              <option value="">— None —</option>
-              <option value="RED" className="text-red-600 font-bold">RED — Statutory / Critical</option>
-              <option value="YELLOW" className="text-amber-600 font-bold">YELLOW — Operational</option>
-              <option value="GREEN" className="text-green-600 font-bold">GREEN — Informational</option>
-            </select>
-          </div>
-
-          {riskLevel && (
-            <>
-              <div>
-                <label className="label">Statutory Act</label>
-                <input
-                  className="input w-full"
-                  placeholder="e.g. FSSAI Act 2006 Sec 26"
-                  value={statutoryAct}
-                  onChange={e => setStatutoryAct(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="label">Legal Notes</label>
-                <textarea
-                  className="input w-full h-16"
-                  placeholder="Optional context shown to the supervisor"
-                  value={legalNotes}
-                  onChange={e => setLegalNotes(e.target.value)}
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={triggerOnNo}
-                  onChange={e => setTriggerOnNo(e.target.checked)}
-                />
-                Fire alert when officer answers NO (compliance-required items)
-              </label>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={requiresPhoto}
-                  onChange={e => setRequiresPhoto(e.target.checked)}
-                />
-                Requires photo evidence (in-app camera only)
-              </label>
-
-              <div>
-                <label className="label">Min Remark Characters</label>
-                <input
-                  className="input w-full"
-                  type="number"
-                  min={0}
-                  value={minRemarkChars}
-                  onChange={e => {
-                    setTouchedMin(true);
-                    setMinRemarkChars(Number(e.target.value));
-                  }}
-                />
-                {riskLevel === 'RED' && minRemarkChars < 50 && (
-                  <p className="text-xs text-red-600 mt-1">
-                    RED items typically require at least 50 characters of explanation.
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <RiskFieldsBlock value={risk} onChange={setRisk} />
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
 
@@ -760,6 +782,7 @@ function AddChecklistItemModal({
   const [newSection, setNewSection] = useState('');
   const [useNew, setUseNew] = useState(false);
   const [itemText, setItemText] = useState('');
+  const [risk, setRisk] = useState<RiskFieldsValue>({ ...DEFAULT_RISK_FIELDS });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -767,7 +790,10 @@ function AddChecklistItemModal({
     setLoading(true);
     setError('');
     try {
-      const finalSection = useNew ? newSection : section;
+      const finalSection = useNew ? newSection.trim() : section;
+      if (!finalSection) {
+        throw new Error('Please pick or enter a section');
+      }
       // Common items map to branch_type_id = NULL (schema convention).
       const branchTypeId =
         subTab === 'Common' ? null : branchTypeIdByName[subTab] ?? null;
@@ -780,14 +806,26 @@ function AddChecklistItemModal({
         .limit(1);
       const nextOrder = (existing?.[0]?.item_order ?? 0) + 1;
 
-      const { error: insertErr } = await supabase.from('checklist_templates').insert({
-        section: finalSection,
-        item_text: itemText,
-        item_order: nextOrder,
-        branch_type_id: branchTypeId,
-        is_active: true,
-      });
-      if (insertErr) throw insertErr;
+      // 1. Create the checklist_templates row, returning its id.
+      const { data: inserted, error: insertErr } = await supabase
+        .from('checklist_templates')
+        .insert({
+          section: finalSection,
+          item_text: itemText,
+          item_order: nextOrder,
+          branch_type_id: branchTypeId,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+      if (insertErr || !inserted) throw insertErr ?? new Error('Insert failed');
+
+      // 2. Upsert its risk_classifications row (FK → checklist_templates.id).
+      const { error: rcErr } = await supabase
+        .from('risk_classifications')
+        .upsert(buildRiskPayload(inserted.id, risk), { onConflict: 'checklist_item_id' });
+      if (rcErr) throw rcErr;
+
       onSaved();
     } catch (e: any) {
       setError(e?.message || 'Failed to add item');
@@ -797,22 +835,43 @@ function AddChecklistItemModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full space-y-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto">
         <h3 className="font-bold text-xl">Add Checklist Item</h3>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={useNew} onChange={e => setUseNew(e.target.checked)} /> New section</label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={useNew} onChange={e => setUseNew(e.target.checked)} /> New section
+        </label>
         {useNew ? (
-          <input className="input w-full" placeholder="New section name" value={newSection} onChange={e => setNewSection(e.target.value)} />
+          <input
+            className="input w-full"
+            placeholder="New section name"
+            value={newSection}
+            onChange={e => setNewSection(e.target.value)}
+          />
         ) : (
           <select className="input w-full" value={section} onChange={e => setSection(e.target.value)}>
             {sections.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         )}
-        <textarea className="input w-full h-20" placeholder="Item text" value={itemText} onChange={e => setItemText(e.target.value)} />
+        <textarea
+          className="input w-full h-20"
+          placeholder="Item text"
+          value={itemText}
+          onChange={e => setItemText(e.target.value)}
+        />
+
+        <RiskFieldsBlock value={risk} onChange={setRisk} />
+
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={handleAdd} disabled={loading || !itemText} className="btn-primary flex-1">{loading ? 'Adding…' : 'Add Item'}</button>
+          <button
+            onClick={handleAdd}
+            disabled={loading || !itemText.trim()}
+            className="btn-primary flex-1"
+          >
+            {loading ? 'Adding…' : 'Add Item'}
+          </button>
         </div>
       </div>
     </div>

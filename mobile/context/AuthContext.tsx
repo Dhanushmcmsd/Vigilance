@@ -4,13 +4,18 @@ import { supabase } from '../lib/supabase';
 
 type Role = 'officer' | 'head' | 'management' | 'admin' | null;
 
+export type SignInResult = {
+  error: string | null;
+  role: Role;
+};
+
 interface AuthContextType {
   user: Session['user'] | null;
   userRole: Role;
   userName: string;
   userRolesId: string | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
 }
 
@@ -20,7 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   userName: '',
   userRolesId: null,
   loading: true,
-  signIn: async () => ({ error: null }),
+  signIn: async () => ({ error: null, role: null }),
   signOut: async () => {},
 });
 
@@ -31,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userRolesId, setUserRolesId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserRole = async (userId: string) => {
+  const fetchUserRole = async (userId: string): Promise<Role> => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('id, role, name')
@@ -39,10 +44,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('is_active', true)
       .single();
     if (!error && data) {
-      setUserRole(data.role as Role);
+      const role = data.role as Role;
+      setUserRole(role);
       setUserName(data.name);
       setUserRolesId(data.id);
+      return role;
     }
+    return null;
   };
 
   useEffect(() => {
@@ -66,11 +74,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const signIn = async (email: string, password: string): Promise<SignInResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    if (data.user) await fetchUserRole(data.user.id);
-    return { error: null };
+    if (error) return { error: error.message, role: null };
+    let role: Role = null;
+    if (data.user) role = await fetchUserRole(data.user.id);
+    return { error: null, role };
   };
 
   const signOut = async () => {

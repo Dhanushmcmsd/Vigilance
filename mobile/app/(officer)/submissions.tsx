@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
 import { haptics } from '../../lib/haptics';
+import { peekQueue, flushQueue } from '../../lib/syncQueue';
 
 interface SubmissionRow {
   id: string;
@@ -53,7 +54,27 @@ export default function SubmissionsScreen() {
     },
   });
 
-  const empty = !isLoading && (data?.length ?? 0) === 0;
+  // Pending sync — items submitted while offline that haven't reached the
+  // server yet. Read straight from the MMKV-backed queue so the count is
+  // accurate even if the network is still down.
+  const pendingQuery = useQuery<number>({
+    queryKey: ['officer-pending-sync'],
+    queryFn: async () => (await peekQueue()).length,
+    // Refetch on focus + on every refresh action below.
+    refetchInterval: 15_000,
+  });
+
+  const onRefresh = React.useCallback(async () => {
+    haptics.tap();
+    // Trigger an immediate flush attempt before re-reading either source.
+    // If we're offline this is a no-op; if we're online any queued items
+    // become real rows and surface in the next `refetch()`.
+    await flushQueue().catch(() => {});
+    await Promise.all([refetch(), pendingQuery.refetch()]);
+  }, [refetch, pendingQuery]);
+
+  const pendingCount = pendingQuery.data ?? 0;
+  const empty = !isLoading && (data?.length ?? 0) === 0 && pendingCount === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
@@ -94,8 +115,43 @@ export default function SubmissionsScreen() {
             padding: SPACING.lg,
             paddingBottom: insets.bottom + SPACING.xl,
           }}
+          ListHeaderComponent={
+            pendingCount > 0 ? (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.tap();
+                  router.push('/(officer)/drafts');
+                }}
+                style={styles.pendingBanner}
+                accessibilityRole="button"
+                accessibilityLabel={`${pendingCount} submission${
+                  pendingCount === 1 ? '' : 's'
+                } pending sync. Tap to view drafts.`}
+              >
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={28}
+                  color="#a16207"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingTitle}>
+                    {pendingCount} pending sync
+                  </Text>
+                  <Text style={styles.pendingBody}>
+                    These submissions will upload automatically when you're
+                    online. Tap to manage.
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={22}
+                  color="#a16207"
+                />
+              </TouchableOpacity>
+            ) : null
+          }
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />
           }
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -265,4 +321,27 @@ const styles = {
     borderRadius: RADIUS.pill,
   } as const,
   pillText: { fontSize: FONT.xs, fontWeight: '800', letterSpacing: 0.5 } as const,
+  pendingBanner: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fde68a',
+    borderWidth: 1,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    minHeight: TOUCH.rowHeight,
+  } as const,
+  pendingTitle: {
+    fontSize: FONT.bodyLg,
+    fontWeight: '800',
+    color: '#92400e',
+  } as const,
+  pendingBody: {
+    fontSize: FONT.body,
+    color: '#a16207',
+    marginTop: 2,
+    lineHeight: 20,
+  } as const,
 };

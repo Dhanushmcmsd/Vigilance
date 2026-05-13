@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,10 +17,13 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
       router.replace('/(auth)/login');
       return;
     }
+    // Already authenticated but not an officer — show the "use the web
+    // dashboard" notice rather than bouncing back to the login form
+    // (which would just sit there with their session already valid).
     if (userRole && userRole !== 'officer') {
-      router.replace('/(auth)/login');
+      router.replace('/(auth)/use-web-dashboard');
     }
-  }, [user, userRole, loading]);
+  }, [user, userRole, loading, router]);
 
   if (loading) {
     return (
@@ -30,21 +33,9 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     );
   }
 
-  if (!user || userRole !== 'officer') {
-    if (userRole && userRole !== 'officer') {
-      return (
-        <View className="flex-1 items-center justify-center bg-white px-8">
-          <Text className="text-2xl font-bold text-gray-800 mb-3 text-center">
-            Web Dashboard Required
-          </Text>
-          <Text className="text-base text-gray-500 text-center">
-            Your role ({userRole}) is managed through the web dashboard. Please use a browser to access your account.
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  }
+  // While the useEffect-driven redirect is in flight, render nothing rather
+  // than a flash of the inline notice. The dedicated screen handles the UX.
+  if (!user || userRole !== 'officer') return null;
 
   return <>{children}</>;
 };

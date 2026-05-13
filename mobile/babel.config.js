@@ -2,6 +2,9 @@
 //   - babel-preset-expo handles JSX, TS, and runtime selection.
 //     The `jsxImportSource: 'nativewind'` option turns every JSX element into
 //     a CSS-interop wrapper at compile time (NativeWind v4 requirement).
+//   - react-native-reanimated is a required peer dep of react-native-css-interop
+//     (NativeWind v4's runtime). The app uses RN's built-in `Animated`, but
+//     reanimated/worklets must be installed for CSS interop to resolve.
 //   - react-native-reanimated/plugin must stay at the bottom of `plugins`.
 module.exports = function (api) {
   api.cache(true);

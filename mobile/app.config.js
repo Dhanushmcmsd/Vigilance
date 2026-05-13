@@ -49,8 +49,10 @@ function resolveBuildNumber() {
 
 const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
-const easProjectId = process.env.EAS_PROJECT_ID;
-const expoOwner = process.env.EXPO_OWNER;
+
+const easProjectId =
+  process.env.EAS_PROJECT_ID || '969f1ff7-e024-4c03-87fb-438c280f0901';
+const expoOwner = process.env.EXPO_OWNER || 'dhanushraghav';
 
 const config = {
   expo: {
@@ -58,15 +60,10 @@ const config = {
     slug: 'vigilance',
     version,
     orientation: 'portrait',
-    userInterfaceStyle: 'light',
+    icon: './assets/icon.png',
     scheme: 'vigilance',
     newArchEnabled: true,
     assetBundlePatterns: ['**/*'],
-
-    splash: {
-      resizeMode: 'contain',
-      backgroundColor: '#1e40af',
-    },
 
     ios: {
       supportsTablet: false,
@@ -85,7 +82,9 @@ const config = {
     android: {
       package: 'com.vigilance.kerala',
       versionCode: buildNumber,
+      edgeToEdgeEnabled: false,
       adaptiveIcon: {
+        foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#1e40af',
       },
       permissions: [
@@ -101,7 +100,15 @@ const config = {
     plugins: [
       'expo-router',
       'expo-secure-store',
-      'expo-haptics',
+      'expo-font',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/splash-icon.png',
+          resizeMode: 'contain',
+          backgroundColor: '#1e40af',
+        },
+      ],
       [
         'expo-image-picker',
         {
@@ -131,21 +138,15 @@ const config = {
   },
 };
 
-// Only attach owner / EAS Update URL when we actually have a project ID.
-// EAS will refuse to build if `owner` points at an account the CLI isn't
-// signed in as, and a placeholder `updates.url` makes the production app
-// crash on first load.
+// Only attach owner when set. EAS will refuse to build if `owner` points at
+// an account the CLI isn't signed in as.
 if (expoOwner) {
   config.expo.owner = expoOwner;
 }
-if (easProjectId) {
-  config.expo.runtimeVersion = { policy: 'appVersion' };
-  config.expo.updates = {
-    url: `https://u.expo.dev/${easProjectId}`,
-    enabled: true,
-    checkAutomatically: 'ON_LOAD',
-    fallbackToCacheTimeout: 0,
-  };
-}
+
+// Note: EAS Update (runtimeVersion + updates.url) is intentionally NOT
+// configured here. To enable OTA updates later:
+//   1. `npx expo install expo-updates`
+//   2. Uncomment the block in this file and re-run `eas update:configure`.
 
 module.exports = config;

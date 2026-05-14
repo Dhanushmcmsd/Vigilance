@@ -33,7 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .from('user_roles')
       .select('role, name')
       .eq('user_id', userId)
-      .single();
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
     if (error || !data) return { role: null, name: '' };
     return { role: data.role as Role, name: data.name as string };
   };

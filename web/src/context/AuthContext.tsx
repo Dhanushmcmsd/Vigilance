@@ -31,11 +31,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchRole = async (userId: string) => {
     const { data, error } = await supabase
       .from('user_roles')
-      .select('role, full_name')
+      .select('role, name')
       .eq('user_id', userId)
       .single();
     if (error || !data) return { role: null, name: '' };
-    return { role: data.role as Role, name: data.full_name as string };
+    return { role: data.role as Role, name: data.name as string };
   };
 
   useEffect(() => {

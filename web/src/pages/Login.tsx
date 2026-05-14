@@ -12,10 +12,13 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && user && role) {
+    if (loading) return;
+    if (user && role) {
       const redirect = role === 'head' ? '/head' : role === 'management' ? '/management' : role === 'admin' ? '/admin' : null;
       if (redirect) navigate(redirect, { replace: true });
     }
+    // Auth resolved but role fetch failed — unblock the submit button so the user can retry
+    setSubmitting(false);
   }, [user, role, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,10 +45,12 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Email Address
             </label>
             <input
+              id="email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -57,11 +62,13 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Password
             </label>
             <div className="relative">
               <input
+                id="password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

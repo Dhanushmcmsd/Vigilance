@@ -40,9 +40,13 @@ CREATE TABLE IF NOT EXISTS public.branches (
   region           text,
   latitude         numeric(10,7),
   longitude        numeric(10,7),
+  geofence_radius  integer       NOT NULL DEFAULT 200,
   is_active        boolean       DEFAULT true,
   created_at       timestamptz   DEFAULT now()
 );
+-- Idempotent guard for projects that pre-date the geofence_radius column.
+ALTER TABLE public.branches
+  ADD COLUMN IF NOT EXISTS geofence_radius integer NOT NULL DEFAULT 200;
 
 -- 4. checklist_templates
 CREATE TABLE IF NOT EXISTS public.checklist_templates (
@@ -559,3 +563,18 @@ BEGIN
   END IF;
 END
 $$;
+
+-- 6) RLS on stores — without these, authenticated users see ZERO rows
+--    because RLS is enabled by default but no policy grants access.
+ALTER TABLE public.stores ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "All auth users select stores" ON public.stores;
+CREATE POLICY "All auth users select stores" ON public.stores
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Admin manage stores" ON public.stores;
+CREATE POLICY "Admin manage stores" ON public.stores
+  FOR ALL
+  USING (public.current_user_role() = 'admin')
+  WITH CHECK (public.current_user_role() = 'admin');

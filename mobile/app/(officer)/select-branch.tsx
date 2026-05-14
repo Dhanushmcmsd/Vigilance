@@ -114,10 +114,34 @@ export default function SelectBranchScreen() {
       .order('branch_name');
     setLoading(false);
     if (err) {
-      setError('Failed to load branches. Check your connection.');
+      console.error('[select-branch] Supabase fetchBranches error:', {
+        message: err.message,
+        code: (err as { code?: string }).code,
+        details: (err as { details?: string }).details,
+        hint: (err as { hint?: string }).hint,
+        branchType,
+      });
+      const code = (err as { code?: string }).code ?? '';
+      const msg = err.message ?? '';
+      if (code === '42703' || /geofence_radius/i.test(msg)) {
+        setError(
+          'Database is out of date — geofence_radius column missing. ' +
+          'Please run the latest Supabase migrations.',
+        );
+      } else if (/relationship|branch_types/i.test(msg)) {
+        setError(
+          'Branch type relationship is broken. Please contact admin.',
+        );
+      } else {
+        setError('Failed to load branches. Check your connection.');
+      }
       return;
     }
-    setBranches((data as unknown as Branch[]) || []);
+    const safe = ((data as unknown as Branch[]) || []).map((b) => ({
+      ...b,
+      geofence_radius: b.geofence_radius ?? 200,
+    }));
+    setBranches(safe);
   };
 
   // ── Batch 16: Near Me fetch ──────────────────────────────────────────────

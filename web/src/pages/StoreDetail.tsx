@@ -19,14 +19,36 @@ export default function StoreDetail() {
   const [store, setStore] = useState<Store | null>(null);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('checking');
   const [distanceMetres, setDistanceMetres] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadStore = async () => {
-      const { data } = await supabase
+      setLoadError(null);
+      const { data, error } = await supabase
         .from('stores')
         .select('id, name, store_incharge, address, lat, lng')
         .eq('id', storeId)
         .single();
+      if (error) {
+        console.error('[StoreDetail] Supabase fetch failed:', {
+          message: error.message,
+          code: (error as { code?: string }).code,
+          details: (error as { details?: string }).details,
+          hint: (error as { hint?: string }).hint,
+          storeId,
+        });
+        const code = (error as { code?: string }).code ?? '';
+        if (code === 'PGRST116') {
+          setLoadError('Store not found.');
+        } else if (code === '42P01') {
+          setLoadError('The stores table is not set up. Run the latest migrations.');
+        } else if (code === '42501') {
+          setLoadError('You do not have permission to view this store.');
+        } else {
+          setLoadError(error.message || 'Failed to load store.');
+        }
+        return;
+      }
       if (data) setStore(data);
     };
     if (storeId) loadStore();
@@ -70,6 +92,17 @@ export default function StoreDetail() {
     if (!store || store.lat == null || store.lng == null) return null;
     return `https://www.google.com/maps/dir/?api=1&destination=${store.lat},${store.lng}`;
   }, [store]);
+
+  if (loadError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-base font-semibold text-red-800">Could not load store</h2>
+          <p className="mt-1 text-sm text-red-700">{loadError}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!store) return <div className="p-6">Loading store...</div>;
 

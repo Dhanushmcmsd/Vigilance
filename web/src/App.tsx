@@ -1,14 +1,24 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import Login from './pages/Login';
-import HeadDashboard from './pages/HeadDashboard';
-import HeadReview from './pages/HeadReview';
-import ManagementDashboard from './pages/ManagementDashboard';
-import AdminPanel from './pages/AdminPanel';
-import MapView from './pages/MapView'; // Phase 6 scaffold
 import Layout from './components/Layout';
-import { useEffect } from 'react';
 import { setupRealtimeSubscription, teardownRealtimeSubscription } from './lib/queryClient';
+
+// Lazy-load heavy dashboard pages so they split into separate chunks
+const HeadDashboard = lazy(() => import('./pages/HeadDashboard'));
+const HeadReview = lazy(() => import('./pages/HeadReview'));
+const ManagementDashboard = lazy(() => import('./pages/ManagementDashboard'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const MapView = lazy(() => import('./pages/MapView'));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-500" />
+    </div>
+  );
+}
 
 type AllowedRole = 'head' | 'management' | 'admin' | 'officer';
 
@@ -59,52 +69,52 @@ function AppRoutes() {
   }, []);
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/head"
-        element={
-          <RoleGuard allowedRoles={['head']}>
-            <Layout><HeadDashboard /></Layout>
-          </RoleGuard>
-        }
-      />
-      <Route
-        path="/head/review"
-        element={
-          <RoleGuard allowedRoles={['head']}>
-            <Layout><HeadReview /></Layout>
-          </RoleGuard>
-        }
-      />
-      <Route
-        path="/management"
-        element={
-          <RoleGuard allowedRoles={['management', 'admin']}>
-            <Layout><ManagementDashboard /></Layout>
-          </RoleGuard>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <RoleGuard allowedRoles={['admin']}>
-            <Layout><AdminPanel /></Layout>
-          </RoleGuard>
-        }
-      />
-      {/* Phase 6 scaffold — registered but not in sidebar nav yet */}
-      {/* FUTURE: Map View — add to sidebar when ready */}
-      <Route
-        path="/map"
-        element={
-          <RoleGuard allowedRoles={['management', 'admin']}>
-            <Layout><MapView /></Layout>
-          </RoleGuard>
-        }
-      />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/head"
+          element={
+            <RoleGuard allowedRoles={['head']}>
+              <Layout><HeadDashboard /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/head/review"
+          element={
+            <RoleGuard allowedRoles={['head']}>
+              <Layout><HeadReview /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/management"
+          element={
+            <RoleGuard allowedRoles={['management', 'admin']}>
+              <Layout><ManagementDashboard /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RoleGuard allowedRoles={['admin']}>
+              <Layout><AdminPanel /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/map"
+          element={
+            <RoleGuard allowedRoles={['management', 'admin']}>
+              <Layout><MapView /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

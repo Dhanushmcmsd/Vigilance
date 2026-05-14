@@ -4,10 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import Filters from '../components/Filters';
 import RiskBadge from '../components/RiskBadge';
-import {
-  generateInspectionPdf,
-  type InspectionPdfData,
-} from '../components/InspectionPdfReport';
+// InspectionPdfReport is dynamically imported on demand to keep the
+// initial bundle small (@react-pdf/renderer is ~1 MB minified).
+type InspectionPdfData = import('../components/InspectionPdfReport').InspectionPdfData;
 
 interface ReviewResponse {
   id: string;
@@ -140,6 +139,7 @@ export default function HeadReview() {
     if (!selected) return;
     setToast('Generating PDF…');
     try {
+      const { generateInspectionPdf } = await import('../components/InspectionPdfReport');
       const data: InspectionPdfData = {
         id: selected.id,
         branchName: selected.branch_name,

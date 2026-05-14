@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const ROLE_REDIRECT: Record<string, string> = {
+  head: '/head',
+  management: '/management',
+  admin: '/admin',
+};
+
 export default function Login() {
   const { signIn, user, role, loading } = useAuth();
   const navigate = useNavigate();
@@ -11,23 +17,39 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Redirect already-authenticated users (e.g. on page refresh with existing session)
   useEffect(() => {
-    if (loading) return;
-    if (user && role) {
-      const redirect = role === 'head' ? '/head' : role === 'management' ? '/management' : role === 'admin' ? '/admin' : null;
+    if (!loading && user && role) {
+      const redirect = ROLE_REDIRECT[role];
       if (redirect) navigate(redirect, { replace: true });
     }
-    // Auth resolved but role fetch failed — unblock the submit button so the user can retry
-    setSubmitting(false);
   }, [user, role, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const { error: err } = await signIn(email, password);
+
+    const { error: err, role: r } = await signIn(email, password);
+
     if (err) {
       setError(err);
+      setSubmitting(false);
+      return;
+    }
+
+    // Navigate immediately — no need to wait for useEffect
+    if (r === 'officer') {
+      setError('This portal is for supervisors. Please use the mobile app.');
+      setSubmitting(false);
+      return;
+    }
+
+    const redirect = r ? ROLE_REDIRECT[r] : null;
+    if (redirect) {
+      navigate(redirect, { replace: true });
+    } else {
+      setError('No dashboard access found for this account.');
       setSubmitting(false);
     }
   };
@@ -82,6 +104,7 @@ export default function Login() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
                 tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? '🙈' : '👁️'}
               </button>

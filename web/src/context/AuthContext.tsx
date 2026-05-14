@@ -9,7 +9,7 @@ interface AuthContextValue {
   role: Role | null;
   name: string;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null; role: Role | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextValue>({
   role: null,
   name: '',
   loading: true,
-  signIn: async () => ({ error: null }),
+  signIn: async () => ({ error: null, role: null }),
   signOut: async () => {},
 });
 
@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    // Bootstrap existing session on page load
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         const { role: r, name: n } = await fetchRole(session.user.id);
         setUser(session.user);
@@ -50,32 +50,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setName(n);
       }
       setLoading(false);
-    };
-    init();
+    });
 
+    // Keep state in sync with auth events (token refresh, sign-out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
+      async (event, session) => {
+        if (event === 'SIGNED_OUT' || !session?.user) {
+          setUser(null);
+          setRole(null);
+          setName('');
+          setLoading(false);
+          return;
+        }
+        // SIGNED_IN is handled imperatively in signIn() below.
+        // TOKEN_REFRESHED / USER_UPDATED — re-sync role in case it changed.
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           const { role: r, name: n } = await fetchRole(session.user.id);
           setUser(session.user);
           setRole(r);
           setName(n);
-        } else {
-          setUser(null);
-          setRole(null);
-          setName('');
         }
-        setLoading(false);
       }
     );
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    return { error: null };
+  /**
+   * Signs in and immediately fetches the user's role before returning.
+   * This lets Login.tsx navigate directly instead of waiting for a
+   * reactive useEffect chain that depends on loading state changes.
+   */
+  const signIn = async (
+    email: string,
+    password: string,
+  ): Promise<{ error: string | null; role: Role | null }> => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message, role: null };
+
+    const session = data.session;
+    if (!session?.user) return { error: 'Sign-in succeeded but no session was returned.', role: null };
+
+    const { role: r, name: n } = await fetchRole(session.user.id);
+    setUser(session.user);
+    setRole(r);
+    setName(n);
+
+    if (!r) {
+      // Auth worked but no matching user_roles row — not a dashboard user
+      await supabase.auth.signOut();
+      return { error: 'No dashboard access found for this account.', role: null };
+    }
+
+    return { error: null, role: r };
   };
 
   const signOut = async () => {

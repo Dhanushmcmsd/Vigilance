@@ -145,9 +145,15 @@ if (expoOwner) {
   config.expo.owner = expoOwner;
 }
 
-// Note: EAS Update (runtimeVersion + updates.url) is intentionally NOT
-// configured here. To enable OTA updates later:
-//   1. `npx expo install expo-updates`
-//   2. Uncomment the block in this file and re-run `eas update:configure`.
+// EAS Update — OTA updates via expo-updates.
+// Channel names must match the `channel` field in eas.json build profiles.
+config.expo.runtimeVersion = { policy: 'appVersion' };
+config.expo.updates = {
+  url: `https://u.expo.dev/${easProjectId}`,
+};
+config.expo.plugins = config.expo.plugins || [];
+if (!config.expo.plugins.includes('expo-updates')) {
+  config.expo.plugins.push('expo-updates');
+}
 
 module.exports = config;

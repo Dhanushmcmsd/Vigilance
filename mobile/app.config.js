@@ -51,13 +51,13 @@ const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
 
 const easProjectId =
-  process.env.EAS_PROJECT_ID || '969f1ff7-e024-4c03-87fb-438c280f0901';
+  process.env.EAS_PROJECT_ID || 'b63bc80d-778c-4eb8-b0f7-b974238318e6';
 const expoOwner = process.env.EXPO_OWNER || 'dhanushraghav';
 
 const config = {
   expo: {
     name: 'Vigilance',
-    slug: 'vigilance',
+    slug: 'vigilance-management-system',
     version,
     orientation: 'portrait',
     icon: './assets/icon.png',

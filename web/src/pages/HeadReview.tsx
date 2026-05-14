@@ -71,11 +71,16 @@ export default function HeadReview() {
           time_out,
           compliance_score,
           risk_level,
-          general_remarks,
-          file_urls,
-          branches:branch_id (name, city, branch_types:type_id (name)),
-          user_roles:officer_id (full_name),
-          inspection_responses (id, section, item_text, response, remarks, file_url)
+          remarks,
+          branches:branch_id (branch_name, city, branch_types:branch_type_id (type_name)),
+          user_roles:officer_id (name),
+          inspection_files (file_url),
+          inspection_responses (
+            id,
+            response,
+            remarks,
+            checklist_templates:checklist_item_id (section, item_text)
+          )
         `)
         .in('status', ['submitted', 'approved', 'rejected'])
         .order('submitted_at', { ascending: true });
@@ -91,13 +96,20 @@ export default function HeadReview() {
         time_out: item.time_out,
         compliance_score: Number(item.compliance_score ?? 0),
         risk_level: item.risk_level ?? 'low',
-        general_remarks: item.general_remarks,
-        branch_name: item.branches?.name ?? 'Unknown Branch',
-        branch_type: item.branches?.branch_types?.name ?? 'Unknown Type',
-        officer_name: item.user_roles?.full_name ?? 'Unknown Officer',
+        general_remarks: item.remarks ?? null,
+        branch_name: item.branches?.branch_name ?? 'Unknown Branch',
+        branch_type: item.branches?.branch_types?.type_name ?? 'Unknown Type',
+        officer_name: item.user_roles?.name ?? 'Unknown Officer',
         city: item.branches?.city ?? '-',
-        files: item.file_urls ?? [],
-        responses: item.inspection_responses ?? [],
+        files: (item.inspection_files ?? []).map((f: any) => f.file_url).filter(Boolean),
+        responses: (item.inspection_responses ?? []).map((r: any) => ({
+          id: r.id,
+          section: r.checklist_templates?.section ?? '',
+          item_text: r.checklist_templates?.item_text ?? '',
+          response: r.response,
+          remarks: r.remarks ?? null,
+          file_url: null,
+        })),
       }));
     },
   });
@@ -188,7 +200,6 @@ export default function HeadReview() {
       .update({
         status: action,
         head_comment: comment.trim(),
-        reviewed_at: new Date().toISOString(),
       })
       .eq('id', selected.id);
 

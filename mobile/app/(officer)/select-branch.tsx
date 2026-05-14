@@ -106,12 +106,29 @@ export default function SelectBranchScreen() {
   const fetchBranches = async () => {
     setLoading(true);
     setError('');
+
+    // Step 1: resolve branch_type_id from type_name (avoids unreliable
+    // PostgREST embedded-filter syntax that returns 400 on some setups)
+    const { data: typeRow, error: typeErr } = await supabase
+      .from('branch_types')
+      .select('id')
+      .eq('type_name', branchType)
+      .single();
+
+    if (typeErr || !typeRow) {
+      setLoading(false);
+      setError('Unknown branch type. Please contact admin.');
+      return;
+    }
+
+    // Step 2: fetch branches filtered by the resolved branch_type_id
     const { data, error: err } = await supabase
       .from('branches')
-      .select('id, branch_name, location, city, latitude, longitude, geofence_radius, branch_types!inner(type_name)')
+      .select('id, branch_name, location, city, latitude, longitude, geofence_radius')
       .eq('is_active', true)
-      .eq('branch_types.type_name', branchType)
+      .eq('branch_type_id', typeRow.id)
       .order('branch_name');
+
     setLoading(false);
     if (err) {
       console.error('[select-branch] Supabase fetchBranches error:', {
@@ -127,10 +144,6 @@ export default function SelectBranchScreen() {
         setError(
           'Database is out of date — geofence_radius column missing. ' +
           'Please run the latest Supabase migrations.',
-        );
-      } else if (/relationship|branch_types/i.test(msg)) {
-        setError(
-          'Branch type relationship is broken. Please contact admin.',
         );
       } else {
         setError('Failed to load branches. Check your connection.');

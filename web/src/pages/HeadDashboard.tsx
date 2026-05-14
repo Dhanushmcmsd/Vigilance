@@ -95,8 +95,8 @@ function OverviewTab() {
           compliance_score,
           risk_level,
           head_comment,
-          branches:branch_id (name),
-          user_roles:officer_id (full_name)
+          branches:branch_id (branch_name),
+          user_roles:officer_id (name)
         `)
         .order('inspection_date', { ascending: false });
 
@@ -110,8 +110,8 @@ function OverviewTab() {
         compliance_score: Number(item.compliance_score ?? 0),
         risk_level: item.risk_level ?? 'low',
         head_comment: item.head_comment,
-        officer_name: item.user_roles?.full_name ?? 'Unknown Officer',
-        branch_name: item.branches?.name ?? 'Unknown Branch',
+        officer_name: item.user_roles?.name ?? 'Unknown Officer',
+        branch_name: item.branches?.branch_name ?? 'Unknown Branch',
       }));
     },
   });

@@ -740,8 +740,13 @@ export default function ChecklistScreen() {
           })}
         </View>
 
-        {sectionsOnPage.map((section) => (
-          <View key={section} style={{ marginBottom: 12 }}>
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 140 }}
+        >
+          {sectionsOnPage.map((section) => (
+            <View key={section} style={{ marginBottom: 12 }}>
             <View
               style={{
                 backgroundColor: '#1e3a5f',
@@ -1021,5 +1026,6 @@ export default function ChecklistScreen() {
         </Text>
       </View>
     </View>
+  </View>
   );
 }

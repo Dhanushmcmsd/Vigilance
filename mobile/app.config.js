@@ -60,6 +60,7 @@ const config = {
     slug: 'vigilance-management-system',
     version,
     orientation: 'portrait',
+    userInterfaceStyle: 'automatic',
     icon: './assets/icon.png',
     scheme: 'vigilance',
     newArchEnabled: true,

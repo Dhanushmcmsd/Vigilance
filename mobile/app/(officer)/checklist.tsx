@@ -433,6 +433,7 @@ export default function ChecklistScreen() {
       }).start(() => {
         setCurrentPage(nextPage);
         setHighlightedPage(null);
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
         Animated.timing(pageOpacity, {
           toValue: 1,
           duration: 260,
@@ -444,10 +445,15 @@ export default function ChecklistScreen() {
   );
 
   useEffect(() => {
-    if (!currentPageComplete || currentPage === pageCount) return;
-    const timer = setTimeout(() => animatePage(currentPage + 1), 300);
+    const pageItems = items.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    const allAnswered =
+      pageItems.length > 0 &&
+      pageItems.every((item) => responses[item.id]?.response !== null && responses[item.id]?.response !== undefined);
+
+    if (!allAnswered || currentPage === pageCount) return;
+    const timer = setTimeout(() => animatePage(currentPage + 1), 400);
     return () => clearTimeout(timer);
-  }, [currentPageComplete, currentPage, pageCount, animatePage]);
+  }, [responses, currentPage, pageCount, items, animatePage]);
 
   const handleSubmit = async () => {
     const unanswered = items.filter((i) => responses[i.id]?.response === null);
@@ -632,7 +638,12 @@ export default function ChecklistScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+      <ScrollView
+        ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }}
+      >
         <View
           style={{
             backgroundColor: '#fff',
@@ -740,11 +751,7 @@ export default function ChecklistScreen() {
           })}
         </View>
 
-        <ScrollView
-          ref={scrollRef}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 140 }}
-        >
+        <Animated.View style={{ opacity: pageOpacity }}>
           {sectionsOnPage.map((section) => (
             <View key={section} style={{ marginBottom: 12 }}>
             <View
@@ -875,6 +882,7 @@ export default function ChecklistScreen() {
             })}
           </View>
         ))}
+        </Animated.View>
 
         {isLastPage && (
           <View
@@ -943,6 +951,8 @@ export default function ChecklistScreen() {
             )}
           </View>
         )}
+
+        <View style={{ height: 80 }} />
       </ScrollView>
 
       <View

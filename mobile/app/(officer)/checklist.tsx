@@ -1036,6 +1036,5 @@ export default function ChecklistScreen() {
         </Text>
       </View>
     </View>
-  </View>
   );
 }

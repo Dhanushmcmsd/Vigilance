@@ -22,8 +22,6 @@ import { useAuth } from '../../context/AuthContext';
 import { saveDraft, loadDraft, deleteDraft, enqueueOfflineSubmission } from '../../lib/storage';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
-import { ChecklistItem } from '../../components/ChecklistItem';
-import { ProgressBar } from '../../components/ProgressBar';
 import { ToastMessage } from '../../components/ToastMessage';
 import { SupervisorOtpModal } from '../../components/SupervisorOtpModal';
 
@@ -75,10 +73,24 @@ export default function ChecklistScreen() {
 
   const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
   const [inspectionActive, setInspectionActive] = useState(false);
+  const [itemRemarkToggles, setItemRemarkToggles] = useState<Record<string, boolean>>({});
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const { pingCount } = useLocationPing({ inspectionId: activeInspectionId, isActive: inspectionActive });
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning') =>
     setToast({ visible: true, message, type });
+
+  const toggleRemarkVisibility = (itemId: string) => {
+    setItemRemarkToggles((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  };
+
+  const isRemarkVisible = (itemId: string) => !!itemRemarkToggles[itemId];
+
+  const resolveRiskBadge = (risk_level?: 'RED' | 'YELLOW' | 'GREEN') => {
+    if (risk_level === 'RED') return { backgroundColor: '#fef2f2', color: '#dc2626', label: 'RED' };
+    if (risk_level === 'YELLOW') return { backgroundColor: '#fffbeb', color: '#d97706', label: 'YELLOW' };
+    return { backgroundColor: '#f0fdf4', color: '#16a34a', label: 'GREEN' };
+  };
 
   useEffect(() => {
     (async () => {
@@ -255,6 +267,7 @@ export default function ChecklistScreen() {
     showToast('Supervisor acknowledgement recorded', 'success');
   }, [activeOtpItemId]);
 
+  const lastTriggeredRedResponse = useRef<Record<string, 'Yes' | 'No' | 'N/A' | null>>({});
   const handleResponse = useCallback(
     (itemId: string, response: 'Yes' | 'No' | 'N/A' | null) => {
       setResponses((prev) => {
@@ -275,10 +288,25 @@ export default function ChecklistScreen() {
             setYellowCount((c) => Math.max(0, c - 1));
           }
         }
+
+        if (item?.risk_level === 'RED' && response !== null && !acknowledgedRedItems.has(itemId)) {
+          const triggers =
+            (item.trigger_on_no && response === 'No') ||
+            (!item.trigger_on_no && response === 'Yes');
+          if (triggers && lastTriggeredRedResponse.current[itemId] !== response) {
+            lastTriggeredRedResponse.current[itemId] = response;
+            handleRedTriggered(itemId);
+          }
+        }
+
+        if (response === 'No' || item?.risk_level === 'RED') {
+          setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
+        }
+
         return next;
       });
     },
-    [items]
+    [acknowledgedRedItems, handleRedTriggered, items]
   );
 
   const handleRemark = useCallback((itemId: string, remark: string) => {
@@ -365,14 +393,33 @@ export default function ChecklistScreen() {
     () => currentPageItems.every((item) => responses[item.id]?.response !== null),
     [currentPageItems, responses]
   );
+  const currentPageSections = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    currentPageItems.forEach((item) => {
+      if (!map[item.section]) map[item.section] = [];
+      map[item.section].push(item);
+    });
+    return map;
+  }, [currentPageItems]);
   const sectionsOnPage = useMemo(
-    () => Array.from(new Set(currentPageItems.map((item) => item.section))),
-    [currentPageItems]
+    () => Object.keys(currentPageSections),
+    [currentPageSections]
   );
   const firstUnansweredPage = useMemo(() => {
     const index = items.findIndex((item) => responses[item.id]?.response === null);
     return index === -1 ? null : Math.floor(index / ITEMS_PER_PAGE) + 1;
   }, [items, responses]);
+
+  const progressPercent = useMemo(() => Math.round((answeredCount / (items.length || 1)) * 100), [answeredCount, items.length]);
+  const isLastPage = currentPage === pageCount;
+  const sectionAnsweredCount = useCallback(
+    (section: string) => currentPageSections[section]?.filter((item) => responses[item.id]?.response !== null).length ?? 0,
+    [responses, currentPageSections]
+  );
+  const sectionItemCount = useCallback(
+    (section: string) => currentPageSections[section]?.length ?? 0,
+    [currentPageSections]
+  );
 
   const animatePage = useCallback(
     (nextPage: number) => {
@@ -544,7 +591,7 @@ export default function ChecklistScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9' }}>
         <ActivityIndicator size="large" color="#2563eb" />
         <Text style={{ marginTop: 12, color: '#6b7280' }}>Loading checklist...</Text>
       </View>
@@ -552,7 +599,7 @@ export default function ChecklistScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f8fafc', paddingTop: insets.top }}>
+    <View style={{ flex: 1, backgroundColor: '#f1f5f9', paddingTop: insets.top }}>
       <ToastMessage
         visible={toast.visible}
         message={toast.message}
@@ -570,153 +617,335 @@ export default function ChecklistScreen() {
         />
       )}
 
-      <View style={{
-        backgroundColor: '#fff',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e5e7eb',
-      }}>
+      <View style={{ backgroundColor: '#1e3a5f', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="arrow-back" size={24} color="#1f2937" />
+          <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: '#1f2937', marginHorizontal: 12 }} numberOfLines={1}>
+        <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: '#fff', marginHorizontal: 12 }} numberOfLines={1}>
           {branchName}
         </Text>
         <TouchableOpacity
           onPress={handleSaveDraft}
-          style={{
-            backgroundColor: '#eff6ff',
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
-          }}
+          style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
         >
-          <Text style={{ color: '#2563eb', fontWeight: '600', fontSize: 13 }}>Save Draft</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Save Draft</Text>
         </TouchableOpacity>
       </View>
 
-      <ProgressBar answered={answeredCount} total={items.length} red={triggeredRedItems.size > 0} />
-
-      {(triggeredRedItems.size > 0 || yellowCount >= YELLOW_REALTIME_THRESHOLD) && (
+      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
         <View
           style={{
-            backgroundColor: triggeredRedItems.size > 0 ? '#FEF2F2' : '#FFFBEB',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderBottomWidth: 1,
-            borderBottomColor: triggeredRedItems.size > 0 ? '#FCA5A5' : '#FCD34D',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            backgroundColor: '#fff',
+            borderRadius: 14,
+            padding: 14,
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 3,
+            marginBottom: 12,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '700', color: triggeredRedItems.size > 0 ? '#DC2626' : '#D97706' }}>
-            {triggeredRedItems.size > 0
-              ? `🔴 ${triggeredRedItems.size} RED triggered • ${acknowledgedRedItems.size} acknowledged`
-              : `🟡 ${yellowCount} YELLOW items — supervisor notified`}
-          </Text>
-          {pendingRedCount > 0 && (
-            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
-              {pendingRedCount} pending OTP
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+            <View>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>👤 Test Officer</Text>
+              <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{userName}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>📅 Date</Text>
+              <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{date}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+            <View>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>🕐 Time In</Text>
+              <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{timeIn}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>🕔 Time Out</Text>
+              <TextInput
+                value={timeOut}
+                onChangeText={setTimeOut}
+                placeholder="HH:MM"
+                placeholderTextColor="#9ca3af"
+                style={{
+                  marginTop: 2,
+                  fontSize: 13,
+                  color: '#111827',
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#d1d5db',
+                  paddingVertical: 2,
+                }}
+              />
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 3,
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <Text style={{ color: '#111827', fontSize: 13, fontWeight: '600' }}>Progress</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: progressPercent < 40 ? '#ef4444' : progressPercent < 80 ? '#f59e0b' : '#16a34a' }}>
+              {progressPercent}%
             </Text>
-          )}
+          </View>
+          <View style={{ height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
+            <View style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#2563eb' }} />
+          </View>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>{answeredCount} of {items.length} answered</Text>
         </View>
-      )}
 
-      <View
-        style={{
-          backgroundColor: '#fff',
-          paddingHorizontal: 16,
-          paddingVertical: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: '#e5e7eb',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <Text style={{ fontSize: 12, color: '#6b7280' }}>Officer: <Text style={{ fontWeight: '600', color: '#374151' }}>{userName}</Text></Text>
-        <Text style={{ fontSize: 12, color: '#d1d5db' }}>|</Text>
-        <Text style={{ fontSize: 12, color: '#6b7280' }}>Date: <Text style={{ fontWeight: '600', color: '#374151' }}>{date}</Text></Text>
-        <Text style={{ fontSize: 12, color: '#d1d5db' }}>|</Text>
-        <Text style={{ fontSize: 12, color: '#6b7280' }}>In: <Text style={{ fontWeight: '600', color: '#374151' }}>{timeIn}</Text></Text>
-        {pingCount > 0 && (
-          <Text style={{ fontSize: 11, color: '#16a34a' }}>📍 {pingCount} pings</Text>
-        )}
-      </View>
-
-      <View style={{
-        backgroundColor: '#fff',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#e5e7eb',
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '700' }}>
-            {sectionsOnPage.length === 1 ? sectionsOnPage[0] : sectionsOnPage[0]}
-          </Text>
-          <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '700' }}>
-            Page {currentPage} of {pageCount}
-          </Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e3a5f' }}>{sectionsOnPage[0]}</Text>
+          <View style={{ backgroundColor: '#eff6ff', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '700' }}>
+              Page {currentPage} of {pageCount}
+            </Text>
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 }}>
-          {Array.from({ length: pageCount }, (_, idx) => idx + 1).map((page) => {
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {Array.from({ length: pageCount }, (_, idx) => {
+            const page = idx + 1;
             const active = page === currentPage;
             const completed = page < currentPage;
-            const highlighted = page === highlightedPage;
             return (
               <View
                 key={page}
                 style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 6,
-                  marginRight: 6,
-                  marginBottom: 6,
-                  backgroundColor: completed ? '#16a34a' : active ? '#2563eb' : '#d1d5db',
-                  borderWidth: highlighted ? 2 : 0,
-                  borderColor: highlighted ? '#dc2626' : undefined,
+                  width: 28,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: completed ? '#16a34a' : active ? '#2563eb' : '#e2e8f0',
                 }}
               />
             );
           })}
         </View>
-      </View>
 
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 140 }}
-      >
-        <Animated.View style={{ opacity: pageOpacity }}>
-          {currentPageItems.map((item) => (
-            <ChecklistItem
-              key={item.id}
-              itemId={item.id}
-              itemText={item.item_text}
-              response={responses[item.id]?.response ?? null}
-              remark={responses[item.id]?.remark ?? ''}
-              onResponseChange={handleResponse}
-              onRemarkChange={handleRemark}
-              risk_level={item.risk_level}
-              trigger_on_no={item.trigger_on_no}
-              min_remark_chars={item.min_remark_chars}
-              isRedAcknowledged={acknowledgedRedItems.has(item.id)}
-              onRedTriggered={handleRedTriggered}
-            />
-          ))}
-        </Animated.View>
+        {sectionsOnPage.map((section) => (
+          <View key={section} style={{ marginBottom: 12 }}>
+            <View
+              style={{
+                backgroundColor: '#1e3a5f',
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{section}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                    {sectionAnsweredCount(section)}/{sectionItemCount(section)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#fff" />
+              </View>
+            </View>
+
+            {currentPageSections[section].map((item) => {
+              const badge = resolveRiskBadge(item.risk_level);
+              const response = responses[item.id]?.response ?? null;
+              const remark = responses[item.id]?.remark ?? '';
+              const effectiveMinChars = item.min_remark_chars ?? (item.risk_level === 'RED' ? 50 : 0);
+              const remarkLen = remark.length;
+              const remarkBelowMin = effectiveMinChars > 0 && remarkLen < effectiveMinChars;
+              const showRemark = isRemarkVisible(item.id);
+
+              return (
+                <View
+                  key={item.id}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 12,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 3,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: badge.backgroundColor, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: badge.color }}>{badge.label}</Text>
+                    </View>
+                    {item.risk_level === 'RED' && response !== null && !acknowledgedRedItems.has(item.id) && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#dc2626' }}>⚠️</Text>
+                        <Text style={{ fontSize: 12, color: '#dc2626', fontWeight: '700' }}>Pending OTP</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', lineHeight: 22, marginVertical: 12 }}>
+                    {item.item_text}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    {[
+                      { label: '✓ YES', value: 'Yes', activeColor: '#16a34a', activeBg: '#dcfce7', inactiveColor: '#6b7280' },
+                      { label: '✗ NO', value: 'No', activeColor: '#dc2626', activeBg: '#fee2e2', inactiveColor: '#6b7280' },
+                      { label: '— N/A', value: 'N/A', activeColor: '#475569', activeBg: '#f1f5f9', inactiveColor: '#6b7280' },
+                    ].map((button) => {
+                      const active = response === button.value;
+                      return (
+                        <TouchableOpacity
+                          key={button.value}
+                          onPress={() => handleResponse(item.id, button.value as 'Yes' | 'No' | 'N/A' | null)}
+                          activeOpacity={0.75}
+                          style={{
+                            flex: 1,
+                            borderRadius: 12,
+                            paddingVertical: 12,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: active ? button.activeBg : '#f8fafc',
+                            borderWidth: 1.5,
+                            borderColor: active ? button.activeColor : '#e2e8f0',
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: active ? button.activeColor : button.inactiveColor }}>
+                            {button.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TouchableOpacity onPress={() => toggleRemarkVisibility(item.id)} activeOpacity={0.75}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>
+                      {showRemark ? '▲ Hide remark' : '+ Add remark'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showRemark && (
+                    <View style={{ marginTop: 10 }}>
+                      <TextInput
+                        value={remark}
+                        onChangeText={(text) => handleRemark(item.id, text)}
+                        placeholder="Type your remark here..."
+                        placeholderTextColor="#9ca3af"
+                        multiline
+                        numberOfLines={3}
+                        style={{
+                          fontSize: 13,
+                          color: '#111827',
+                          borderBottomWidth: 1,
+                          borderBottomColor: remarkBelowMin ? '#dc2626' : '#d1d5db',
+                          paddingVertical: 8,
+                        }}
+                      />
+                      {effectiveMinChars > 0 && (
+                        <Text style={{ marginTop: 6, fontSize: 11, fontWeight: '600', color: remarkBelowMin ? '#dc2626' : '#16a34a' }}>
+                          {remarkLen}/{effectiveMinChars} characters{remarkBelowMin ? ` — ${effectiveMinChars - remarkLen} more required` : ' ✓'}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ))}
+
+        {isLastPage && (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              padding: 16,
+              shadowColor: '#000',
+              shadowOpacity: 0.06,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 3,
+              marginBottom: 16,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setAttachmentsExpanded((prev) => !prev)}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: attachmentsExpanded ? 12 : 0 }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>Attachments & Remarks</Text>
+              <Ionicons name={attachmentsExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#2563eb" />
+            </TouchableOpacity>
+            {attachmentsExpanded && (
+              <>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    style={{ flex: 1, backgroundColor: '#eff6ff', borderRadius: 14, paddingVertical: 12, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#2563eb', fontWeight: '700' }}>Add Photos</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={pickDocument}
+                    style={{ flex: 1, backgroundColor: '#eff6ff', borderRadius: 14, paddingVertical: 12, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#2563eb', fontWeight: '700' }}>Add Docs</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  value={generalRemark}
+                  onChangeText={setGeneralRemark}
+                  placeholder="General remarks..."
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  numberOfLines={4}
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 14,
+                    padding: 12,
+                    fontSize: 13,
+                    color: '#111827',
+                    minHeight: 90,
+                  }}
+                />
+                {files.length > 0 && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Attached files</Text>
+                    {files.map((file) => (
+                      <Text key={file.uri} style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>
+                        • {file.name}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       <View
         style={{
           position: 'absolute',
-          bottom: 0,
           left: 0,
           right: 0,
+          bottom: 0,
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: '#e5e7eb',
@@ -730,27 +959,23 @@ export default function ChecklistScreen() {
           elevation: 8,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
           <TouchableOpacity
             onPress={() => animatePage(currentPage - 1)}
             disabled={currentPage === 1 || transitioning}
             style={{
               flex: 1,
-              marginRight: 8,
               minHeight: 52,
               borderRadius: 14,
-              borderWidth: 1,
-              borderColor: currentPage === 1 ? '#d1d5db' : '#9ca3af',
-              backgroundColor: currentPage === 1 ? '#f3f4f6' : '#ffffff',
+              borderWidth: 1.5,
+              borderColor: '#e2e8f0',
+              backgroundColor: '#fff',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ fontSize: 15, fontWeight: '700', color: currentPage === 1 ? '#9ca3af' : '#374151' }}>
-              Previous
-            </Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#374151' }}>Previous</Text>
           </TouchableOpacity>
-
           {currentPage < pageCount ? (
             !currentPageComplete && (
               <TouchableOpacity
@@ -758,7 +983,6 @@ export default function ChecklistScreen() {
                 disabled={transitioning}
                 style={{
                   flex: 1,
-                  marginLeft: 8,
                   minHeight: 52,
                   borderRadius: 14,
                   backgroundColor: '#2563eb',
@@ -775,10 +999,9 @@ export default function ChecklistScreen() {
               disabled={submitting}
               style={{
                 flex: 1,
-                marginLeft: 8,
                 minHeight: 52,
                 borderRadius: 14,
-                backgroundColor: submitting ? '#93c5fd' : '#2563eb',
+                backgroundColor: submitting ? '#93c5fd' : '#16a34a',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -786,16 +1009,15 @@ export default function ChecklistScreen() {
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Submit</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Submit Inspection ✓</Text>
               )}
             </TouchableOpacity>
           )}
         </View>
-
-        <Text style={{ fontSize: 12, color: '#6b7280', textAlign: 'center' }}>
+        <Text style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
           {currentPageComplete && currentPage < pageCount
             ? 'All answers complete — moving to the next page shortly.'
-            : 'Answer all 4 items on this page to advance automatically.'}
+            : 'Answer all items on this page to continue.'}
         </Text>
       </View>
     </View>

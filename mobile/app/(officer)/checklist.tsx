@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   TextInput,
   Image,
+  Animated,
+  Keyboard,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,26 +27,6 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { ToastMessage } from '../../components/ToastMessage';
 import { SupervisorOtpModal } from '../../components/SupervisorOtpModal';
 
-type ResponseType = 'Yes' | 'No' | 'N/A' | null;
-type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
-
-interface ChecklistTemplateItem {
-  id: string;
-  section: string;
-  item_text: string;
-  item_order: number;
-  risk_level?: RiskLevel;
-  trigger_on_no?: boolean;
-  min_remark_chars?: number;
-  requires_photo?: boolean;
-}
-
-interface SelectedFile {
-  uri: string;
-  name: string;
-  type: 'image' | 'document';
-}
-
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
   const d = new Date();
@@ -52,6 +34,7 @@ const nowTime = () => {
 };
 
 const YELLOW_REALTIME_THRESHOLD = 3;
+const ITEMS_PER_PAGE = 4;
 
 export default function ChecklistScreen() {
   const { branchId, branchName, branchType, officerLat, officerLon } = useLocalSearchParams<{
@@ -63,21 +46,26 @@ export default function ChecklistScreen() {
   const { userName, userRolesId } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [items, setItems] = useState<ChecklistTemplateItem[]>([]);
-  const [responses, setResponses] = useState<Record<string, { response: ResponseType; remark: string }>>({});
+  const [items, setItems] = useState<any[]>([]);
+  const [responses, setResponses] = useState<Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }>>({});
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [date] = useState(today);
   const [timeIn] = useState(nowTime());
   const [timeOut, setTimeOut] = useState('');
   const [generalRemark, setGeneralRemark] = useState('');
-  const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [files, setFiles] = useState<{ uri: string; name: string; type: 'image' | 'document' }[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'warning' }>({
-    visible: false, message: '', type: 'success',
+    visible: false,
+    message: '',
+    type: 'success',
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageOpacity] = useState(new Animated.Value(1));
+  const [transitioning, setTransitioning] = useState(false);
+  const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
 
-  // Risk-flow state
   const [triggeredRedItems, setTriggeredRedItems] = useState<Set<string>>(new Set());
   const [acknowledgedRedItems, setAcknowledgedRedItems] = useState<Set<string>>(new Set());
   const [yellowCount, setYellowCount] = useState(0);
@@ -85,7 +73,6 @@ export default function ChecklistScreen() {
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [activeOtpItemId, setActiveOtpItemId] = useState<string | null>(null);
 
-  // Location ping + lazy inspection state
   const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
   const [inspectionActive, setInspectionActive] = useState(false);
   const { pingCount } = useLocationPing({ inspectionId: activeInspectionId, isActive: inspectionActive });
@@ -93,7 +80,6 @@ export default function ChecklistScreen() {
   const showToast = (message: string, type: 'success' | 'error' | 'warning') =>
     setToast({ visible: true, message, type });
 
-  // Fetch checklist items + risk classifications.
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -108,7 +94,6 @@ export default function ChecklistScreen() {
         .order('item_order');
 
       if (error) {
-        // Fallback: older schemas may not yet have risk_classifications joined.
         const fallback = await supabase
           .from('checklist_templates')
           .select('id, section, item_text, item_order, risk_level, trigger_on_no')
@@ -125,7 +110,7 @@ export default function ChecklistScreen() {
   }, []);
 
   const hydrateItems = (rows: any[]) => {
-    const mapped: ChecklistTemplateItem[] = rows.map((r) => {
+    const mapped = rows.map((r) => {
       const rc = Array.isArray(r.risk_classifications)
         ? r.risk_classifications[0]
         : r.risk_classifications;
@@ -134,7 +119,7 @@ export default function ChecklistScreen() {
         section: r.section,
         item_text: r.item_text,
         item_order: r.item_order,
-        risk_level: (rc?.risk_level ?? r.risk_level) as RiskLevel | undefined,
+        risk_level: (rc?.risk_level ?? r.risk_level) as 'RED' | 'YELLOW' | 'GREEN' | undefined,
         trigger_on_no: rc?.trigger_on_no ?? r.trigger_on_no ?? false,
         min_remark_chars: rc?.min_remark_chars ?? undefined,
         requires_photo: rc?.requires_photo ?? false,
@@ -143,14 +128,13 @@ export default function ChecklistScreen() {
     setItems(mapped);
     const sections = new Set(mapped.map((i) => i.section));
     setExpandedSections(sections);
-    const init: Record<string, { response: ResponseType; remark: string }> = {};
+    const init: Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }> = {};
     mapped.forEach((i) => {
       init[i.id] = { response: null, remark: '' };
     });
     setResponses(init);
   };
 
-  // Restore draft
   useEffect(() => {
     loadDraft(branchId, today).then((draft) => {
       if (draft) {
@@ -168,9 +152,8 @@ export default function ChecklistScreen() {
     });
   }, []);
 
-  // Group items by section
   const sections = useMemo(() => {
-    const map: Record<string, ChecklistTemplateItem[]> = {};
+    const map: Record<string, any[]> = {};
     items.forEach((item) => {
       if (!map[item.section]) map[item.section] = [];
       map[item.section].push(item);
@@ -183,8 +166,6 @@ export default function ChecklistScreen() {
     [responses]
   );
 
-  // Lazily create an inspection row so RED escalation/OTP/notification log
-  // can reference a real inspection_id BEFORE the officer submits.
   const ensureInspection = useCallback(async (): Promise<string | null> => {
     if (activeInspectionId) return activeInspectionId;
     if (!userRolesId || !branchId) return null;
@@ -216,7 +197,6 @@ export default function ChecklistScreen() {
 
   const handleRedTriggered = useCallback(
     async (itemId: string) => {
-      // Idempotent: only fire side-effects the first time this item triggers.
       let firstTime = false;
       setTriggeredRedItems((prev) => {
         if (prev.has(itemId)) return prev;
@@ -236,8 +216,6 @@ export default function ChecklistScreen() {
 
       const redCount = triggeredRedItems.size + 1;
 
-      // Fire supervisor alert (emails) and OTP send in parallel — failures
-      // should NOT block the modal from opening.
       Promise.all([
         supabase.functions.invoke('red-alert', {
           body: {
@@ -278,7 +256,7 @@ export default function ChecklistScreen() {
   }, [activeOtpItemId]);
 
   const handleResponse = useCallback(
-    (itemId: string, response: ResponseType) => {
+    (itemId: string, response: 'Yes' | 'No' | 'N/A' | null) => {
       setResponses((prev) => {
         const previous = prev[itemId]?.response ?? null;
         const next = { ...prev, [itemId]: { ...prev[itemId], response } };
@@ -307,7 +285,6 @@ export default function ChecklistScreen() {
     setResponses((prev) => ({ ...prev, [itemId]: { ...prev[itemId], remark } }));
   }, []);
 
-  // YELLOW real-time alert when threshold is crossed.
   useEffect(() => {
     if (yellowCount < YELLOW_REALTIME_THRESHOLD || yellowAlertSent) return;
     setYellowAlertSent(true);
@@ -335,8 +312,12 @@ export default function ChecklistScreen() {
 
   const handleSaveDraft = async () => {
     await saveDraft(branchId, today, {
-      branchId, branchName, branchType: branchType || '',
-      date, timeIn, timeOut,
+      branchId,
+      branchName,
+      branchType: branchType || '',
+      date,
+      timeIn,
+      timeOut,
       responses: responses as any,
       generalRemark,
       fileUris: files.map((f) => f.uri),
@@ -354,10 +335,10 @@ export default function ChecklistScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      const newFiles: SelectedFile[] = result.assets.map((a) => ({
+      const newFiles = result.assets.map((a) => ({
         uri: a.uri,
         name: a.fileName || `photo_${Date.now()}.jpg`,
-        type: 'image',
+        type: 'image' as const,
       }));
       setFiles((prev) => [...prev, ...newFiles]);
     }
@@ -366,20 +347,68 @@ export default function ChecklistScreen() {
   const pickDocument = async () => {
     const result = await DocumentPicker.getDocumentAsync({ multiple: true });
     if (!result.canceled) {
-      const newFiles: SelectedFile[] = result.assets.map((a) => ({
+      const newFiles = result.assets.map((a) => ({
         uri: a.uri,
         name: a.name,
-        type: 'document',
+        type: 'document' as const,
       }));
       setFiles((prev) => [...prev, ...newFiles]);
     }
   };
 
+  const pageCount = useMemo(() => Math.ceil(items.length / ITEMS_PER_PAGE), [items.length]);
+  const currentPageItems = useMemo(
+    () => items.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [items, currentPage]
+  );
+  const currentPageComplete = useMemo(
+    () => currentPageItems.every((item) => responses[item.id]?.response !== null),
+    [currentPageItems, responses]
+  );
+  const sectionsOnPage = useMemo(
+    () => Array.from(new Set(currentPageItems.map((item) => item.section))),
+    [currentPageItems]
+  );
+  const firstUnansweredPage = useMemo(() => {
+    const index = items.findIndex((item) => responses[item.id]?.response === null);
+    return index === -1 ? null : Math.floor(index / ITEMS_PER_PAGE) + 1;
+  }, [items, responses]);
+
+  const animatePage = useCallback(
+    (nextPage: number) => {
+      if (transitioning || nextPage < 1 || nextPage > pageCount || nextPage === currentPage) return;
+      Keyboard.dismiss();
+      setTransitioning(true);
+      Animated.timing(pageOpacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentPage(nextPage);
+        setHighlightedPage(null);
+        Animated.timing(pageOpacity, {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: true,
+        }).start(() => setTransitioning(false));
+      });
+    },
+    [currentPage, pageCount, pageOpacity, transitioning]
+  );
+
+  useEffect(() => {
+    if (!currentPageComplete || currentPage === pageCount) return;
+    const timer = setTimeout(() => animatePage(currentPage + 1), 300);
+    return () => clearTimeout(timer);
+  }, [currentPageComplete, currentPage, pageCount, animatePage]);
+
   const handleSubmit = async () => {
     const unanswered = items.filter((i) => responses[i.id]?.response === null);
     if (unanswered.length > 0) {
-      showToast(`${unanswered.length} item(s) unanswered. Please complete all items.`, 'warning');
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      const targetPage = firstUnansweredPage ?? 1;
+      setHighlightedPage(targetPage);
+      animatePage(targetPage);
+      Alert.alert('Incomplete Inspection', `Please complete page ${targetPage} before submitting.`);
       return;
     }
 
@@ -391,7 +420,6 @@ export default function ChecklistScreen() {
       return;
     }
 
-    // RED-item minimum-remark validation.
     const shortRed = items.find((i) => {
       if (i.risk_level !== 'RED') return false;
       const min = i.min_remark_chars ?? 50;
@@ -415,12 +443,13 @@ export default function ChecklistScreen() {
             setSubmitting(true);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
-              // If a RED already triggered while online, an inspections row
-              // exists in draft state — pass its id so the offline queue can
-              // UPDATE that row instead of inserting a duplicate.
               await enqueueOfflineSubmission({
-                branchId, branchName, branchType: branchType || '',
-                date, timeIn, timeOut,
+                branchId,
+                branchName,
+                branchType: branchType || '',
+                date,
+                timeIn,
+                timeOut,
                 responses: responses as any,
                 generalRemark,
                 fileUris: files.map((f) => f.uri),
@@ -438,7 +467,6 @@ export default function ChecklistScreen() {
               const inspectionId = await ensureInspection();
               if (!inspectionId) throw new Error('Inspection creation failed');
 
-              // Batch insert responses
               const responseRows = items.map((item) => ({
                 inspection_id: inspectionId,
                 checklist_item_id: item.id,
@@ -448,7 +476,6 @@ export default function ChecklistScreen() {
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
-              // Upload files
               for (const file of files) {
                 const ext = file.name.split('.').pop();
                 const path = `inspections/${inspectionId}/${Date.now()}_${file.name}`;
@@ -467,7 +494,6 @@ export default function ChecklistScreen() {
                 }
               }
 
-              // General remarks
               if (generalRemark.trim()) {
                 await supabase.from('general_remarks').insert({
                   inspection_id: inspectionId,
@@ -475,7 +501,6 @@ export default function ChecklistScreen() {
                 });
               }
 
-              // Mark submitted — stop pings immediately afterwards.
               const submitAudit = await getDeviceAudit();
               await supabase
                 .from('inspections')
@@ -535,7 +560,6 @@ export default function ChecklistScreen() {
         onHide={() => setToast((p) => ({ ...p, visible: false }))}
       />
 
-      {/* OTP Modal */}
       {activeOtpItemId && activeInspectionId && (
         <SupervisorOtpModal
           visible={otpModalVisible}
@@ -546,18 +570,15 @@ export default function ChecklistScreen() {
         />
       )}
 
-      {/* Header */}
-      <View
-        style={{
-          backgroundColor: '#fff',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: '#e5e7eb',
-        }}
-      >
+      <View style={{
+        backgroundColor: '#fff',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
+      }}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="arrow-back" size={24} color="#1f2937" />
         </TouchableOpacity>
@@ -577,10 +598,8 @@ export default function ChecklistScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Progress */}
       <ProgressBar answered={answeredCount} total={items.length} red={triggeredRedItems.size > 0} />
 
-      {/* Risk summary strip */}
       {(triggeredRedItems.size > 0 || yellowCount >= YELLOW_REALTIME_THRESHOLD) && (
         <View
           style={{
@@ -607,7 +626,6 @@ export default function ChecklistScreen() {
         </View>
       )}
 
-      {/* Meta info */}
       <View
         style={{
           backgroundColor: '#fff',
@@ -631,61 +649,68 @@ export default function ChecklistScreen() {
         )}
       </View>
 
+      <View style={{
+        backgroundColor: '#fff',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
+      }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '700' }}>
+            {sectionsOnPage.length === 1 ? sectionsOnPage[0] : sectionsOnPage[0]}
+          </Text>
+          <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '700' }}>
+            Page {currentPage} of {pageCount}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 }}>
+          {Array.from({ length: pageCount }, (_, idx) => idx + 1).map((page) => {
+            const active = page === currentPage;
+            const completed = page < currentPage;
+            const highlighted = page === highlightedPage;
+            return (
+              <View
+                key={page}
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
+                  marginRight: 6,
+                  marginBottom: 6,
+                  backgroundColor: completed ? '#16a34a' : active ? '#2563eb' : '#d1d5db',
+                  borderWidth: highlighted ? 2 : 0,
+                  borderColor: highlighted ? '#dc2626' : undefined,
+                }}
+              />
+            );
+          })}
+        </View>
+      </View>
+
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 140 }}
       >
-        {Object.entries(sections).map(([section, sectionItems]) => (
-          <View key={section} style={{ marginBottom: 8 }}>
-            <TouchableOpacity
-              onPress={() => {
-                setExpandedSections((prev) => {
-                  const next = new Set(prev);
-                  next.has(section) ? next.delete(section) : next.add(section);
-                  return next;
-                });
-              }}
-              style={{
-                backgroundColor: '#1e40af',
-                borderRadius: 10,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: expandedSections.has(section) ? 8 : 0,
-              }}
-            >
-              <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: '#ffffff' }}>{section}</Text>
-              <Text style={{ color: '#e2e8f0', fontSize: 14, marginRight: 8, fontWeight: '600' }}>
-                {sectionItems.filter((i) => responses[i.id]?.response !== null).length}/{sectionItems.length}
-              </Text>
-              <Ionicons
-                name={expandedSections.has(section) ? 'chevron-up' : 'chevron-down'}
-                size={22}
-                color="#ffffff"
-              />
-            </TouchableOpacity>
-            {expandedSections.has(section) &&
-              sectionItems.map((item) => (
-                <ChecklistItem
-                  key={item.id}
-                  itemId={item.id}
-                  itemText={item.item_text}
-                  response={responses[item.id]?.response ?? null}
-                  remark={responses[item.id]?.remark ?? ''}
-                  onResponseChange={handleResponse}
-                  onRemarkChange={handleRemark}
-                  risk_level={item.risk_level}
-                  trigger_on_no={item.trigger_on_no}
-                  min_remark_chars={item.min_remark_chars}
-                  isRedAcknowledged={acknowledgedRedItems.has(item.id)}
-                  onRedTriggered={handleRedTriggered}
-                />
-              ))}
-          </View>
-        ))}
+        <Animated.View style={{ opacity: pageOpacity }}>
+          {currentPageItems.map((item) => (
+            <ChecklistItem
+              key={item.id}
+              itemId={item.id}
+              itemText={item.item_text}
+              response={responses[item.id]?.response ?? null}
+              remark={responses[item.id]?.remark ?? ''}
+              onResponseChange={handleResponse}
+              onRemarkChange={handleRemark}
+              risk_level={item.risk_level}
+              trigger_on_no={item.trigger_on_no}
+              min_remark_chars={item.min_remark_chars}
+              isRedAcknowledged={acknowledgedRedItems.has(item.id)}
+              onRedTriggered={handleRedTriggered}
+            />
+          ))}
+        </Animated.View>
       </ScrollView>
 
-      {/* Sticky Footer */}
       <View
         style={{
           position: 'absolute',
@@ -705,157 +730,73 @@ export default function ChecklistScreen() {
           elevation: 8,
         }}
       >
-        {/* Time Out */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          <Text style={{ fontSize: 13, color: '#6b7280', marginRight: 8 }}>Time Out:</Text>
-          <TextInput
-            value={timeOut}
-            onChangeText={setTimeOut}
-            placeholder="HH:MM"
-            placeholderTextColor="#9ca3af"
-            style={{
-              borderWidth: 1,
-              borderColor: '#e5e7eb',
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              fontSize: 14,
-              color: '#1f2937',
-              width: 80,
-            }}
-          />
-        </View>
-
-        {/* File picker row */}
-        <View style={{ flexDirection: 'row', marginBottom: 10, gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <TouchableOpacity
-            onPress={pickImage}
+            onPress={() => animatePage(currentPage - 1)}
+            disabled={currentPage === 1 || transitioning}
             style={{
               flex: 1,
-              flexDirection: 'row',
+              marginRight: 8,
+              minHeight: 52,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: currentPage === 1 ? '#d1d5db' : '#9ca3af',
+              backgroundColor: currentPage === 1 ? '#f3f4f6' : '#ffffff',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: '#f0fdf4',
-              borderRadius: 10,
-              paddingVertical: 10,
-              borderWidth: 1,
-              borderColor: '#bbf7d0',
             }}
           >
-            <Ionicons name="camera-outline" size={18} color="#16a34a" />
-            <Text style={{ color: '#16a34a', fontSize: 13, fontWeight: '600', marginLeft: 6 }}>Photos ({files.filter((f) => f.type === 'image').length})</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={pickDocument}
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#eff6ff',
-              borderRadius: 10,
-              paddingVertical: 10,
-              borderWidth: 1,
-              borderColor: '#bfdbfe',
-            }}
-          >
-            <Ionicons name="document-outline" size={18} color="#2563eb" />
-            <Text style={{ color: '#2563eb', fontSize: 13, fontWeight: '600', marginLeft: 6 }}>Docs ({files.filter((f) => f.type === 'document').length})</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* File thumbnails */}
-        {files.filter((f) => f.type === 'image').length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            {files.filter((f) => f.type === 'image').map((f, i) => (
-              <View key={i} style={{ marginRight: 8, position: 'relative' }}>
-                <Image source={{ uri: f.uri }} style={{ width: 56, height: 56, borderRadius: 8 }} />
-                <TouchableOpacity
-                  onPress={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  style={{
-                    position: 'absolute',
-                    top: -4, right: -4,
-                    backgroundColor: '#ef4444',
-                    borderRadius: 10,
-                    width: 20, height: 20,
-                    alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* General Remarks */}
-        <TextInput
-          value={generalRemark}
-          onChangeText={setGeneralRemark}
-          placeholder="General remarks (optional)..."
-          placeholderTextColor="#9ca3af"
-          multiline
-          numberOfLines={2}
-          style={{
-            borderWidth: 1,
-            borderColor: '#e5e7eb',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            fontSize: 13,
-            color: '#1f2937',
-            backgroundColor: '#f9fafb',
-            marginBottom: 10,
-            minHeight: 48,
-            textAlignVertical: 'top',
-          }}
-        />
-
-        {/* Pending-RED notice above submit */}
-        {submitBlocked && (
-          <View
-            style={{
-              backgroundColor: '#FEF2F2',
-              borderWidth: 1,
-              borderColor: '#FCA5A5',
-              borderRadius: 10,
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '700' }}>
-              {pendingRedCount} RED item{pendingRedCount === 1 ? '' : 's'} pending supervisor acknowledgement
+            <Text style={{ fontSize: 15, fontWeight: '700', color: currentPage === 1 ? '#9ca3af' : '#374151' }}>
+              Previous
             </Text>
-          </View>
-        )}
+          </TouchableOpacity>
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={submitting || submitBlocked}
-          style={{
-            backgroundColor: submitBlocked ? '#9ca3af' : submitting ? '#86efac' : '#16a34a',
-            borderRadius: 14,
-            minHeight: 54,
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: '#16a34a',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 4,
-          }}
-          activeOpacity={0.85}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
+          {currentPage < pageCount ? (
+            !currentPageComplete && (
+              <TouchableOpacity
+                onPress={() => animatePage(currentPage + 1)}
+                disabled={transitioning}
+                style={{
+                  flex: 1,
+                  marginLeft: 8,
+                  minHeight: 52,
+                  borderRadius: 14,
+                  backgroundColor: '#2563eb',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Next</Text>
+              </TouchableOpacity>
+            )
           ) : (
-            <Text style={{ color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: 0.5 }}>
-              {submitBlocked ? 'SUPERVISOR ACK REQUIRED' : 'SUBMIT INSPECTION'}
-            </Text>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={submitting}
+              style={{
+                flex: 1,
+                marginLeft: 8,
+                minHeight: 52,
+                borderRadius: 14,
+                backgroundColor: submitting ? '#93c5fd' : '#2563eb',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Submit</Text>
+              )}
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
+
+        <Text style={{ fontSize: 12, color: '#6b7280', textAlign: 'center' }}>
+          {currentPageComplete && currentPage < pageCount
+            ? 'All answers complete — moving to the next page shortly.'
+            : 'Answer all 4 items on this page to advance automatically.'}
+        </Text>
       </View>
     </View>
   );

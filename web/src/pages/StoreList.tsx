@@ -176,7 +176,7 @@ export default function StoreList() {
         >
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-base font-semibold text-gray-900">{store.name}</h3>
-            {store.completed ? <span className="text-green-600 font-bold">✓</span> : null}
+            {store.completed ? <span className="text-green-600 font-semibold text-xs">Done</span> : null}
           </div>
           <p className="text-sm text-gray-700">{store.store_incharge ?? 'No incharge set'}</p>
           <p className="text-sm text-gray-500 truncate">{store.address ?? 'No address set'}</p>

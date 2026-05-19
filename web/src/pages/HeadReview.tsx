@@ -437,7 +437,19 @@ export default function HeadReview() {
                               <div key={response.id} className={`rounded-lg p-3 border ${isViolationResponse(response.response, response.trigger_on_no) ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900' : isCompliantResponse(response.response, response.trigger_on_no) ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900' : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800'}`}>
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{isViolationResponse(response.response, response.trigger_on_no) ? '⚠️ ' : isCompliantResponse(response.response, response.trigger_on_no) ? '✅ ' : '➖ '}{response.item_text}</div>
+                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100"><span className="inline-flex items-center gap-2 flex-wrap">
+                                      {isViolationResponse(response.response, response.trigger_on_no) && (
+                                        <span className="text-[10px] font-semibold uppercase text-red-700 bg-red-100 dark:bg-red-900/40 dark:text-red-300 px-1.5 py-0.5 rounded">Issue</span>
+                                      )}
+                                      {isCompliantResponse(response.response, response.trigger_on_no) && (
+                                        <span className="text-[10px] font-semibold uppercase text-green-700 bg-green-100 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded">OK</span>
+                                      )}
+                                      {!isViolationResponse(response.response, response.trigger_on_no) &&
+                                        !isCompliantResponse(response.response, response.trigger_on_no) && (
+                                          <span className="text-[10px] font-semibold uppercase text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 px-1.5 py-0.5 rounded">N/A</span>
+                                        )}
+                                      <span>{response.item_text}</span>
+                                    </span></div>
                                     {response.remarks && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Remarks: {response.remarks}</div>}
                                     {response.attachments.length > 0 && (
                                       <div className="mt-2 flex flex-wrap gap-2">

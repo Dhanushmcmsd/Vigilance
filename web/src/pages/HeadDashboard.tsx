@@ -339,7 +339,7 @@ function EscalationsTab() {
     return (
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-10 text-center">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No active escalations</h3>
-        <p className="text-sm text-gray-500 mt-2">All RED items have been resolved. 🎉</p>
+        <p className="text-sm text-gray-500 mt-2">All RED items have been resolved.</p>
       </div>
     );
   }

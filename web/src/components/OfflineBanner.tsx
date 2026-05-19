@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { WifiOff } from 'lucide-react';
 
 export default function OfflineBanner() {
   const [offline, setOffline] = useState(!navigator.onLine);
@@ -17,8 +18,9 @@ export default function OfflineBanner() {
   if (!offline) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100] bg-yellow-400 text-yellow-900 text-sm font-semibold text-center py-2 px-4">
-      ⚠️ You are offline — data will sync when connected
+    <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-amber-950 text-sm font-medium text-center py-2 px-4 flex items-center justify-center gap-2">
+      <WifiOff className="w-4 h-4 shrink-0" aria-hidden />
+      <span>You are offline. Data will sync when connected.</span>
     </div>
   );
 }

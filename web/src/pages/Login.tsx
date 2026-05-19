@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Shield, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ROLE_REDIRECT: Record<string, string> = {
@@ -59,7 +60,7 @@ export default function Login() {
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">🛡️</span>
+            <Shield className="w-8 h-8 text-white" aria-hidden />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">VMS</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Vigilance Management System</p>
@@ -106,7 +107,7 @@ export default function Login() {
                 tabIndex={-1}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? '🙈' : '👁️'}
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
           </div>

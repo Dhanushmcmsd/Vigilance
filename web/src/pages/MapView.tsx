@@ -184,7 +184,7 @@ export default function MapView() {
             <strong>${b.branch_name}</strong><br/>
             <span style="color:#6b7280">${b.city}</span><br/>
             <span style="font-size:12px;margin-top:4px;display:block">
-              📋 ${monthInspections} inspection${monthInspections !== 1 ? 's' : ''} this month
+              ${monthInspections} inspection${monthInspections !== 1 ? 's' : ''} this month
             </span>
           </div>`
         )
@@ -254,7 +254,7 @@ export default function MapView() {
     <div className="flex flex-col h-full min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
-        <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 mr-2">🗺️ Inspection Map</h1>
+        <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 mr-2">Inspection Map</h1>
 
         {/* Layer toggles */}
         <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
@@ -302,10 +302,10 @@ export default function MapView() {
           className="border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 dark:text-gray-100"
         >
           <option value="all">All Risk Levels</option>
-          <option value="low">🟢 Low</option>
-          <option value="medium">🟡 Medium</option>
-          <option value="high">🟠 High</option>
-          <option value="critical">🔴 Critical</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
         </select>
 
         {/* Risk legend */}

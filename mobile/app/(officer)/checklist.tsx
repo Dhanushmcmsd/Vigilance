@@ -27,6 +27,7 @@ import { ToastMessage } from '../../components/ToastMessage';
 import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
 import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
+import { claimBranchInspection } from '../../lib/branchLocks';
 
 /** Supervisor OTP modal + push/SMS disabled — RED items only log escalation server-side. */
 const SUPERVISOR_OTP_ENABLED = false;
@@ -41,10 +42,15 @@ const YELLOW_REALTIME_THRESHOLD = 3;
 const ITEMS_PER_PAGE = 4;
 
 export default function ChecklistScreen() {
-  const { branchId, branchName, branchType, officerLat, officerLon } = useLocalSearchParams<{
-    branchId: string; branchName: string; branchType: string;
-    officerLat: string; officerLon: string;
-  }>();
+  const { branchId, branchName, branchType, officerLat, officerLon, inspectionId: routeInspectionId } =
+    useLocalSearchParams<{
+      branchId: string;
+      branchName: string;
+      branchType: string;
+      officerLat: string;
+      officerLon: string;
+      inspectionId?: string;
+    }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { userName, userRolesId } = useAuth();
@@ -183,8 +189,33 @@ export default function ChecklistScreen() {
     [responses]
   );
 
+  useEffect(() => {
+    if (!branchId) return;
+    if (routeInspectionId) {
+      setActiveInspectionId(routeInspectionId);
+      setInspectionActive(true);
+      return;
+    }
+    void (async () => {
+      const claim = await claimBranchInspection(branchId);
+      if (claim.inspectionId) {
+        setActiveInspectionId(claim.inspectionId);
+        setInspectionActive(true);
+      } else {
+        Alert.alert('Store unavailable', claim.message, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
+    })();
+  }, [branchId, routeInspectionId, router]);
+
   const ensureInspection = useCallback(async (): Promise<string | null> => {
     if (activeInspectionId) return activeInspectionId;
+    if (routeInspectionId) {
+      setActiveInspectionId(routeInspectionId);
+      setInspectionActive(true);
+      return routeInspectionId;
+    }
     if (!userRolesId || !branchId) return null;
     const audit = await getDeviceAudit();
     const { data, error } = await supabase

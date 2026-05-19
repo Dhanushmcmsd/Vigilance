@@ -549,7 +549,7 @@ function ChecklistsTab() {
                   <button onClick={() => reorder(item.id, 'up', section)} className="btn-xs">↑</button>
                   <button onClick={() => reorder(item.id, 'down', section)} className="btn-xs">↓</button>
                   <button onClick={() => setEditingItem(item)} className="btn-xs">✏</button>
-                  <button onClick={() => softDelete(item.id)} className="btn-xs btn-xs-red">🗑</button>
+                  <button type="button" onClick={() => softDelete(item.id)} className="btn-xs btn-xs-red" aria-label="Delete item">Delete</button>
                 </div>
               </li>
             ))}

@@ -15,9 +15,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
-import { BranchCard } from '../../components/BranchCard';
+import { BranchCard, type BranchCardStatusTone } from '../../components/BranchCard';
 import { useLocationGate } from '../../lib/useLocationGate';
 import { LocationGateModal } from '../../components/LocationGateModal';
+import { useAuth } from '../../context/AuthContext';
+import { useBranchLocksRealtime } from '../../hooks/useBranchLocksRealtime';
+import {
+  claimBranchInspection,
+  isBranchSelectable,
+  lockLabel,
+} from '../../lib/branchLocks';
 
 interface Branch {
   id: string;
@@ -57,7 +64,9 @@ export default function SelectBranchScreen() {
   const { branchType } = useLocalSearchParams<{ branchType: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { userRolesId } = useAuth();
 
+  const [branchTypeId, setBranchTypeId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [filtered, setFiltered] = useState<Branch[]>([]);
   const [search, setSearch] = useState('');
@@ -71,6 +80,8 @@ export default function SelectBranchScreen() {
   const [nearMeBranches, setNearMeBranches] = useState<Branch[]>([]);
   const [nearMeLoading, setNearMeLoading] = useState(false);
   // ─────────────────────────────────────────────────────────────────────────
+
+  const { locks } = useBranchLocksRealtime(branchTypeId, userRolesId);
 
   const locationGate = useLocationGate(
     pendingBranch?.latitude ?? null,
@@ -120,6 +131,8 @@ export default function SelectBranchScreen() {
       setError('Unknown branch type. Please contact admin.');
       return;
     }
+
+    setBranchTypeId(typeRow.id);
 
     // Step 2: fetch branches filtered by the resolved branch_type_id
     const { data, error: err } = await supabase
@@ -213,19 +226,46 @@ export default function SelectBranchScreen() {
   };
   // ─────────────────────────────────────────────────────────────────────────
 
+  const getLockUi = (branchId: string) => {
+    const lock = locks[branchId];
+    const selectable = isBranchSelectable(lock, true);
+    const hasOwnDraft = !!lock?.inspectionId && lock.status === 'available';
+    let statusTone: BranchCardStatusTone = 'completed';
+    if (lock?.status === 'in_progress') statusTone = 'in_progress';
+    else if (hasOwnDraft) statusTone = 'resume';
+    return {
+      lock,
+      disabled: !selectable,
+      statusLabel: lockLabel(lock, hasOwnDraft),
+      statusTone,
+    };
+  };
+
   const handleBranchPress = (item: Branch) => {
+    const { disabled, statusLabel } = getLockUi(item.id);
+    if (disabled) {
+      showToast(statusLabel ?? 'This store is not available today.');
+      return;
+    }
     setPendingBranch(item);
     locationGate.check();
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!pendingBranch) return;
+    const claim = await claimBranchInspection(pendingBranch.id);
+    if (!claim.inspectionId) {
+      showToast(claim.message);
+      setPendingBranch(null);
+      return;
+    }
     router.push({
       pathname: '/(officer)/checklist',
       params: {
         branchId: pendingBranch.id,
         branchName: pendingBranch.branch_name,
         branchType,
+        inspectionId: claim.inspectionId,
         officerLat: officerCoords?.latitude?.toString() ?? '',
         officerLon: officerCoords?.longitude?.toString() ?? '',
       },
@@ -283,8 +323,9 @@ export default function SelectBranchScreen() {
               marginLeft: 8,
             }}
           >
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>📍 Near Me</Text>
-            <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>✕</Text>
+            <Ionicons name="locate" size={14} color="#fff" style={{ marginRight: 4 }} />
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Near Me</Text>
+            <Ionicons name="close" size={14} color="#fff" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -301,7 +342,8 @@ export default function SelectBranchScreen() {
               marginLeft: 8,
             }}
           >
-            <Text style={{ color: '#2563eb', fontSize: 13, fontWeight: '600' }}>📍 Near Me</Text>
+            <Ionicons name="locate" size={14} color="#2563eb" style={{ marginRight: 4 }} />
+            <Text style={{ color: '#2563eb', fontSize: 13, fontWeight: '600' }}>Near Me</Text>
           </TouchableOpacity>
         )}
         {/* ──────────────────────────────────────────────────────── */}
@@ -350,7 +392,7 @@ export default function SelectBranchScreen() {
         {/* ── Batch 16: Near Me subtitle ───────────────────────── */}
         {nearMeActive && (
           <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginLeft: 2 }}>
-            📍 Showing branches within 10 km
+            Showing branches within 10 km
           </Text>
         )}
         {/* ──────────────────────────────────────────────────────── */}
@@ -383,20 +425,25 @@ export default function SelectBranchScreen() {
           data={listData}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16 }}
-          renderItem={({ item }) => (
-            <BranchCard
-              branchName={item.branch_name}
-              location={item.location}
-              city={item.city}
-              onPress={() => handleBranchPress(item)}
-              // Pass distance_metres as subtitle when nearMeActive
-              subtitle={
-                nearMeActive && item.distance_metres !== undefined
-                  ? `${(item.distance_metres / 1000).toFixed(1)} km away`
-                  : undefined
-              }
-            />
-          )}
+          renderItem={({ item }) => {
+            const { disabled, statusLabel, statusTone } = getLockUi(item.id);
+            return (
+              <BranchCard
+                branchName={item.branch_name}
+                location={item.location}
+                city={item.city}
+                onPress={() => handleBranchPress(item)}
+                disabled={disabled}
+                statusLabel={statusLabel}
+                statusTone={statusTone}
+                subtitle={
+                  nearMeActive && item.distance_metres !== undefined
+                    ? `${(item.distance_metres / 1000).toFixed(1)} km away`
+                    : undefined
+                }
+              />
+            );
+          }}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
               <Ionicons name="search-outline" size={40} color="#d1d5db" />

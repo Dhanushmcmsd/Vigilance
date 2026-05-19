@@ -11,6 +11,8 @@ const HeadReview = lazy(() => import('./pages/HeadReview'));
 const ManagementDashboard = lazy(() => import('./pages/ManagementDashboard'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const MapView = lazy(() => import('./pages/MapView'));
+const ManagementArchive = lazy(() => import('./pages/ManagementArchive'));
+const AuditArchive = lazy(() => import('./pages/AuditArchive'));
 
 function PageLoader() {
   return (
@@ -93,6 +95,30 @@ function AppRoutes() {
           element={
             <RoleGuard allowedRoles={['management', 'admin']}>
               <Layout><ManagementDashboard /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/management/archive"
+          element={
+            <RoleGuard allowedRoles={['management', 'admin']}>
+              <Layout><ManagementArchive /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/management/audit-archive"
+          element={
+            <RoleGuard allowedRoles={['management', 'admin']}>
+              <Layout><AuditArchive backPath="/management" backLabel="Back to live dashboard" /></Layout>
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/head/archive"
+          element={
+            <RoleGuard allowedRoles={['head', 'admin']}>
+              <Layout><AuditArchive backPath="/head" backLabel="Back to head dashboard" /></Layout>
             </RoleGuard>
           }
         />

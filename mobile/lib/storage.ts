@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { queueInspection } from './syncQueue';
+import type { ItemAttachment } from '../components/ItemAttachments';
 
 export interface DraftForm {
   branchId: string;
@@ -10,7 +11,9 @@ export interface DraftForm {
   timeOut: string;
   responses: Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }>;
   generalRemark: string;
-  fileUris: string[];
+  /** @deprecated Legacy flat file list — use itemFiles */
+  fileUris?: string[];
+  itemFiles?: Record<string, ItemAttachment[]>;
   savedAt: string;
   officerLat: number | null;
   officerLon: number | null;

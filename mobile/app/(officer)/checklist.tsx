@@ -24,6 +24,9 @@ import { queueInspection } from '../../lib/syncQueue';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
+import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
+import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
+import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 
 /** Supervisor OTP modal + push/SMS disabled — RED items only log escalation server-side. */
 const SUPERVISOR_OTP_ENABLED = false;
@@ -54,7 +57,7 @@ export default function ChecklistScreen() {
   const [timeIn] = useState(nowTime());
   const [timeOut, setTimeOut] = useState('');
   const [generalRemark, setGeneralRemark] = useState('');
-  const [files, setFiles] = useState<{ uri: string; name: string; type: 'image' | 'document' }[]>([]);
+  const [itemFiles, setItemFiles] = useState<Record<string, ItemAttachment[]>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'warning' }>({
@@ -75,7 +78,7 @@ export default function ChecklistScreen() {
   const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
   const [inspectionActive, setInspectionActive] = useState(false);
   const [itemRemarkToggles, setItemRemarkToggles] = useState<Record<string, boolean>>({});
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
+  const [remarksExpanded, setRemarksExpanded] = useState(false);
   const { pingCount } = useLocationPing({ inspectionId: activeInspectionId, isActive: inspectionActive });
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning') =>
@@ -158,6 +161,7 @@ export default function ChecklistScreen() {
               setResponses(draft.responses as any);
               setGeneralRemark(draft.generalRemark);
               setTimeOut(draft.timeOut);
+              if (draft.itemFiles) setItemFiles(draft.itemFiles);
             },
           },
         ]);
@@ -298,7 +302,11 @@ export default function ChecklistScreen() {
           }
         }
 
-        if (response === 'No' || item?.risk_level === 'RED') {
+        if (
+          item &&
+          response &&
+          isViolationResponse(response, item.trigger_on_no ?? true)
+        ) {
           setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
         }
 
@@ -345,7 +353,7 @@ export default function ChecklistScreen() {
       timeOut,
       responses: responses as any,
       generalRemark,
-      fileUris: files.map((f) => f.uri),
+      itemFiles,
       savedAt: new Date().toISOString(),
       officerLat: officerLat ? parseFloat(officerLat) : null,
       officerLon: officerLon ? parseFloat(officerLon) : null,
@@ -353,33 +361,62 @@ export default function ChecklistScreen() {
     showToast('Draft saved successfully', 'success');
   };
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      const newFiles = result.assets.map((a) => ({
-        uri: a.uri,
-        name: a.fileName || `photo_${Date.now()}.jpg`,
-        type: 'image' as const,
-      }));
-      setFiles((prev) => [...prev, ...newFiles]);
-    }
-  };
+  const appendItemFiles = useCallback((itemId: string, incoming: ItemAttachment[]) => {
+    setItemFiles((prev) => ({
+      ...prev,
+      [itemId]: [...(prev[itemId] ?? []), ...incoming],
+    }));
+  }, []);
 
-  const pickDocument = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ multiple: true });
-    if (!result.canceled) {
-      const newFiles = result.assets.map((a) => ({
-        uri: a.uri,
-        name: a.name,
-        type: 'document' as const,
-      }));
-      setFiles((prev) => [...prev, ...newFiles]);
-    }
-  };
+  const removeItemFile = useCallback((itemId: string, uri: string) => {
+    setItemFiles((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).filter((f) => f.uri !== uri),
+    }));
+  }, []);
+
+  const pickImageForItem = useCallback(
+    async (itemId: string) => {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        appendItemFiles(
+          itemId,
+          result.assets.map((a) => ({
+            uri: a.uri,
+            name: a.fileName || `photo_${Date.now()}.jpg`,
+            type: 'image' as const,
+          })),
+        );
+      }
+    },
+    [appendItemFiles],
+  );
+
+  const pickDocumentForItem = useCallback(
+    async (itemId: string) => {
+      const result = await DocumentPicker.getDocumentAsync({ multiple: true });
+      if (!result.canceled) {
+        appendItemFiles(
+          itemId,
+          result.assets.map((a) => ({
+            uri: a.uri,
+            name: a.name,
+            type: 'document' as const,
+          })),
+        );
+      }
+    },
+    [appendItemFiles],
+  );
+
+  const totalAttachmentCount = useMemo(
+    () => Object.values(itemFiles).reduce((sum, list) => sum + list.length, 0),
+    [itemFiles],
+  );
 
   const pageCount = useMemo(() => Math.ceil(items.length / ITEMS_PER_PAGE), [items.length]);
   const currentPageItems = useMemo(
@@ -466,17 +503,6 @@ export default function ChecklistScreen() {
       return;
     }
 
-    const shortRed = items.find((i) => {
-      if (i.risk_level !== 'RED') return false;
-      const min = i.min_remark_chars ?? 50;
-      const len = responses[i.id]?.remark?.length ?? 0;
-      return len < min;
-    });
-    if (shortRed) {
-      showToast('RED items require a detailed remark (min 50 chars)', 'warning');
-      return;
-    }
-
     Alert.alert(
       'Submit Inspection',
       'Submit this inspection? You cannot edit after submitting.',
@@ -501,7 +527,7 @@ export default function ChecklistScreen() {
                 timeOut,
                 responses: responses as any,
                 generalRemark,
-                fileUris: files.map((f) => f.uri),
+                itemFiles,
                 savedAt: new Date().toISOString(),
                 officerLat: officerLat ? parseFloat(officerLat) : null,
                 officerLon: officerLon ? parseFloat(officerLon) : null,
@@ -525,23 +551,7 @@ export default function ChecklistScreen() {
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
-              for (const file of files) {
-                const ext = file.name.split('.').pop();
-                const path = `inspections/${inspectionId}/${Date.now()}_${file.name}`;
-                const blob = await (await fetch(file.uri)).blob();
-                const { data: uploadData, error: uploadErr } = await supabase.storage
-                  .from('inspection-files')
-                  .upload(path, blob, { contentType: file.type === 'image' ? `image/${ext}` : 'application/octet-stream' });
-                if (!uploadErr && uploadData) {
-                  const { data: urlData } = supabase.storage.from('inspection-files').getPublicUrl(path);
-                  await supabase.from('inspection_files').insert({
-                    inspection_id: inspectionId,
-                    file_url: urlData.publicUrl,
-                    file_name: file.name,
-                    file_type: file.type,
-                  });
-                }
-              }
+              await uploadInspectionFiles(inspectionId, itemFiles);
 
               if (generalRemark.trim()) {
                 await supabase.from('general_remarks').insert({
@@ -577,7 +587,7 @@ export default function ChecklistScreen() {
                   timeIn,
                   timeOut,
                   answeredCount: String(items.length),
-                  filesCount: String(files.length),
+                  filesCount: String(totalAttachmentCount),
                 },
               });
             } catch (e: any) {
@@ -766,10 +776,12 @@ export default function ChecklistScreen() {
               const badge = resolveRiskBadge(item.risk_level);
               const response = responses[item.id]?.response ?? null;
               const remark = responses[item.id]?.remark ?? '';
-              const effectiveMinChars = item.min_remark_chars ?? (item.risk_level === 'RED' ? 50 : 0);
+              const effectiveMinChars = item.min_remark_chars ?? 0;
               const remarkLen = remark.length;
               const remarkBelowMin = effectiveMinChars > 0 && remarkLen < effectiveMinChars;
               const showRemark = isRemarkVisible(item.id);
+              const triggerOnNo = item.trigger_on_no ?? true;
+              const itemAttachments = itemFiles[item.id] ?? [];
 
               return (
                 <View
@@ -797,16 +809,26 @@ export default function ChecklistScreen() {
                   </Text>
 
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                    {[
-                      { label: '✓ YES', value: 'Yes', activeColor: '#16a34a', activeBg: '#dcfce7', inactiveColor: '#6b7280' },
-                      { label: '✗ NO', value: 'No', activeColor: '#dc2626', activeBg: '#fee2e2', inactiveColor: '#6b7280' },
-                      { label: '— N/A', value: 'N/A', activeColor: '#475569', activeBg: '#f1f5f9', inactiveColor: '#6b7280' },
-                    ].map((button) => {
+                    {(
+                      [
+                        { label: '✓ YES', value: 'Yes' as const },
+                        { label: '✗ NO', value: 'No' as const },
+                        { label: '— N/A', value: 'N/A' as const },
+                      ]
+                    ).map((button) => {
                       const active = response === button.value;
+                      const colors =
+                        button.value === 'N/A'
+                          ? {
+                              activeColor: '#475569',
+                              activeBg: '#f1f5f9',
+                              inactiveColor: '#6b7280',
+                            }
+                          : responseButtonColors(button.value, response, triggerOnNo);
                       return (
                         <TouchableOpacity
                           key={button.value}
-                          onPress={() => handleResponse(item.id, button.value as 'Yes' | 'No' | 'N/A' | null)}
+                          onPress={() => handleResponse(item.id, button.value)}
                           activeOpacity={0.75}
                           style={{
                             flex: 1,
@@ -814,18 +836,31 @@ export default function ChecklistScreen() {
                             paddingVertical: 12,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: active ? button.activeBg : '#f8fafc',
+                            backgroundColor: active ? colors.activeBg : '#f8fafc',
                             borderWidth: 1.5,
-                            borderColor: active ? button.activeColor : '#e2e8f0',
+                            borderColor: active ? colors.activeColor : '#e2e8f0',
                           }}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: active ? button.activeColor : button.inactiveColor }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '700',
+                              color: active ? colors.activeColor : colors.inactiveColor,
+                            }}
+                          >
                             {button.label}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
+
+                  <ItemAttachments
+                    files={itemAttachments}
+                    onAddPhoto={() => void pickImageForItem(item.id)}
+                    onAddDocument={() => void pickDocumentForItem(item.id)}
+                    onRemove={(uri) => removeItemFile(item.id, uri)}
+                  />
 
                   <TouchableOpacity onPress={() => toggleRemarkVisibility(item.id)} activeOpacity={0.75}>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>
@@ -879,55 +914,29 @@ export default function ChecklistScreen() {
             }}
           >
             <TouchableOpacity
-              onPress={() => setAttachmentsExpanded((prev) => !prev)}
-              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: attachmentsExpanded ? 12 : 0 }}
+              onPress={() => setRemarksExpanded((prev) => !prev)}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: remarksExpanded ? 12 : 0 }}
             >
-              <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>Attachments & Remarks</Text>
-              <Ionicons name={attachmentsExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#2563eb" />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>General Remarks (optional)</Text>
+              <Ionicons name={remarksExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#2563eb" />
             </TouchableOpacity>
-            {attachmentsExpanded && (
-              <>
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                  <TouchableOpacity
-                    onPress={pickImage}
-                    style={{ flex: 1, backgroundColor: '#eff6ff', borderRadius: 14, paddingVertical: 12, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#2563eb', fontWeight: '700' }}>Add Photos</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={pickDocument}
-                    style={{ flex: 1, backgroundColor: '#eff6ff', borderRadius: 14, paddingVertical: 12, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#2563eb', fontWeight: '700' }}>Add Docs</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  value={generalRemark}
-                  onChangeText={setGeneralRemark}
-                  placeholder="General remarks..."
-                  placeholderTextColor="#9ca3af"
-                  multiline
-                  numberOfLines={4}
-                  style={{
-                    backgroundColor: '#f8fafc',
-                    borderRadius: 14,
-                    padding: 12,
-                    fontSize: 13,
-                    color: '#111827',
-                    minHeight: 90,
-                  }}
-                />
-                {files.length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>Attached files</Text>
-                    {files.map((file) => (
-                      <Text key={file.uri} style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>
-                        • {file.name}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </>
+            {remarksExpanded && (
+              <TextInput
+                value={generalRemark}
+                onChangeText={setGeneralRemark}
+                placeholder="Overall observations for this visit..."
+                placeholderTextColor="#9ca3af"
+                multiline
+                numberOfLines={4}
+                style={{
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 14,
+                  padding: 12,
+                  fontSize: 13,
+                  color: '#111827',
+                  minHeight: 90,
+                }}
+              />
             )}
           </View>
         )}

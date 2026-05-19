@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Animated } from 'react-native';
 import { haptics } from '../lib/haptics';
+import { isViolationResponse } from '../lib/checklistScoring';
 
 type ResponseType = 'Yes' | 'No' | 'N/A' | null;
 type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
@@ -26,8 +27,6 @@ const RISK_THEME: Record<RiskLevel, { border: string; bg: string; banner: string
   GREEN:  { border: 'transparent', bg: '#FFFFFF', banner: '#16A34A' },
 };
 
-const RED_MIN_REMARK = 50;
-
 export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   itemId,
   itemText,
@@ -50,22 +49,16 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   const isYellow = risk_level === 'YELLOW';
   const theme = risk_level ? RISK_THEME[risk_level] : null;
 
-  // Effective remark minimum: explicit value > RED default > 0
-  const effectiveMinChars = min_remark_chars ?? (isRed ? RED_MIN_REMARK : 0);
+  const effectiveMinChars = min_remark_chars ?? 0;
   const remarkLen = remark?.length ?? 0;
   const remarkBelowMin = effectiveMinChars > 0 && remarkLen < effectiveMinChars;
 
   useEffect(() => {
-    if (response === 'No') {
+    if (response && isViolationResponse(response, trigger_on_no)) {
       setShowRemark(true);
       setTimeout(() => remarkInputRef.current?.focus(), 150);
     }
-    // Auto-open remark for RED items regardless of response so the user
-    // can immediately see why a long remark is required.
-    if (isRed && response !== null && effectiveMinChars > 0) {
-      setShowRemark(true);
-    }
-  }, [response, isRed, effectiveMinChars]);
+  }, [response, trigger_on_no]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -190,7 +183,7 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
       >
         <Text style={{ fontSize: 12, color: '#2563eb', fontWeight: '500' }}>
           {showRemark ? '▲ Hide remark' : '+ Add remark'}
-          {isRed && effectiveMinChars > 0 && ` (min ${effectiveMinChars} chars)`}
+          {effectiveMinChars > 0 && ` (min ${effectiveMinChars} chars)`}
         </Text>
       </TouchableOpacity>
 
@@ -200,11 +193,7 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
             ref={remarkInputRef}
             value={remark}
             onChangeText={(t) => onRemarkChange(itemId, t)}
-            placeholder={
-              isRed
-                ? 'Describe the violation in detail (required for RED items)...'
-                : 'Type your remark here...'
-            }
+            placeholder="Type your remark here (optional)..."
             placeholderTextColor="#9ca3af"
             multiline
             numberOfLines={3}

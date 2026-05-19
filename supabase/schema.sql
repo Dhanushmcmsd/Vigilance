@@ -91,12 +91,13 @@ CREATE TABLE IF NOT EXISTS public.inspection_responses (
 
 -- 7. inspection_files
 CREATE TABLE IF NOT EXISTS public.inspection_files (
-  id             uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
-  inspection_id  uuid  REFERENCES public.inspections(id) ON DELETE CASCADE,
-  file_url       text  NOT NULL,
-  file_name      text,
-  file_type      text,   -- 'image' or 'document'
-  uploaded_at    timestamptz DEFAULT now()
+  id                  uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  inspection_id       uuid  REFERENCES public.inspections(id) ON DELETE CASCADE,
+  checklist_item_id   uuid  REFERENCES public.checklist_templates(id) ON DELETE SET NULL,
+  file_url            text  NOT NULL,
+  file_name           text,
+  file_type           text,   -- 'image' or 'document'
+  uploaded_at         timestamptz DEFAULT now()
 );
 
 -- 8. general_remarks
@@ -135,23 +136,44 @@ CREATE TRIGGER trg_inspections_updated_at
 -- ============================================================
 -- COMPLIANCE SCORE TRIGGER
 -- ============================================================
+CREATE OR REPLACE FUNCTION public.is_response_compliant(
+  p_response text,
+  p_trigger_on_no boolean
+) RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE
+    WHEN p_response IS NULL OR p_response = 'N/A' THEN NULL
+    WHEN p_trigger_on_no THEN p_response = 'Yes'
+    ELSE p_response = 'No'
+  END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.calculate_compliance_score()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_yes_count   int;
-  v_total_count int;
-  v_score       numeric(5,2);
-  v_risk        text;
+  v_compliant_count int;
+  v_total_count     int;
+  v_score           numeric(5,2);
+  v_risk            text;
 BEGIN
   SELECT
-    COUNT(*) FILTER (WHERE response = 'Yes'),
-    COUNT(*) FILTER (WHERE response IN ('Yes','No'))
-  INTO v_yes_count, v_total_count
-  FROM public.inspection_responses
-  WHERE inspection_id = COALESCE(NEW.inspection_id, OLD.inspection_id);
+    COUNT(*) FILTER (
+      WHERE public.is_response_compliant(
+        ir.response,
+        COALESCE(rc.trigger_on_no, ct.trigger_on_no, true)
+      ) IS TRUE
+    ),
+    COUNT(*) FILTER (WHERE ir.response IN ('Yes', 'No'))
+  INTO v_compliant_count, v_total_count
+  FROM public.inspection_responses ir
+  JOIN public.checklist_templates ct ON ct.id = ir.checklist_item_id
+  LEFT JOIN public.risk_classifications rc ON rc.checklist_item_id = ct.id
+  WHERE ir.inspection_id = COALESCE(NEW.inspection_id, OLD.inspection_id);
 
   IF v_total_count > 0 THEN
-    v_score := (v_yes_count::numeric / v_total_count::numeric) * 100;
+    v_score := (v_compliant_count::numeric / v_total_count::numeric) * 100;
   ELSE
     v_score := NULL;
   END IF;

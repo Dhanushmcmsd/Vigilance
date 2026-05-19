@@ -170,6 +170,7 @@ async function syncOne(item: QueuedInspection): Promise<void> {
     responses,
     generalRemark,
     fileUris,
+    itemFiles,
     officerLat,
     officerLon,
     inspectionId,
@@ -256,17 +257,36 @@ async function syncOne(item: QueuedInspection): Promise<void> {
     });
   }
 
-  if (fileUris?.length) {
-    // We don't re-upload the bytes here — file URIs are local. The original
-    // submission path uploads to Storage; offline flush only re-creates the
-    // metadata row using whatever URI we cached. A future enhancement is to
-    // also queue the binary itself; out of scope for this pass.
-    const fileRows = fileUris.map((uri) => ({
+  const queuedItemFiles = itemFiles ?? {};
+  const legacyUris = fileUris ?? [];
+  const fileRows: Array<{
+    inspection_id: string;
+    file_url: string;
+    file_name: string;
+    file_type: string;
+    checklist_item_id?: string;
+  }> = [];
+
+  for (const [checklistItemId, attachments] of Object.entries(queuedItemFiles)) {
+    for (const file of attachments) {
+      fileRows.push({
+        inspection_id: resolvedId!,
+        file_url: file.uri,
+        file_name: file.name,
+        file_type: file.type,
+        checklist_item_id: checklistItemId,
+      });
+    }
+  }
+  for (const uri of legacyUris) {
+    fileRows.push({
       inspection_id: resolvedId!,
       file_url: uri,
       file_name: uri.split('/').pop() ?? 'attachment',
       file_type: /\.(png|jpe?g|webp)$/i.test(uri) ? 'image' : 'document',
-    }));
+    });
+  }
+  if (fileRows.length) {
     await supabase.from('inspection_files').insert(fileRows);
   }
 }

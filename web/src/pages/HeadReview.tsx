@@ -4,9 +4,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import Filters from '../components/Filters';
 import RiskBadge from '../components/RiskBadge';
+import { isCompliantResponse, isViolationResponse } from '../lib/checklistScoring';
 // InspectionPdfReport is dynamically imported on demand to keep the
 // initial bundle small (@react-pdf/renderer is ~1 MB minified).
 type InspectionPdfData = import('../components/InspectionPdfReport').InspectionPdfData;
+
+interface ReviewAttachment {
+  url: string;
+  name?: string;
+  type: 'image' | 'document';
+}
 
 interface ReviewResponse {
   id: string;
@@ -14,7 +21,9 @@ interface ReviewResponse {
   item_text: string;
   response: string;
   remarks: string | null;
-  file_url: string | null;
+  trigger_on_no: boolean;
+  risk_level: string | null;
+  attachments: ReviewAttachment[];
 }
 
 interface ReviewInspection {
@@ -71,15 +80,22 @@ export default function HeadReview() {
           time_out,
           compliance_score,
           risk_level,
-          remarks,
+          head_comment,
           branches:branch_id (branch_name, city, branch_types:branch_type_id (type_name)),
           user_roles:officer_id (name),
-          inspection_files (file_url),
+          general_remarks ( remark_text ),
+          inspection_files (file_url, file_name, file_type, checklist_item_id),
           inspection_responses (
             id,
             response,
             remarks,
-            checklist_templates:checklist_item_id (section, item_text)
+            checklist_item_id,
+            checklist_templates:checklist_item_id (
+              section,
+              item_text,
+              trigger_on_no,
+              risk_level
+            )
           )
         `)
         .in('status', ['submitted', 'approved', 'rejected'])
@@ -96,20 +112,33 @@ export default function HeadReview() {
         time_out: item.time_out,
         compliance_score: Number(item.compliance_score ?? 0),
         risk_level: item.risk_level ?? 'low',
-        general_remarks: item.remarks ?? null,
+        general_remarks: (item.general_remarks as { remark_text?: string }[] | null)?.[0]?.remark_text ?? null,
         branch_name: item.branches?.branch_name ?? 'Unknown Branch',
         branch_type: item.branches?.branch_types?.type_name ?? 'Unknown Type',
         officer_name: item.user_roles?.name ?? 'Unknown Officer',
         city: item.branches?.city ?? '-',
         files: (item.inspection_files ?? []).map((f: any) => f.file_url).filter(Boolean),
-        responses: (item.inspection_responses ?? []).map((r: any) => ({
-          id: r.id,
-          section: r.checklist_templates?.section ?? '',
-          item_text: r.checklist_templates?.item_text ?? '',
-          response: r.response,
-          remarks: r.remarks ?? null,
-          file_url: null,
-        })),
+        responses: (item.inspection_responses ?? []).map((r: any) => {
+          const ct = r.checklist_templates;
+          const triggerOnNo = ct?.trigger_on_no ?? true;
+          const itemFiles = (item.inspection_files ?? []).filter(
+            (f: any) => f.checklist_item_id === r.checklist_item_id,
+          );
+          return {
+            id: r.id,
+            section: ct?.section ?? '',
+            item_text: ct?.item_text ?? '',
+            response: r.response,
+            remarks: r.remarks ?? null,
+            trigger_on_no: !!triggerOnNo,
+            risk_level: (ct?.risk_level as string | null) ?? null,
+            attachments: itemFiles.map((f: any) => ({
+              url: f.file_url,
+              name: f.file_name ?? undefined,
+              type: (f.file_type === 'image' ? 'image' : 'document') as 'image' | 'document',
+            })),
+          };
+        }),
       }));
     },
   });
@@ -172,6 +201,9 @@ export default function HeadReview() {
           item_text: r.item_text,
           response: r.response,
           remarks: r.remarks,
+          risk_level: r.risk_level as 'RED' | 'YELLOW' | 'GREEN' | null,
+          trigger_on_no: r.trigger_on_no,
+          attachments: r.attachments,
         })),
         photos: selected.files
           .filter((f) => /\.(jpe?g|png|webp)$/i.test(f))
@@ -402,13 +434,28 @@ export default function HeadReview() {
                         {expandedSections[section] !== false && (
                           <div className="p-4 space-y-3">
                             {responses.map((response) => (
-                              <div key={response.id} className={`rounded-lg p-3 border ${response.response === 'No' ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900' : response.response === 'Yes' ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900' : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800'}`}>
+                              <div key={response.id} className={`rounded-lg p-3 border ${isViolationResponse(response.response, response.trigger_on_no) ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900' : isCompliantResponse(response.response, response.trigger_on_no) ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900' : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800'}`}>
                                 <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{response.response === 'No' ? '⚠️ ' : response.response === 'Yes' ? '✅ ' : '➖ '}{response.item_text}</div>
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{isViolationResponse(response.response, response.trigger_on_no) ? '⚠️ ' : isCompliantResponse(response.response, response.trigger_on_no) ? '✅ ' : '➖ '}{response.item_text}</div>
                                     {response.remarks && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Remarks: {response.remarks}</div>}
+                                    {response.attachments.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {response.attachments.map((file) =>
+                                          file.type === 'image' || /\.(jpe?g|png|webp)$/i.test(file.url) ? (
+                                            <a key={file.url} href={file.url} target="_blank" rel="noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                                              <img src={file.url} alt={file.name ?? 'Evidence'} className="w-20 h-16 object-cover" />
+                                            </a>
+                                          ) : (
+                                            <a key={file.url} href={file.url} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline">
+                                              {file.name ?? 'Document'}
+                                            </a>
+                                          ),
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{response.response}</span>
+                                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">{response.response}</span>
                                 </div>
                               </div>
                             ))}

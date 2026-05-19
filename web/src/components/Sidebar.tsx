@@ -5,14 +5,20 @@ const navItems = {
   head: [
     { label: 'Dashboard', path: '/head', icon: '🏠' },
     { label: 'Review Inspections', path: '/head/review', icon: '🔍' },
+    { label: 'Audit Archive', path: '/head/archive', icon: '📁' },
   ],
   management: [
-    { label: 'Dashboard', path: '/management', icon: '📊' },
+    { label: 'Live Dashboard', path: '/management', icon: '📊' },
+    { label: 'Monthly Archive', path: '/management/archive', icon: '📅' },
+    { label: 'Audit Reports', path: '/management/audit-archive', icon: '📁' },
   ],
   admin: [
     { label: 'Head Dashboard', path: '/head', icon: '🏠' },
     { label: 'Review Inspections', path: '/head/review', icon: '🔍' },
-    { label: 'Management Dashboard', path: '/management', icon: '📊' },
+    { label: 'Audit Archive', path: '/head/archive', icon: '📁' },
+    { label: 'Live Dashboard', path: '/management', icon: '📊' },
+    { label: 'Monthly Archive', path: '/management/archive', icon: '📅' },
+    { label: 'Audit Reports', path: '/management/audit-archive', icon: '📋' },
     { label: 'Admin Panel', path: '/admin', icon: '⚙️' },
   ],
 };

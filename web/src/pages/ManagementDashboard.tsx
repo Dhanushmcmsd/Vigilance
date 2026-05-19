@@ -1,238 +1,63 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Archive, TrendingDown } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import ComplianceChart from '../components/ComplianceChart';
 import BranchHeatmap from '../components/BranchHeatmap';
 import InspectionTable, { type BranchRow } from '../components/InspectionTable';
 import BranchDetailDrawer from '../components/BranchDetailDrawer';
-import { supabase } from '../lib/supabase';
-
-type RangeKey = 'today' | 'week' | 'month' | 'quarter' | 'custom';
-
-interface InspectionResponse {
-  section: string;
-  item_text: string;
-  response: string;
-  remarks: string | null;
-}
-
-interface InspectionItem {
-  id: string;
-  status: string;
-  compliance_score: number;
-  risk_level: string;
-  submitted_at: string;
-  inspection_date: string;
-  general_remarks: string | null;
-  branch_id: string;
-  branch_name: string;
-  branch_type: string;
-  city: string;
-  region: string;
-  officer_name: string;
-  responses: InspectionResponse[];
-}
-
-const getDateRange = (range: RangeKey, from: string, to: string) => {
-  const now = new Date();
-  const start = new Date(now);
-  const end = new Date(now);
-
-  if (range === 'today') {
-    start.setHours(0, 0, 0, 0);
-  } else if (range === 'week') {
-    const day = now.getDay();
-    const diff = day === 0 ? 6 : day - 1;
-    start.setDate(now.getDate() - diff);
-    start.setHours(0, 0, 0, 0);
-  } else if (range === 'month') {
-    start.setDate(1);
-    start.setHours(0, 0, 0, 0);
-  } else if (range === 'quarter') {
-    start.setMonth(now.getMonth() - 3);
-    start.setHours(0, 0, 0, 0);
-  } else if (range === 'custom' && from && to) {
-    return {
-      start: new Date(`${from}T00:00:00`),
-      end: new Date(`${to}T23:59:59`),
-    };
-  }
-
-  return { start, end };
-};
-
-const previousPeriod = (start: Date, end: Date) => {
-  const diff = end.getTime() - start.getTime();
-  const prevEnd = new Date(start.getTime() - 1);
-  const prevStart = new Date(prevEnd.getTime() - diff);
-  return { prevStart, prevEnd };
-};
-
-const trendPercent = (current: number, previous: number) => {
-  if (!previous && !current) return 0;
-  if (!previous) return 100;
-  return Math.round(((current - previous) / previous) * 100);
-};
+import LiveSyncIndicator from '../components/LiveSyncIndicator';
+import UnderperformingTable from '../components/UnderperformingTable';
+import { useManagementInspections } from '../hooks/useManagementInspections';
+import {
+  type RangeKey,
+  filterByDateRange,
+  getDateRange,
+  previousPeriod,
+} from '../lib/dateRanges';
+import {
+  computeBranchRows,
+  computeComplianceTrend,
+  computeExecutiveStats,
+  computeIssuesBySection,
+  computeTopIssues,
+  computeUnderperformers,
+} from '../lib/managementAnalytics';
 
 export default function ManagementDashboard() {
   const [range, setRange] = useState<RangeKey>('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [sortKey, setSortKey] = useState<keyof BranchRow>('avgCompliance');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedBranch, setSelectedBranch] = useState<BranchRow | null>(null);
 
+  const { data = [], isLoading, isFetching, error } = useManagementInspections();
   const { start, end } = getDateRange(range, customFrom, customTo);
   const { prevStart, prevEnd } = previousPeriod(start, end);
 
-  const { data = [], isLoading, error } = useQuery<InspectionItem[]>({
-    queryKey: ['inspections', 'management-dashboard'],
-    queryFn: async () => {
-      const { data: inspections, error: inspectionsError } = await supabase
-        .from('inspections')
-        .select(`
-          id,
-          status,
-          compliance_score,
-          risk_level,
-          submitted_at,
-          inspection_date,
-          general_remarks,
-          branch_id,
-          branches:branch_id (name, city, region, branch_types:type_id (name)),
-          user_roles:officer_id (full_name),
-          inspection_responses (section, item_text, response, remarks)
-        `)
-        .in('status', ['submitted', 'approved', 'rejected'])
-        .order('inspection_date', { ascending: false });
+  const filtered = useMemo(
+    () => filterByDateRange(data, start, end),
+    [data, start, end],
+  );
+  const previousFiltered = useMemo(
+    () => filterByDateRange(data, prevStart, prevEnd),
+    [data, prevStart, prevEnd],
+  );
 
-      if (inspectionsError) throw inspectionsError;
-
-      return (inspections ?? []).map((item: any) => ({
-        id: item.id,
-        status: item.status,
-        compliance_score: Number(item.compliance_score ?? 0),
-        risk_level: item.risk_level ?? 'low',
-        submitted_at: item.submitted_at ?? item.inspection_date,
-        inspection_date: item.inspection_date,
-        general_remarks: item.general_remarks,
-        branch_id: item.branch_id,
-        branch_name: item.branches?.name ?? 'Unknown Branch',
-        branch_type: item.branches?.branch_types?.name ?? 'Unknown Type',
-        city: item.branches?.city ?? '-',
-        region: item.branches?.region ?? '-',
-        officer_name: item.user_roles?.full_name ?? 'Unknown Officer',
-        responses: item.inspection_responses ?? [],
-      }));
-    },
-  });
-
-  const filtered = useMemo(() => {
-    return data.filter((item) => {
-      const date = new Date(item.inspection_date);
-      return date >= start && date <= end;
-    });
-  }, [data, start, end]);
-
-  const previousFiltered = useMemo(() => {
-    return data.filter((item) => {
-      const date = new Date(item.inspection_date);
-      return date >= prevStart && date <= prevEnd;
-    });
-  }, [data, prevStart, prevEnd]);
-
-  const stats = useMemo(() => {
-    const currentTotal = filtered.length;
-    const previousTotal = previousFiltered.length;
-
-    const currentCompliance = filtered.length
-      ? filtered.reduce((sum, item) => sum + item.compliance_score, 0) / filtered.length
-      : 0;
-    const previousCompliance = previousFiltered.length
-      ? previousFiltered.reduce((sum, item) => sum + item.compliance_score, 0) / previousFiltered.length
-      : 0;
-
-    const currentCritical = filtered.filter((item) => item.risk_level === 'critical').length;
-    const previousCritical = previousFiltered.filter((item) => item.risk_level === 'critical').length;
-
-    const currentPending = filtered.filter((item) => item.status === 'submitted').length;
-    const previousPending = previousFiltered.filter((item) => item.status === 'submitted').length;
-
-    const cfc = filtered.filter((item) => item.branch_type.toLowerCase().includes('cfc'));
-    const store = filtered.filter((item) => item.branch_type.toLowerCase().includes('store'));
-    const prevCfc = previousFiltered.filter((item) => item.branch_type.toLowerCase().includes('cfc'));
-    const prevStore = previousFiltered.filter((item) => item.branch_type.toLowerCase().includes('store'));
-
-    const cfcCompliance = cfc.length ? cfc.reduce((sum, item) => sum + item.compliance_score, 0) / cfc.length : 0;
-    const storeCompliance = store.length ? store.reduce((sum, item) => sum + item.compliance_score, 0) / store.length : 0;
-    const prevCfcCompliance = prevCfc.length ? prevCfc.reduce((sum, item) => sum + item.compliance_score, 0) / prevCfc.length : 0;
-    const prevStoreCompliance = prevStore.length ? prevStore.reduce((sum, item) => sum + item.compliance_score, 0) / prevStore.length : 0;
-
-    return {
-      total: { value: currentTotal, trend: trendPercent(currentTotal, previousTotal) },
-      compliance: { value: currentCompliance, trend: trendPercent(currentCompliance, previousCompliance) },
-      critical: { value: currentCritical, trend: trendPercent(currentCritical, previousCritical) },
-      pending: { value: currentPending, trend: trendPercent(currentPending, previousPending) },
-      cfc: { value: cfcCompliance, trend: trendPercent(cfcCompliance, prevCfcCompliance) },
-      store: { value: storeCompliance, trend: trendPercent(storeCompliance, prevStoreCompliance) },
-    };
-  }, [filtered, previousFiltered]);
-
-  const trendData = useMemo(() => {
-    const useWeekly = range === 'quarter';
-    const grouped = new Map<string, { cfc: number[]; store: number[] }>();
-
-    filtered.forEach((item) => {
-      const date = new Date(item.inspection_date);
-      const key = useWeekly
-        ? `W${Math.ceil(date.getDate() / 7)} ${date.toLocaleDateString('en-IN', { month: 'short' })}`
-        : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-      const entry = grouped.get(key) ?? { cfc: [], store: [] };
-      if (item.branch_type.toLowerCase().includes('cfc')) entry.cfc.push(item.compliance_score);
-      else entry.store.push(item.compliance_score);
-      grouped.set(key, entry);
-    });
-
-    return Array.from(grouped.entries()).map(([label, value]) => ({
-      label,
-      cfc: value.cfc.length ? value.cfc.reduce((a, b) => a + b, 0) / value.cfc.length : 0,
-      store: value.store.length ? value.store.reduce((a, b) => a + b, 0) / value.store.length : 0,
-    }));
-  }, [filtered, range]);
-
-  const issuesBySection = useMemo(() => {
-    const counts = new Map<string, number>();
-    filtered.forEach((inspection) => {
-      inspection.responses.filter((r) => r.response === 'No').forEach((response) => {
-        counts.set(response.section, (counts.get(response.section) ?? 0) + 1);
-      });
-    });
-    return Array.from(counts.entries())
-      .map(([section, issues]) => ({ section, issues }))
-      .sort((a, b) => b.issues - a.issues);
-  }, [filtered]);
-
-  const branchTable = useMemo<BranchRow[]>(() => {
-    const grouped = new Map<string, InspectionItem[]>();
-    filtered.forEach((item) => {
-      const list = grouped.get(item.branch_name) ?? [];
-      list.push(item);
-      grouped.set(item.branch_name, list);
-    });
-
-    const rows = Array.from(grouped.entries()).map(([branchName, items]) => {
-      const latest = items.slice().sort((a, b) => new Date(b.inspection_date).getTime() - new Date(a.inspection_date).getTime())[0];
-      return {
-        branchName,
-        type: latest.branch_type,
-        city: latest.city,
-        inspections: items.length,
-        avgCompliance: items.reduce((sum, item) => sum + item.compliance_score, 0) / items.length,
-        riskLevel: items.slice().sort((a, b) => ['low', 'medium', 'high', 'critical'].indexOf(b.risk_level) - ['low', 'medium', 'high', 'critical'].indexOf(a.risk_level))[0]?.risk_level ?? 'low',
-        lastInspected: new Date(latest.inspection_date).toLocaleDateString('en-IN'),
-      };
-    });
-
+  const stats = useMemo(
+    () => computeExecutiveStats(filtered, previousFiltered),
+    [filtered, previousFiltered],
+  );
+  const underperformers = useMemo(() => computeUnderperformers(filtered), [filtered]);
+  const trendData = useMemo(
+    () => computeComplianceTrend(filtered, range === 'quarter'),
+    [filtered, range],
+  );
+  const issuesBySection = useMemo(() => computeIssuesBySection(filtered), [filtered]);
+  const topIssues = useMemo(() => computeTopIssues(filtered), [filtered]);
+  const branchTable = useMemo(() => {
+    const rows = computeBranchRows(filtered);
     return rows.sort((a, b) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
@@ -242,33 +67,14 @@ export default function ManagementDashboard() {
     });
   }, [filtered, sortKey, sortDirection]);
 
-  const recentActivity = useMemo(() => {
-    return filtered
-      .slice()
-      .sort((a, b) => new Date(b.inspection_date).getTime() - new Date(a.inspection_date).getTime())
-      .slice(0, 15);
-  }, [filtered]);
-
-  const topIssues = useMemo(() => {
-    const counts = new Map<string, { section: string; item: string; count: number }>();
-    filtered.forEach((inspection) => {
-      inspection.responses.filter((r) => r.response === 'No').forEach((response) => {
-        const key = `${response.section}__${response.item_text}`;
-        const existing = counts.get(key) ?? { section: response.section, item: response.item_text, count: 0 };
-        existing.count += 1;
-        counts.set(key, existing);
-      });
-    });
-
-    return Array.from(counts.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10)
-      .map((item, index) => ({
-        rank: index + 1,
-        ...item,
-        percentage: filtered.length ? (item.count / filtered.length) * 100 : 0,
-      }));
-  }, [filtered]);
+  const recentActivity = useMemo(
+    () =>
+      filtered
+        .slice()
+        .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
+        .slice(0, 12),
+    [filtered],
+  );
 
   const exportCsv = () => {
     const rows = filtered.flatMap((item) =>
@@ -286,136 +92,214 @@ export default function ManagementDashboard() {
         item: response.item_text,
         response: response.response,
         remarks: response.remarks ?? '',
-      }))
+      })),
     );
-
-    const headers = Object.keys(rows[0] ?? {});
-    const csv = [headers.join(','), ...rows.map((row) => headers.map((header) => `"${String((row as any)[header] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    if (!rows.length) return;
+    const headers = Object.keys(rows[0]);
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) =>
+        headers.map((h) => `"${String((row as Record<string, unknown>)[h] ?? '').replace(/"/g, '""')}"`).join(','),
+      ),
+    ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'management-dashboard-export.csv');
-    document.body.appendChild(link);
+    link.download = `vms-executive-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
-    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleSort = (key: keyof BranchRow) => {
-    if (sortKey === key) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
+    if (sortKey === key) setSortDirection((p) => (p === 'asc' ? 'desc' : 'asc'));
+    else {
       setSortKey(key);
-      setSortDirection('desc');
+      setSortDirection(key === 'avgCompliance' ? 'asc' : 'desc');
     }
   };
 
   if (error) {
-    return <div className="bg-red-50 text-red-600 border border-red-200 rounded-xl p-4">Failed to load dashboard data.</div>;
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+        Failed to load dashboard data. Check your connection and Supabase configuration.
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 print-full">
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 no-print">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Executive Compliance Overview</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Leadership view across branches, issues, and review performance.</p>
+    <div className="space-y-8 print-full">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 px-6 py-8 text-white shadow-xl no-print">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.25),transparent_50%)]" />
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">
+              Executive command centre
+            </p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight">Network compliance overview</h1>
+            <p className="mt-2 max-w-xl text-sm text-slate-300">
+              Live field inspection data from officers — updates automatically when new visits are submitted.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <LiveSyncIndicator isFetching={isFetching} />
+            <Link
+              to="/management/archive"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur hover:bg-white/20"
+            >
+              <Archive className="h-4 w-4" />
+              Historical archive
+            </Link>
+          </div>
         </div>
+      </section>
+
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between no-print">
         <div className="flex flex-wrap gap-2">
-          {[
-            ['today', 'Today'],
-            ['week', 'This Week'],
-            ['month', 'This Month'],
-            ['quarter', 'Last 3 Months'],
-            ['custom', 'Custom'],
-          ].map(([key, label]) => (
+          {(
+            [
+              ['today', 'Today'],
+              ['week', 'This week'],
+              ['month', 'This month'],
+              ['quarter', 'Last 3 months'],
+              ['custom', 'Custom'],
+            ] as const
+          ).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setRange(key as RangeKey)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+              type="button"
+              onClick={() => setRange(key)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                 range === key
-                  ? 'bg-brand-600 text-white border-brand-600'
-                  : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                  ? 'bg-slate-900 text-white shadow dark:bg-white dark:text-slate-900'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
               }`}
             >
               {label}
             </button>
           ))}
-          {range === 'custom' && (
-            <div className="flex items-center gap-2">
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="px-3 py-2 rounded-lg border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-sm" />
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="px-3 py-2 rounded-lg border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-sm" />
-            </div>
-          )}
-          <button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">Export CSV</button>
+        </div>
+        {range === 'custom' && (
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            />
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            />
+          </div>
+        )}
+        <div className="flex gap-2">
           <button
-            onClick={() => window.print()}
-            className="px-4 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white text-sm font-medium"
-            title="Print this dashboard. For an itemised PDF of a single inspection, open it in Head Review and press P."
+            type="button"
+            onClick={exportCsv}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
           >
-            Print Dashboard
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-600"
+          >
+            Print
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
-        <StatCard label="Total Inspections" value={stats.total.value} trend={{ value: stats.total.trend, label: 'vs previous period' }} color="blue" loading={isLoading} />
-        <StatCard label="Compliance Rate" value={`${stats.compliance.value.toFixed(1)}%`} trend={{ value: stats.compliance.trend, label: 'vs previous period' }} color={stats.compliance.value >= 80 ? 'green' : stats.compliance.value >= 60 ? 'yellow' : 'red'} loading={isLoading} />
-        <StatCard label="Critical Issues" value={stats.critical.value} trend={{ value: stats.critical.trend, label: 'vs previous period' }} color={stats.critical.value > 0 ? 'red' : 'green'} loading={isLoading} />
-        <StatCard label="Pending Review" value={stats.pending.value} trend={{ value: stats.pending.trend, label: 'vs previous period' }} color={stats.pending.value > 0 ? 'yellow' : 'green'} loading={isLoading} />
-        <StatCard label="CFC Compliance" value={`${stats.cfc.value.toFixed(1)}%`} trend={{ value: stats.cfc.trend, label: 'vs previous period' }} color="green" loading={isLoading} />
-        <StatCard label="Store Compliance" value={`${stats.store.value.toFixed(1)}%`} trend={{ value: stats.store.trend, label: 'vs previous period' }} color="blue" loading={isLoading} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+        <StatCard label="Inspections" value={stats.total.value} trend={{ value: stats.total.trend, label: 'vs prior period' }} color="blue" loading={isLoading} />
+        <StatCard label="Network compliance" value={`${stats.compliance.value.toFixed(1)}%`} trend={{ value: stats.compliance.trend, label: 'vs prior period' }} color={stats.compliance.value >= 80 ? 'green' : stats.compliance.value >= 60 ? 'yellow' : 'red'} loading={isLoading} />
+        <StatCard label="Non-conformances" value={stats.violations.value} trend={{ value: stats.violations.trend, label: 'vs prior period' }} color={stats.violations.value > 0 ? 'red' : 'green'} loading={isLoading} />
+        <StatCard label="Critical visits" value={stats.critical.value} trend={{ value: stats.critical.trend, label: 'vs prior period' }} color="red" loading={isLoading} />
+        <StatCard label="Pending review" value={stats.pending.value} trend={{ value: stats.pending.trend, label: 'vs prior period' }} color="yellow" loading={isLoading} />
+        <StatCard label="Branches covered" value={stats.branchesCovered.value} trend={{ value: stats.branchesCovered.trend, label: 'vs prior period' }} color="blue" loading={isLoading} />
+        <StatCard label="CFC compliance" value={`${stats.cfc.value.toFixed(1)}%`} trend={{ value: stats.cfc.trend, label: 'vs prior period' }} color="green" loading={isLoading} />
+        <StatCard label="Store compliance" value={`${stats.store.value.toFixed(1)}%`} trend={{ value: stats.store.trend, label: 'vs prior period' }} color="blue" loading={isLoading} />
       </div>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
-        <ComplianceChart data={trendData} />
-        <BranchHeatmap data={issuesBySection} />
+      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-5">
+        <div className="2xl:col-span-3 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-red-500" />
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Underperforming stores</h2>
+            <span className="ml-auto text-xs text-slate-500">Below 70% compliance or elevated risk</span>
+          </div>
+          <UnderperformingTable
+            rows={underperformers}
+            onSelect={(name) => {
+              const row = branchTable.find((b) => b.branchName === name);
+              if (row) setSelectedBranch(row);
+            }}
+          />
+        </div>
+        <div className="2xl:col-span-2 space-y-6">
+          <ComplianceChart data={trendData} />
+          <BranchHeatmap data={issuesBySection} />
+        </div>
       </div>
 
       <InspectionTable rows={branchTable} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onView={setSelectedBranch} />
 
-      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-5">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
-          <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="mb-4 text-base font-bold text-slate-900 dark:text-white">Live activity feed</h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
             {recentActivity.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60">
-                <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300 flex items-center justify-center font-semibold">
-                  {item.officer_name.charAt(0).toUpperCase()}
+              <div
+                key={item.id}
+                className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                  {item.officer_name.charAt(0)}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{item.officer_name} • {item.branch_name}</div>
-                  <div className="text-xs text-gray-500 truncate">{new Date(item.inspection_date).toLocaleString('en-IN')}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.branch_name}</p>
+                  <p className="text-xs text-slate-500">
+                    {item.officer_name} · {new Date(item.submitted_at).toLocaleString('en-IN')}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <div className={`text-xs font-semibold px-2 py-1 rounded-full ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{item.status}</div>
-                  <div className="text-xs mt-1 font-semibold text-brand-600">{item.compliance_score.toFixed(1)}%</div>
+                  <p className="text-sm font-bold tabular-nums">{item.compliance_score.toFixed(0)}%</p>
+                  <p className="text-xs capitalize text-slate-500">{item.status}</p>
                 </div>
               </div>
             ))}
+            {!recentActivity.length && !isLoading && (
+              <p className="py-8 text-center text-sm text-slate-500">No inspections in this period yet.</p>
+            )}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-5 overflow-x-auto">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Top Recurring Issues</h3>
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-x-auto">
+          <div className="mb-4 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <h3 className="text-base font-bold">Top recurring non-conformances</h3>
+          </div>
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800">
-                <th className="py-2 pr-3">Rank</th>
-                <th className="py-2 pr-3">Checklist Item</th>
+              <tr className="border-b text-left text-xs uppercase text-slate-500">
+                <th className="py-2 pr-3">#</th>
+                <th className="py-2 pr-3">Item</th>
                 <th className="py-2 pr-3">Section</th>
-                <th className="py-2 pr-3">No Count</th>
-                <th className="py-2">% of Inspections</th>
+                <th className="py-2 pr-3">Count</th>
+                <th className="py-2">%</th>
               </tr>
             </thead>
             <tbody>
               {topIssues.map((issue) => (
-                <tr key={`${issue.section}-${issue.item}`} className="border-b border-gray-100 dark:border-gray-800">
-                  <td className="py-3 pr-3 font-semibold">{issue.rank}</td>
-                  <td className="py-3 pr-3 text-gray-900 dark:text-gray-100">{issue.item}</td>
-                  <td className="py-3 pr-3 text-gray-500">{issue.section}</td>
-                  <td className="py-3 pr-3 font-semibold text-red-500">{issue.count}</td>
-                  <td className="py-3">{issue.percentage.toFixed(1)}%</td>
+                <tr key={`${issue.section}-${issue.item}`} className="border-b border-slate-50 dark:border-slate-800">
+                  <td className="py-2 pr-3 font-semibold">{issue.rank}</td>
+                  <td className="py-2 pr-3">{issue.item}</td>
+                  <td className="py-2 pr-3 text-slate-500">{issue.section}</td>
+                  <td className="py-2 pr-3 font-semibold text-red-600">{issue.count}</td>
+                  <td className="py-2">{issue.percentage.toFixed(1)}%</td>
                 </tr>
               ))}
             </tbody>

@@ -9,71 +9,107 @@ import {
   pdf,
 } from '@react-pdf/renderer';
 import { saveAs } from './pdf-saver';
-
-// Register a single sans-serif fallback. We avoid loading remote fonts so the
-// PDF generates offline / inside the browser without network access.
+import { isCompliantResponse } from '../lib/checklistScoring';
 
 Font.registerHyphenationCallback((word) => [word]);
 
+const BRAND = '#1e3a5f';
+const MUTED = '#64748b';
+const BORDER = '#e2e8f0';
+
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 40,
-    paddingBottom: 60,
-    paddingHorizontal: 36,
-    fontSize: 10,
+    paddingTop: 44,
+    paddingBottom: 56,
+    paddingHorizontal: 40,
+    fontSize: 9,
     fontFamily: 'Helvetica',
-    color: '#111827',
+    color: '#0f172a',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    borderBottom: 1,
-    borderBottomColor: '#d1d5db',
-    paddingBottom: 12,
-    marginBottom: 16,
+  coverBand: {
+    backgroundColor: BRAND,
+    marginHorizontal: -40,
+    marginTop: -44,
+    paddingHorizontal: 40,
+    paddingTop: 36,
+    paddingBottom: 28,
+    marginBottom: 20,
   },
-  brand: { fontSize: 18, fontWeight: 700, color: '#1e3a8a', letterSpacing: 1 },
-  brandSub: { fontSize: 9, color: '#6b7280', marginTop: 2 },
-  metaLine: { fontSize: 9, color: '#374151', marginTop: 2 },
-  h1: { fontSize: 16, fontWeight: 700, marginBottom: 6 },
-  h2: { fontSize: 12, fontWeight: 700, marginTop: 14, marginBottom: 6, color: '#1f2937' },
-  kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  kpiBox: {
-    flex: 1,
-    border: 1,
-    borderColor: '#e5e7eb',
+  coverTitle: { fontSize: 22, fontWeight: 700, color: '#ffffff', letterSpacing: 0.5 },
+  coverSubtitle: { fontSize: 11, color: '#cbd5e1', marginTop: 6 },
+  coverMeta: { fontSize: 9, color: '#e2e8f0', marginTop: 14, lineHeight: 1.5 },
+  docRef: {
+    fontSize: 8,
+    color: MUTED,
+    textAlign: 'right',
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  executiveBox: {
+    borderWidth: 1,
+    borderColor: BORDER,
     borderRadius: 4,
-    padding: 8,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: '#f8fafc',
   },
-  kpiLabel: { fontSize: 8, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1 },
-  kpiValue: { fontSize: 16, fontWeight: 700, marginTop: 2 },
-  table: { width: '100%', border: 1, borderColor: '#e5e7eb', borderRadius: 4, marginTop: 4 },
-  tr: { flexDirection: 'row', borderBottom: 1, borderBottomColor: '#f3f4f6' },
-  trLast: { flexDirection: 'row' },
-  th: { fontSize: 9, fontWeight: 700, padding: 6, backgroundColor: '#f9fafb', color: '#374151' },
-  td: { fontSize: 9, padding: 6 },
-  pill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, fontSize: 8, fontWeight: 700 },
-  pillYes: { backgroundColor: '#dcfce7', color: '#166534' },
-  pillNo: { backgroundColor: '#fee2e2', color: '#b91c1c' },
-  pillNa: { backgroundColor: '#e5e7eb', color: '#374151' },
-  remark: { fontSize: 8, color: '#6b7280', marginTop: 2, fontStyle: 'italic' },
+  executiveTitle: { fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+  kpiRow: { flexDirection: 'row', gap: 10 },
+  kpi: { flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: 8, backgroundColor: '#ffffff' },
+  kpiLabel: { fontSize: 7, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8 },
+  kpiValue: { fontSize: 14, fontWeight: 700, marginTop: 4, color: BRAND },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: BRAND,
+    marginTop: 14,
+    marginBottom: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  itemCard: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 8,
+  },
+  itemCardFail: { borderColor: '#fecaca', backgroundColor: '#fffbfb' },
+  itemCardPass: { borderColor: '#bbf7d0', backgroundColor: '#fafdfa' },
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  itemText: { fontSize: 9, fontWeight: 600, flex: 1, paddingRight: 8, lineHeight: 1.4 },
+  statusPill: { fontSize: 8, fontWeight: 700, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  pillPass: { backgroundColor: '#dcfce7', color: '#166534' },
+  pillFail: { backgroundColor: '#fee2e2', color: '#b91c1c' },
+  pillNa: { backgroundColor: '#f1f5f9', color: '#475569' },
+  remark: { fontSize: 8, color: MUTED, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 },
+  evidenceLabel: { fontSize: 7, color: MUTED, marginTop: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photo: { width: 120, height: 86, objectFit: 'cover', borderRadius: 3, borderWidth: 1, borderColor: BORDER },
+  docChip: { fontSize: 7, color: '#334155', backgroundColor: '#f1f5f9', padding: 4, borderRadius: 3, marginTop: 4 },
   footer: {
     position: 'absolute',
-    bottom: 24,
-    left: 36,
-    right: 36,
+    bottom: 22,
+    left: 40,
+    right: 40,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    fontSize: 8,
-    color: '#9ca3af',
-    borderTop: 1,
-    borderTopColor: '#e5e7eb',
+    fontSize: 7,
+    color: '#94a3b8',
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
     paddingTop: 6,
   },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  photo: { width: 140, height: 100, objectFit: 'cover', borderRadius: 4 },
+  h2: { fontSize: 10, fontWeight: 700, marginTop: 10, marginBottom: 4, color: '#334155' },
+  body: { fontSize: 9, lineHeight: 1.5, color: '#334155' },
 });
+
+export interface InspectionPdfAttachment {
+  url: string;
+  name?: string;
+  type?: 'image' | 'document';
+}
 
 export interface InspectionPdfResponse {
   section: string;
@@ -81,6 +117,8 @@ export interface InspectionPdfResponse {
   response: 'Yes' | 'No' | 'N/A' | string;
   remarks?: string | null;
   risk_level?: 'RED' | 'YELLOW' | 'GREEN' | null;
+  trigger_on_no?: boolean;
+  attachments?: InspectionPdfAttachment[];
 }
 
 export interface InspectionPdfData {
@@ -99,135 +137,171 @@ export interface InspectionPdfData {
   headComment?: string | null;
   generalRemark?: string | null;
   responses: InspectionPdfResponse[];
+  /** Legacy flat photo list — prefer per-response attachments */
   photos?: { url: string; name?: string }[];
 }
 
-const responsePillStyle = (r: string) =>
-  r === 'Yes' ? styles.pillYes : r === 'No' ? styles.pillNo : styles.pillNa;
+function statusForItem(r: InspectionPdfResponse): 'pass' | 'fail' | 'na' {
+  if (!r.response || r.response === 'N/A') return 'na';
+  const trigger = r.trigger_on_no ?? true;
+  return isCompliantResponse(r.response, trigger) ? 'pass' : 'fail';
+}
 
-/**
- * PDF rendering of a single inspection. Pure presentational component —
- * `generateInspectionPdf()` below is what callers actually invoke.
- */
+function formatRef(id: string, date: string) {
+  return `VMS-AUD-${date.replace(/-/g, '')}-${id.slice(0, 8).toUpperCase()}`;
+}
+
 export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
-  // Group responses by section, preserving original order of first appearance.
   const grouped = new Map<string, InspectionPdfResponse[]>();
   for (const r of data.responses) {
     if (!grouped.has(r.section)) grouped.set(r.section, []);
     grouped.get(r.section)!.push(r);
   }
 
+  const failCount = data.responses.filter((r) => statusForItem(r) === 'fail').length;
+  const passCount = data.responses.filter((r) => statusForItem(r) === 'pass').length;
+  const hasAnyEvidence = data.responses.some((r) => (r.attachments?.length ?? 0) > 0);
+
   return (
     <Document
-      title={`Inspection – ${data.branchName} – ${data.inspectionDate}`}
+      title={`Store Audit — ${data.branchName} — ${data.inspectionDate}`}
       author="Vigilance Management System"
     >
       <Page size="A4" style={styles.page} wrap>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.brand}>VIGILANCE MS</Text>
-            <Text style={styles.brandSub}>Inspection Report</Text>
-          </View>
-          <View style={{ textAlign: 'right' }}>
-            <Text style={styles.metaLine}>Generated: {new Date().toLocaleString('en-IN')}</Text>
-            <Text style={styles.metaLine}>Inspection ID: {data.id.slice(0, 8)}</Text>
-          </View>
+        <View style={styles.coverBand}>
+          <Text style={styles.coverTitle}>STORE COMPLIANCE AUDIT REPORT</Text>
+          <Text style={styles.coverSubtitle}>Vigilance Management System · Confidential</Text>
+          <Text style={styles.coverMeta}>
+            {data.branchName}
+            {data.city ? ` · ${data.city}` : ''}
+            {'\n'}
+            {data.branchType} · Officer: {data.officerName}
+            {'\n'}
+            Inspection date: {data.inspectionDate}
+            {data.timeIn || data.timeOut ? ` · ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}` : ''}
+            {data.submittedAt ? `\nSubmitted: ${new Date(data.submittedAt).toLocaleString('en-IN')}` : ''}
+          </Text>
         </View>
 
-        <Text style={styles.h1}>{data.branchName}</Text>
-        <Text style={styles.metaLine}>
-          {data.branchType}
-          {data.city ? ` · ${data.city}` : ''} · Officer: {data.officerName}
-        </Text>
-        <Text style={styles.metaLine}>
-          Inspection date: {data.inspectionDate}
-          {data.timeIn || data.timeOut
-            ? ` · ${data.timeIn ?? '—'} → ${data.timeOut ?? '—'}`
-            : ''}
-        </Text>
+        <Text style={styles.docRef}>{formatRef(data.id, data.inspectionDate)}</Text>
 
-        {/* KPIs */}
-        <View style={[styles.kpiRow, { marginTop: 14 }]}>
-          <View style={styles.kpiBox}>
-            <Text style={styles.kpiLabel}>Compliance</Text>
-            <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
+        <View style={styles.executiveBox}>
+          <Text style={styles.executiveTitle}>Executive summary</Text>
+          <View style={styles.kpiRow}>
+            <View style={styles.kpi}>
+              <Text style={styles.kpiLabel}>Compliance score</Text>
+              <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
+            </View>
+            <View style={styles.kpi}>
+              <Text style={styles.kpiLabel}>Overall risk</Text>
+              <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
+            </View>
+            <View style={styles.kpi}>
+              <Text style={styles.kpiLabel}>Findings</Text>
+              <Text style={styles.kpiValue}>
+                {failCount} NC · {passCount} OK
+              </Text>
+            </View>
+            <View style={styles.kpi}>
+              <Text style={styles.kpiLabel}>Status</Text>
+              <Text style={styles.kpiValue}>{data.status.toUpperCase()}</Text>
+            </View>
           </View>
-          <View style={styles.kpiBox}>
-            <Text style={styles.kpiLabel}>Risk Level</Text>
-            <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
-          </View>
-          <View style={styles.kpiBox}>
-            <Text style={styles.kpiLabel}>Status</Text>
-            <Text style={styles.kpiValue}>{data.status.toUpperCase()}</Text>
-          </View>
+          <Text style={[styles.body, { marginTop: 8 }]}>
+            This report documents a structured field audit of retail operations, statutory controls,
+            and store security. Non-conformances (NC) are derived from each question&apos;s expected
+            compliant answer. Photographic evidence is shown inline where provided by the inspecting officer.
+          </Text>
         </View>
 
-        {/* Supervisor comment */}
         {data.headComment ? (
           <View>
-            <Text style={styles.h2}>Supervisor Comment</Text>
-            <Text>{data.headComment}</Text>
+            <Text style={styles.h2}>Supervisor review</Text>
+            <Text style={styles.body}>{data.headComment}</Text>
           </View>
         ) : null}
 
-        {/* General remark */}
         {data.generalRemark ? (
           <View>
-            <Text style={styles.h2}>General Remarks</Text>
-            <Text>{data.generalRemark}</Text>
+            <Text style={styles.h2}>General observations</Text>
+            <Text style={styles.body}>{data.generalRemark}</Text>
           </View>
         ) : null}
 
-        {/* Checklist */}
-        <Text style={styles.h2}>Checklist Responses</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Detailed audit findings</Text>
+
         {Array.from(grouped.entries()).map(([section, items]) => (
-          <View key={section} style={{ marginBottom: 6 }} wrap={false}>
-            <Text style={{ fontSize: 10, fontWeight: 700, marginBottom: 4, color: '#374151' }}>
-              {section}
-            </Text>
-            <View style={styles.table}>
-              {/* header row */}
-              <View style={styles.tr}>
-                <Text style={[styles.th, { flex: 4 }]}>Item</Text>
-                <Text style={[styles.th, { flex: 1, textAlign: 'center' }]}>Response</Text>
-                <Text style={[styles.th, { flex: 0.8, textAlign: 'center' }]}>Risk</Text>
-              </View>
-              {items.map((r, i) => (
+          <View key={section}>
+            <Text style={styles.sectionTitle}>{section}</Text>
+            {items.map((r, i) => {
+              const status = statusForItem(r);
+              const images = (r.attachments ?? []).filter(
+                (a) => a.type !== 'document' && /\.(jpe?g|png|webp|gif)$/i.test(a.url),
+              );
+              const docs = (r.attachments ?? []).filter((a) => a.type === 'document' || !/\.(jpe?g|png|webp|gif)$/i.test(a.url));
+
+              return (
                 <View
-                  key={`${r.section}-${i}`}
-                  style={i === items.length - 1 ? styles.trLast : styles.tr}
+                  key={`${section}-${i}`}
+                  style={[
+                    styles.itemCard,
+                    status === 'fail' ? styles.itemCardFail : status === 'pass' ? styles.itemCardPass : {},
+                  ]}
+                  wrap={false}
                 >
-                  <View style={{ flex: 4, padding: 6 }}>
-                    <Text style={{ fontSize: 9 }}>{r.item_text}</Text>
-                    {r.remarks ? <Text style={styles.remark}>“{r.remarks}”</Text> : null}
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemText}>{r.item_text}</Text>
+                    <Text
+                      style={[
+                        styles.statusPill,
+                        status === 'pass' ? styles.pillPass : status === 'fail' ? styles.pillFail : styles.pillNa,
+                      ]}
+                    >
+                      {status === 'pass'
+                        ? 'COMPLIANT'
+                        : status === 'fail'
+                          ? 'NON-CONFORMANCE'
+                          : 'N/A'}
+                      {' · '}
+                      {r.response}
+                    </Text>
                   </View>
-                  <View
-                    style={{
-                      flex: 1,
-                      padding: 6,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={[styles.pill, responsePillStyle(r.response)]}>{r.response}</Text>
-                  </View>
-                  <Text
-                    style={[styles.td, { flex: 0.8, textAlign: 'center', fontWeight: 700 }]}
-                  >
-                    {r.risk_level ?? '—'}
-                  </Text>
+                  {r.risk_level ? (
+                    <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>
+                      Risk classification: {r.risk_level}
+                    </Text>
+                  ) : null}
+                  {r.remarks ? <Text style={styles.remark}>Officer remark: {r.remarks}</Text> : null}
+                  {images.length > 0 && (
+                    <View>
+                      <Text style={styles.evidenceLabel}>Photographic evidence</Text>
+                      <View style={styles.photoRow}>
+                        {images.map((p, pi) => (
+                          <Image key={pi} src={p.url} style={styles.photo} />
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {docs.length > 0 && (
+                    <View>
+                      <Text style={styles.evidenceLabel}>Supporting documents</Text>
+                      {docs.map((d, di) => (
+                        <Text key={di} style={styles.docChip}>
+                          {d.name ?? `Document ${di + 1}`}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              ))}
-            </View>
+              );
+            })}
           </View>
         ))}
 
-        {/* Photos */}
-        {data.photos && data.photos.length > 0 && (
+        {!hasAnyEvidence && data.photos && data.photos.length > 0 && (
           <View break>
-            <Text style={styles.h2}>Photos</Text>
-            <View style={styles.photoGrid}>
+            <Text style={styles.sectionTitle}>Unassigned attachments</Text>
+            <View style={styles.photoRow}>
               {data.photos.slice(0, 12).map((p, i) => (
                 <Image key={i} src={p.url} style={styles.photo} />
               ))}
@@ -235,30 +309,21 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
           </View>
         )}
 
-        {/* Footer (rendered on every page) */}
-        <View
-          style={styles.footer}
-          fixed
-          render={({ pageNumber }) => (
-            <>
-              <Text>Vigilance Management System — CONFIDENTIAL</Text>
-              <Text>Page {pageNumber}</Text>
-            </>
-          )}
-        />
+        <View style={styles.footer} fixed>
+          <Text>Vigilance Management System · CONFIDENTIAL · For internal audit use only</Text>
+          <Text
+            render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+          />
+        </View>
       </Page>
     </Document>
   );
 }
 
-/**
- * Generate a PDF blob for the given inspection and trigger a browser download.
- * Returns the filename so callers can show "Downloaded foo.pdf" toasts.
- */
 export async function generateInspectionPdf(data: InspectionPdfData): Promise<string> {
   const blob = await pdf(<InspectionReportDoc data={data} />).toBlob();
   const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  const filename = `inspection-${safeBranch}-${data.inspectionDate}.pdf`;
+  const filename = `audit-report-${safeBranch}-${data.inspectionDate}.pdf`;
   saveAs(blob, filename);
   return filename;
 }

@@ -17,19 +17,24 @@ export function setupRealtimeSubscription(
 ) {
   if (realtimeChannel) return realtimeChannel;
 
+  const invalidateInspectionData = () => {
+    queryClient.invalidateQueries({ queryKey: ['inspections'] });
+    queryClient.invalidateQueries({ queryKey: ['branch-detail'] });
+    queryClient.invalidateQueries({ queryKey: ['pending-count'] });
+  };
+
   realtimeChannel = supabase
-    .channel('inspections-realtime')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'inspections' },
-      (payload) => {
-        queryClient.invalidateQueries({ queryKey: ['inspections'] });
-        queryClient.invalidateQueries({ queryKey: ['inspections-stats'] });
-        if (onNewInspection) {
-          onNewInspection(payload as Record<string, unknown>);
-        }
-      }
-    )
+    .channel('vms-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload) => {
+      invalidateInspectionData();
+      onNewInspection?.(payload as Record<string, unknown>);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'inspection_responses' }, () => {
+      invalidateInspectionData();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'inspection_files' }, () => {
+      invalidateInspectionData();
+    })
     .subscribe();
 
   return realtimeChannel;

@@ -212,32 +212,19 @@ export default function ChecklistScreen() {
       setInspectionActive(true);
       return routeInspectionId;
     }
-    if (!userRolesId || !branchId) return null;
-    const audit = await getDeviceAudit();
-    const { data, error } = await supabase
-      .from('inspections')
-      .insert({
-        officer_id: userRolesId,
-        branch_id: branchId,
-        inspection_date: date,
-        time_in: timeIn || null,
-        status: 'draft',
-        sync_status: 'synced',
-        device_id: audit.deviceId,
-        app_version: audit.appVersion,
-        officer_latitude: officerLat ? parseFloat(officerLat) : null,
-        officer_longitude: officerLon ? parseFloat(officerLon) : null,
-      })
-      .select('id')
-      .single();
-    if (error || !data) {
-      showToast('Could not initialise inspection for escalation', 'error');
-      return null;
+    if (!branchId) return null;
+    // Use the same idempotent RPC as the initial mount claim.
+    // A direct INSERT would conflict with the unique constraint
+    // (one draft per branch per day) that claim_branch_inspection enforces.
+    const claim = await claimBranchInspection(branchId);
+    if (claim.inspectionId) {
+      setActiveInspectionId(claim.inspectionId);
+      setInspectionActive(true);
+      return claim.inspectionId;
     }
-    setActiveInspectionId(data.id);
-    setInspectionActive(true);
-    return data.id;
-  }, [activeInspectionId, userRolesId, branchId, date, timeIn, officerLat, officerLon]);
+    showToast('Could not initialise inspection for escalation', 'error');
+    return null;
+  }, [activeInspectionId, routeInspectionId, branchId]);
 
   const handleRedTriggered = useCallback(
     async (itemId: string) => {

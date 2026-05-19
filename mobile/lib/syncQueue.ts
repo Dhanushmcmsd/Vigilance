@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 
 import { supabase } from './supabase';
+import { claimBranchInspection } from './branchLocks';
 import { getDeviceAudit } from './deviceInfo';
 import type { DraftForm } from './storage';
 
@@ -212,10 +213,12 @@ async function syncOne(item: QueuedInspection): Promise<void> {
       .eq('id', resolvedId);
     if (upErr) throw upErr;
   } else {
-    const { data: inserted, error: insErr } = await supabase
+    const claim = await claimBranchInspection(branchId);
+    if (!claim.inspectionId) throw new Error(claim.message || 'Could not claim inspection');
+    resolvedId = claim.inspectionId;
+    const { error: upErr } = await supabase
       .from('inspections')
-      .insert({
-        officer_id: officer.id,
+      .update({
         branch_id: branchId,
         inspection_date: date,
         time_in: timeIn || null,
@@ -228,10 +231,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         device_id: audit.deviceId,
         app_version: audit.appVersion,
       })
-      .select('id')
-      .single();
-    if (insErr || !inserted) throw insErr ?? new Error('insert failed');
-    resolvedId = inserted.id;
+      .eq('id', resolvedId);
+    if (upErr) throw upErr;
   }
 
   // Responses (idempotent upsert keyed on inspection + item).

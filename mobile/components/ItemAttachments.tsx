@@ -13,11 +13,19 @@ interface Props {
   onAddPhoto: () => void;
   onAddDocument: () => void;
   onRemove: (uri: string) => void;
+  /** Inline under remark field — no extra top divider */
+  compact?: boolean;
 }
 
-export function ItemAttachments({ files, onAddPhoto, onAddDocument, onRemove }: Props) {
+export function ItemAttachments({ files, onAddPhoto, onAddDocument, onRemove, compact }: Props) {
   return (
-    <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+    <View
+      style={
+        compact
+          ? { marginTop: 10 }
+          : { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' }
+      }
+    >
       <Text style={{ fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 8 }}>
         Evidence (optional)
       </Text>

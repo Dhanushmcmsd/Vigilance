@@ -15,7 +15,6 @@ interface ChecklistItemProps {
   onRemarkChange: (itemId: string, remark: string) => void;
   risk_level?: RiskLevel;
   trigger_on_no?: boolean;
-  min_remark_chars?: number;
   onRedTriggered?: (itemId: string) => void;
 }
 
@@ -35,7 +34,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   onRemarkChange,
   risk_level,
   trigger_on_no = false,
-  min_remark_chars,
   onRedTriggered,
 }) => {
   const [showRemark, setShowRemark] = useState(false);
@@ -46,10 +44,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   const isRed = risk_level === 'RED';
   const isYellow = risk_level === 'YELLOW';
   const theme = risk_level ? RISK_THEME[risk_level] : null;
-
-  const effectiveMinChars = min_remark_chars ?? 0;
-  const remarkLen = remark?.length ?? 0;
-  const remarkBelowMin = effectiveMinChars > 0 && remarkLen < effectiveMinChars;
 
   useEffect(() => {
     if (response && isViolationResponse(response, trigger_on_no)) {
@@ -179,8 +173,7 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Text style={{ fontSize: 12, color: '#2563eb', fontWeight: '500' }}>
-          {showRemark ? '▲ Hide remark' : '+ Add remark'}
-          {effectiveMinChars > 0 && ` (min ${effectiveMinChars} chars)`}
+          {showRemark ? '▲ Hide remark' : '+ Add remark (optional)'}
         </Text>
       </TouchableOpacity>
 
@@ -196,7 +189,7 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
             numberOfLines={3}
             style={{
               borderWidth: 1,
-              borderColor: remarkBelowMin ? '#DC2626' : '#e5e7eb',
+              borderColor: '#e5e7eb',
               borderRadius: 8,
               padding: 10,
               fontSize: 13,
@@ -206,19 +199,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
               textAlignVertical: 'top',
             }}
           />
-          {effectiveMinChars > 0 && (
-            <Text
-              style={{
-                marginTop: 4,
-                fontSize: 11,
-                fontWeight: '600',
-                color: remarkBelowMin ? '#DC2626' : '#16a34a',
-              }}
-            >
-              {remarkLen}/{effectiveMinChars} characters
-              {remarkBelowMin ? ` — ${effectiveMinChars - remarkLen} more required` : ' ✓'}
-            </Text>
-          )}
         </Animated.View>
       )}
     </View>

@@ -105,7 +105,7 @@ export default function ChecklistScreen() {
         .select(`
           id, section, item_text, item_order, risk_level, trigger_on_no,
           risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
-            risk_level, trigger_on_no, min_remark_chars, requires_photo
+            risk_level, trigger_on_no
           )
         `)
         .eq('is_active', true)
@@ -139,8 +139,6 @@ export default function ChecklistScreen() {
         item_order: r.item_order,
         risk_level: (rc?.risk_level ?? r.risk_level) as 'RED' | 'YELLOW' | 'GREEN' | undefined,
         trigger_on_no: rc?.trigger_on_no ?? r.trigger_on_no ?? false,
-        min_remark_chars: rc?.min_remark_chars ?? undefined,
-        requires_photo: rc?.requires_photo ?? false,
       };
     });
     setItems(mapped);
@@ -353,6 +351,7 @@ export default function ChecklistScreen() {
   };
 
   const appendItemFiles = useCallback((itemId: string, incoming: ItemAttachment[]) => {
+    setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
     setItemFiles((prev) => ({
       ...prev,
       [itemId]: [...(prev[itemId] ?? []), ...incoming],
@@ -767,12 +766,11 @@ export default function ChecklistScreen() {
               const badge = resolveRiskBadge(item.risk_level);
               const response = responses[item.id]?.response ?? null;
               const remark = responses[item.id]?.remark ?? '';
-              const effectiveMinChars = item.min_remark_chars ?? 0;
-              const remarkLen = remark.length;
-              const remarkBelowMin = effectiveMinChars > 0 && remarkLen < effectiveMinChars;
               const showRemark = isRemarkVisible(item.id);
               const triggerOnNo = item.trigger_on_no ?? true;
               const itemAttachments = itemFiles[item.id] ?? [];
+              const attachmentHint =
+                itemAttachments.length > 0 ? ` · ${itemAttachments.length} file(s)` : '';
 
               return (
                 <View
@@ -846,16 +844,11 @@ export default function ChecklistScreen() {
                     })}
                   </View>
 
-                  <ItemAttachments
-                    files={itemAttachments}
-                    onAddPhoto={() => void pickImageForItem(item.id)}
-                    onAddDocument={() => void pickDocumentForItem(item.id)}
-                    onRemove={(uri) => removeItemFile(item.id, uri)}
-                  />
-
                   <TouchableOpacity onPress={() => toggleRemarkVisibility(item.id)} activeOpacity={0.75}>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>
-                      {showRemark ? '▲ Hide remark' : '+ Add remark'}
+                      {showRemark
+                        ? '▲ Hide remark & evidence'
+                        : `+ Add remark or evidence (optional)${attachmentHint}`}
                     </Text>
                   </TouchableOpacity>
 
@@ -864,7 +857,7 @@ export default function ChecklistScreen() {
                       <TextInput
                         value={remark}
                         onChangeText={(text) => handleRemark(item.id, text)}
-                        placeholder="Type your remark here..."
+                        placeholder="Remark (optional)..."
                         placeholderTextColor="#9ca3af"
                         multiline
                         numberOfLines={3}
@@ -872,15 +865,17 @@ export default function ChecklistScreen() {
                           fontSize: 13,
                           color: '#111827',
                           borderBottomWidth: 1,
-                          borderBottomColor: remarkBelowMin ? '#dc2626' : '#d1d5db',
+                          borderBottomColor: '#d1d5db',
                           paddingVertical: 8,
                         }}
                       />
-                      {effectiveMinChars > 0 && (
-                        <Text style={{ marginTop: 6, fontSize: 11, fontWeight: '600', color: remarkBelowMin ? '#dc2626' : '#16a34a' }}>
-                          {remarkLen}/{effectiveMinChars} characters{remarkBelowMin ? ` — ${effectiveMinChars - remarkLen} more required` : ' ✓'}
-                        </Text>
-                      )}
+                      <ItemAttachments
+                        compact
+                        files={itemAttachments}
+                        onAddPhoto={() => void pickImageForItem(item.id)}
+                        onAddDocument={() => void pickDocumentForItem(item.id)}
+                        onRemove={(uri) => removeItemFile(item.id, uri)}
+                      />
                     </View>
                   )}
                 </View>

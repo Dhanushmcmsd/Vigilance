@@ -22,7 +22,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranchLocksRealtime } from '../../hooks/useBranchLocksRealtime';
 import {
   claimBranchInspection,
+  deleteAndResetInspection,
   isBranchSelectable,
+  isOwnCompletedBranch,
   lockLabel,
 } from '../../lib/branchLocks';
 
@@ -228,21 +230,57 @@ export default function SelectBranchScreen() {
 
   const getLockUi = (branchId: string) => {
     const lock = locks[branchId];
+    const isOwnCompleted = isOwnCompletedBranch(lock, userRolesId);
     const selectable = isBranchSelectable(lock, true);
     const hasOwnDraft = !!lock?.inspectionId && lock.status === 'available';
     let statusTone: BranchCardStatusTone = 'completed';
     if (lock?.status === 'in_progress') statusTone = 'in_progress';
     else if (hasOwnDraft) statusTone = 'resume';
+    // Own completed branches are visually completed but tappable for refill
+    const disabled = !selectable && !isOwnCompleted;
     return {
       lock,
-      disabled: !selectable,
-      statusLabel: lockLabel(lock, hasOwnDraft),
+      disabled,
+      statusLabel: isOwnCompleted
+        ? 'Completed · Tap to refill'
+        : lockLabel(lock, hasOwnDraft),
       statusTone,
     };
   };
 
   const handleBranchPress = (item: Branch) => {
-    const { disabled, statusLabel } = getLockUi(item.id);
+    const { lock, disabled, statusLabel } = getLockUi(item.id);
+
+    // If this is a completed branch that belongs to the current officer → offer Refill
+    if (lock?.status === 'completed' && isOwnCompletedBranch(lock, userRolesId)) {
+      Alert.alert(
+        'Store Already Completed',
+        `You already submitted a report for ${item.branch_name} today.\n\nDo you want to permanently delete all submitted data and refill the checklist?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open & Refill',
+            style: 'destructive',
+            onPress: async () => {
+              if (!lock.inspectionId) {
+                showToast('Inspection ID not found. Please try again.', );
+                return;
+              }
+              const result = await deleteAndResetInspection(lock.inspectionId);
+              if (!result.success) {
+                showToast(result.message);
+                return;
+              }
+              // Data deleted — now open a fresh inspection for this branch
+              setPendingBranch(item);
+              locationGate.check();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     if (disabled) {
       showToast(statusLabel ?? 'This store is not available today.');
       return;

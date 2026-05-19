@@ -98,29 +98,46 @@ export default function AuditHomeScreen() {
       .channel('audit-inspections-realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'inspections' },
+        // ── BUG FIX: Submissions are UPDATEs (draft → submitted), not INSERTs.
+        // Listening only for INSERT meant the audit list never refreshed after
+        // an officer pressed "Submit". Now we listen for all events and check
+        // that status changed to 'submitted'.
+        { event: '*', schema: 'public', table: 'inspections' },
         (payload) => {
-          const row = payload.new as { branch_id?: string; status?: string };
-          if (row.status !== 'submitted' || !row.branch_id) return;
-          const branchId = row.branch_id;
+          const next = payload.new as { branch_id?: string; status?: string } | undefined;
+          const prev = payload.old as { status?: string } | undefined;
+          // Only react when status transitions TO 'submitted' (avoids
+          // re-renders on unrelated draft inserts or approved/rejected updates)
+          const becameSubmitted =
+            next?.status === 'submitted' && prev?.status !== 'submitted';
+          const wasDeleted = payload.eventType === 'DELETE';
+          if (!becameSubmitted && !wasDeleted) return;
+          const branchId = next?.branch_id ?? (payload.old as any)?.branch_id;
+          if (!branchId) {
+            // Fallback: refresh everything
+            queryClient.invalidateQueries({ queryKey: ['audit-branch-list'] });
+            return;
+          }
           if (!newDotAnim.current[branchId]) {
             newDotAnim.current[branchId] = new Animated.Value(0);
           }
-          Animated.loop(
-            Animated.sequence([
-              Animated.timing(newDotAnim.current[branchId], {
-                toValue: 1,
-                duration: 600,
-                useNativeDriver: true,
-              }),
-              Animated.timing(newDotAnim.current[branchId], {
-                toValue: 0,
-                duration: 600,
-                useNativeDriver: true,
-              }),
-            ]),
-            { iterations: 5 },
-          ).start();
+          if (becameSubmitted) {
+            Animated.loop(
+              Animated.sequence([
+                Animated.timing(newDotAnim.current[branchId], {
+                  toValue: 1,
+                  duration: 600,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(newDotAnim.current[branchId], {
+                  toValue: 0,
+                  duration: 600,
+                  useNativeDriver: true,
+                }),
+              ]),
+              { iterations: 5 },
+            ).start();
+          }
           queryClient.invalidateQueries({ queryKey: ['audit-branch-list'] });
           queryClient.invalidateQueries({ queryKey: ['audit-store-reports', branchId] });
         },

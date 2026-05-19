@@ -103,46 +103,6 @@ export async function claimBranchInspection(branchId: string): Promise<{
   return { inspectionId: data as string, errorCode: null, message: '' };
 }
 
-/**
- * Permanently deletes a submitted inspection and all its data (responses,
- * files, remarks) so the original submitting officer can refill the checklist.
- * Only the officer who submitted the inspection can call this.
- */
-export async function deleteAndResetInspection(inspectionId: string): Promise<{
-  success: boolean;
-  errorCode: 'NOT_OWNER' | 'INSPECTION_NOT_FOUND' | 'CANNOT_REFILL_APPROVED' | 'OFFICER_NOT_FOUND' | 'UNKNOWN' | null;
-  message: string;
-}> {
-  const { error } = await supabase.rpc('delete_and_reset_inspection', {
-    p_inspection_id: inspectionId,
-  });
-  if (error) {
-    const msg = error.message ?? '';
-    if (msg.includes('NOT_OWNER'))
-      return { success: false, errorCode: 'NOT_OWNER', message: 'Only the officer who submitted this report can refill it.' };
-    if (msg.includes('INSPECTION_NOT_FOUND'))
-      return { success: false, errorCode: 'INSPECTION_NOT_FOUND', message: 'Inspection not found.' };
-    if (msg.includes('CANNOT_REFILL_APPROVED'))
-      return { success: false, errorCode: 'CANNOT_REFILL_APPROVED', message: 'This inspection has been approved or rejected and cannot be refilled.' };
-    if (msg.includes('OFFICER_NOT_FOUND'))
-      return { success: false, errorCode: 'OFFICER_NOT_FOUND', message: 'Officer account not found.' };
-    return { success: false, errorCode: 'UNKNOWN', message: msg || 'Could not reset inspection.' };
-  }
-  return { success: true, errorCode: null, message: '' };
-}
-
-/** Returns true if the current officer is the one who submitted/completed this branch today. */
-export function isOwnCompletedBranch(
-  info: BranchLockInfo | undefined,
-  currentOfficerRolesId: string | null,
-): boolean {
-  return (
-    info?.status === 'completed' &&
-    !!currentOfficerRolesId &&
-    info.officerId === currentOfficerRolesId
-  );
-}
-
 export function lockLabel(info?: BranchLockInfo, hasOwnDraft?: boolean): string | undefined {
   if (!info || info.status === 'available') {
     return hasOwnDraft ? 'Resume inspection' : undefined;

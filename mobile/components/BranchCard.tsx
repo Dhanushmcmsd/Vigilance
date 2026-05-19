@@ -53,7 +53,7 @@ export const BranchCard: React.FC<BranchCardProps> = ({
         alignItems: 'center',
         minHeight: TOUCH.rowHeight,
         borderWidth: 1,
-        borderColor: disabled ? '#e5e7eb' : COLOR.border,
+        borderColor: statusTone === 'completed' && disabled ? '#6ee7b7' : disabled ? '#e5e7eb' : COLOR.border,
         opacity: disabled ? 0.72 : 1,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
@@ -106,6 +106,8 @@ export const BranchCard: React.FC<BranchCardProps> = ({
       </View>
       {!disabled ? (
         <Ionicons name="chevron-forward" size={22} color={COLOR.borderStrong} />
+      ) : statusTone === 'completed' ? (
+        <Ionicons name="checkmark-circle" size={24} color="#047857" />
       ) : (
         <Ionicons name="lock-closed-outline" size={20} color={COLOR.textMuted} />
       )}

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queueInspection } from './syncQueue';
 
 export interface DraftForm {
   branchId: string;
@@ -61,13 +62,11 @@ export const getAllDrafts = async (): Promise<{ key: string; draft: DraftForm }[
     });
 };
 
+/** @deprecated Use queueInspection from ./syncQueue */
 export const enqueueOfflineSubmission = async (
   data: DraftForm & { inspectionId?: string }
 ): Promise<void> => {
-  const raw = await AsyncStorage.getItem(QUEUE_KEY);
-  const queue: typeof data[] = raw ? JSON.parse(raw) : [];
-  queue.push(data);
-  await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  await queueInspection(data);
 };
 
 export const getOfflineQueue = async (): Promise<(DraftForm & { inspectionId?: string })[]> => {

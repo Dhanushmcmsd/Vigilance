@@ -23,6 +23,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(officer)" />
+            <Stack.Screen name="(audit)" />
           </Stack>
           <StatusBar style="auto" />
         </AuthProvider>

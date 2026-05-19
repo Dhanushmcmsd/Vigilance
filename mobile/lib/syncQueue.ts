@@ -61,15 +61,43 @@ const getStore = (): KVStore => {
 
 // ── queue ops ───────────────────────────────────────────────────────────────
 
+const LEGACY_QUEUE_KEY = 'offline_submission_queue';
+
 const readQueue = async (): Promise<QueuedInspection[]> => {
   const raw = await getStore().getString(QUEUE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  let queue: QueuedInspection[] = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      queue = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      queue = [];
+    }
   }
+
+  // One-time merge from legacy AsyncStorage queue (offline_submission_queue)
+  const legacyRaw = await AsyncStorage.getItem(LEGACY_QUEUE_KEY);
+  if (legacyRaw) {
+    try {
+      const legacy = JSON.parse(legacyRaw) as (DraftForm & { inspectionId?: string })[];
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        const merged = [
+          ...queue,
+          ...legacy.map((item) => ({
+            ...item,
+            queuedAt: Date.now(),
+            attempts: 0,
+          })),
+        ];
+        await writeQueue(merged);
+        queue = merged;
+      }
+    } finally {
+      await AsyncStorage.removeItem(LEGACY_QUEUE_KEY);
+    }
+  }
+
+  return queue;
 };
 
 const writeQueue = async (queue: QueuedInspection[]): Promise<void> => {

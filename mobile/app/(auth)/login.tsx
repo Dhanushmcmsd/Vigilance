@@ -55,6 +55,8 @@ export default function LoginScreen() {
     // screen instead of the officer flow.
     if (role === 'officer') {
       router.replace('/(officer)');
+    } else if (role === 'audit') {
+      router.replace('/(audit)');
     } else if (role === 'head' || role === 'management' || role === 'admin') {
       router.replace('/(auth)/use-web-dashboard');
     } else {

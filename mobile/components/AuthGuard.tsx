@@ -20,6 +20,10 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     // Already authenticated but not an officer — show the "use the web
     // dashboard" notice rather than bouncing back to the login form
     // (which would just sit there with their session already valid).
+    if (userRole === 'audit') {
+      router.replace('/(audit)');
+      return;
+    }
     if (userRole && userRole !== 'officer') {
       router.replace('/(auth)/use-web-dashboard');
     }

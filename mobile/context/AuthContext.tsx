@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
-type Role = 'officer' | 'head' | 'management' | 'admin' | null;
+type Role = 'officer' | 'head' | 'management' | 'admin' | 'audit' | null;
 
 export type SignInResult = {
   error: string | null;

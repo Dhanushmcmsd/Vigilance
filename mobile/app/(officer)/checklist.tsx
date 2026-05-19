@@ -19,7 +19,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { saveDraft, loadDraft, deleteDraft, enqueueOfflineSubmission } from '../../lib/storage';
+import { saveDraft, loadDraft, deleteDraft } from '../../lib/storage';
+import { queueInspection } from '../../lib/syncQueue';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
@@ -390,8 +391,12 @@ export default function ChecklistScreen() {
     [items, currentPage]
   );
   const currentPageComplete = useMemo(
-    () => currentPageItems.every((item) => responses[item.id]?.response !== null),
-    [currentPageItems, responses]
+    () =>
+      currentPageItems.every((item) => {
+        const r = responses[item.id]?.response;
+        return r !== null && r !== undefined;
+      }),
+    [currentPageItems, responses],
   );
   const currentPageSections = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -496,7 +501,10 @@ export default function ChecklistScreen() {
             setSubmitting(true);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
-              await enqueueOfflineSubmission({
+              // If a RED already triggered while online, an inspections row
+              // exists in draft state — pass its id so the offline queue can
+              // UPDATE that row instead of inserting a duplicate.
+              await queueInspection({
                 branchId,
                 branchName,
                 branchType: branchType || '',

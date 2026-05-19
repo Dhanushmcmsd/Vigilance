@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid        REFERENCES auth.users ON DELETE CASCADE,
-  role        text        NOT NULL CHECK (role IN ('officer','head','management','admin')),
+  role        text        NOT NULL CHECK (role IN ('officer','head','management','admin','audit')),
   name        text        NOT NULL,
   phone       text,
   is_active   boolean     DEFAULT true,

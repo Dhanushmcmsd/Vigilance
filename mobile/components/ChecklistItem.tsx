@@ -16,7 +16,6 @@ interface ChecklistItemProps {
   risk_level?: RiskLevel;
   trigger_on_no?: boolean;
   min_remark_chars?: number;
-  isRedAcknowledged?: boolean;
   onRedTriggered?: (itemId: string) => void;
 }
 
@@ -37,7 +36,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   risk_level,
   trigger_on_no = false,
   min_remark_chars,
-  isRedAcknowledged = false,
   onRedTriggered,
 }) => {
   const [showRemark, setShowRemark] = useState(false);
@@ -71,7 +69,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   // Fire the RED-trigger callback exactly once per qualifying response change.
   useEffect(() => {
     if (!isRed || !onRedTriggered) return;
-    if (isRedAcknowledged) return;
     if (response === null) return;
     if (lastTriggeredResponseRef.current === response) return;
 
@@ -83,7 +80,7 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
       lastTriggeredResponseRef.current = response;
       onRedTriggered(itemId);
     }
-  }, [response, isRed, isRedAcknowledged, trigger_on_no, itemId, onRedTriggered]);
+  }, [response, isRed, trigger_on_no, itemId, onRedTriggered]);
 
   const ResponseButton = ({
     label,

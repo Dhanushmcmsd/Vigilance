@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import * as Updates from 'expo-updates';
 
 /**
- * On production/preview builds, check expo.dev for an OTA bundle and reload.
- * Skipped in Expo Go and dev client `__DEV__` mode.
+ * Production/preview: fetch OTA from expo.dev and reload when a newer bundle exists.
+ * Checks on cold start and whenever the app returns to the foreground.
  */
 export function useOtaUpdates(): void {
   useEffect(() => {
@@ -11,7 +12,7 @@ export function useOtaUpdates(): void {
 
     let cancelled = false;
 
-    (async () => {
+    const run = async () => {
       try {
         if (!Updates.isEnabled) return;
         const check = await Updates.checkForUpdateAsync();
@@ -21,12 +22,20 @@ export function useOtaUpdates(): void {
           await Updates.reloadAsync();
         }
       } catch {
-        // Non-fatal — user keeps running the embedded bundle.
+        // Non-fatal — keep embedded bundle.
       }
-    })();
+    };
+
+    void run();
+
+    const onAppState = (state: AppStateStatus) => {
+      if (state === 'active') void run();
+    };
+    const sub = AppState.addEventListener('change', onAppState);
 
     return () => {
       cancelled = true;
+      sub.remove();
     };
   }, []);
 }

@@ -29,9 +29,6 @@ import { isViolationResponse, responseButtonColors } from '../../lib/checklistSc
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 import { claimBranchInspection } from '../../lib/branchLocks';
 
-/** Supervisor OTP modal + push/SMS disabled — RED items only log escalation server-side. */
-const SUPERVISOR_OTP_ENABLED = false;
-
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
   const d = new Date();
@@ -77,7 +74,6 @@ export default function ChecklistScreen() {
   const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
 
   const [triggeredRedItems, setTriggeredRedItems] = useState<Set<string>>(new Set());
-  const [acknowledgedRedItems, setAcknowledgedRedItems] = useState<Set<string>>(new Set());
   const [yellowCount, setYellowCount] = useState(0);
   const [yellowAlertSent, setYellowAlertSent] = useState(false);
 
@@ -254,15 +250,6 @@ export default function ChecklistScreen() {
         return next;
       });
 
-      if (!SUPERVISOR_OTP_ENABLED) {
-        setAcknowledgedRedItems((prev) => {
-          if (prev.has(itemId)) return prev;
-          const next = new Set(prev);
-          next.add(itemId);
-          return next;
-        });
-      }
-
       if (!firstTime) return;
 
       const inspId = await ensureInspection();
@@ -270,8 +257,8 @@ export default function ChecklistScreen() {
 
       const redCount = triggeredRedItems.size + 1;
 
-      const alerts: Promise<unknown>[] = [
-        supabase.functions.invoke('red-alert', {
+      supabase.functions
+        .invoke('red-alert', {
           body: {
             inspection_id: inspId,
             checklist_item_id: itemId,
@@ -279,24 +266,10 @@ export default function ChecklistScreen() {
             branch_id: branchId,
             red_count: redCount,
           },
-        }),
-      ];
-
-      if (SUPERVISOR_OTP_ENABLED) {
-        alerts.push(
-          supabase.functions.invoke('supervisor-otp', {
-            body: {
-              action: 'send',
-              inspection_id: inspId,
-              checklist_item_id: itemId,
-            },
-          }),
-        );
-      }
-
-      Promise.all(alerts).catch(() => {
-        showToast('Escalation alert queued — will retry in background', 'warning');
-      });
+        })
+        .catch(() => {
+          showToast('Escalation alert queued — will retry in background', 'warning');
+        });
     },
     [ensureInspection, triggeredRedItems, userRolesId, branchId],
   );
@@ -323,7 +296,7 @@ export default function ChecklistScreen() {
           }
         }
 
-        if (item?.risk_level === 'RED' && response !== null && !acknowledgedRedItems.has(itemId)) {
+        if (item?.risk_level === 'RED' && response !== null) {
           const triggers =
             (item.trigger_on_no && response === 'No') ||
             (!item.trigger_on_no && response === 'Yes');
@@ -344,7 +317,7 @@ export default function ChecklistScreen() {
         return next;
       });
     },
-    [acknowledgedRedItems, handleRedTriggered, items]
+    [handleRedTriggered, items]
   );
 
   const handleRemark = useCallback((itemId: string, remark: string) => {
@@ -686,21 +659,21 @@ export default function ChecklistScreen() {
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
             <View>
-              <Text style={{ fontSize: 13, color: '#6b7280' }}>👤 Test Officer</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>Officer</Text>
               <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{userName}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ fontSize: 13, color: '#6b7280' }}>📅 Date</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>Date</Text>
               <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{date}</Text>
             </View>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
             <View>
-              <Text style={{ fontSize: 13, color: '#6b7280' }}>🕐 Time In</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>Time In</Text>
               <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600', marginTop: 2 }}>{timeIn}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, color: '#6b7280' }}>🕔 Time Out</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280' }}>Time Out</Text>
               <TextInput
                 value={timeOut}
                 onChangeText={setTimeOut}

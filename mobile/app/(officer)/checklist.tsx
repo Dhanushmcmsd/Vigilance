@@ -24,7 +24,9 @@ import { queueInspection } from '../../lib/syncQueue';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
-import { SupervisorOtpModal } from '../../components/SupervisorOtpModal';
+
+/** Supervisor OTP modal + push/SMS disabled — RED items only log escalation server-side. */
+const SUPERVISOR_OTP_ENABLED = false;
 
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
@@ -69,8 +71,6 @@ export default function ChecklistScreen() {
   const [acknowledgedRedItems, setAcknowledgedRedItems] = useState<Set<string>>(new Set());
   const [yellowCount, setYellowCount] = useState(0);
   const [yellowAlertSent, setYellowAlertSent] = useState(false);
-  const [otpModalVisible, setOtpModalVisible] = useState(false);
-  const [activeOtpItemId, setActiveOtpItemId] = useState<string | null>(null);
 
   const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null);
   const [inspectionActive, setInspectionActive] = useState(false);
@@ -219,8 +219,14 @@ export default function ChecklistScreen() {
         return next;
       });
 
-      setActiveOtpItemId(itemId);
-      setOtpModalVisible(true);
+      if (!SUPERVISOR_OTP_ENABLED) {
+        setAcknowledgedRedItems((prev) => {
+          if (prev.has(itemId)) return prev;
+          const next = new Set(prev);
+          next.add(itemId);
+          return next;
+        });
+      }
 
       if (!firstTime) return;
 
@@ -229,7 +235,7 @@ export default function ChecklistScreen() {
 
       const redCount = triggeredRedItems.size + 1;
 
-      Promise.all([
+      const alerts: Promise<unknown>[] = [
         supabase.functions.invoke('red-alert', {
           body: {
             inspection_id: inspId,
@@ -239,34 +245,26 @@ export default function ChecklistScreen() {
             red_count: redCount,
           },
         }),
-        supabase.functions.invoke('supervisor-otp', {
-          body: {
-            action: 'send',
-            inspection_id: inspId,
-            checklist_item_id: itemId,
-          },
-        }),
-      ]).catch(() => {
-        showToast('Supervisor alert queued — retrying in background', 'warning');
+      ];
+
+      if (SUPERVISOR_OTP_ENABLED) {
+        alerts.push(
+          supabase.functions.invoke('supervisor-otp', {
+            body: {
+              action: 'send',
+              inspection_id: inspId,
+              checklist_item_id: itemId,
+            },
+          }),
+        );
+      }
+
+      Promise.all(alerts).catch(() => {
+        showToast('Escalation alert queued — will retry in background', 'warning');
       });
     },
-    [ensureInspection, triggeredRedItems, userRolesId, branchId]
+    [ensureInspection, triggeredRedItems, userRolesId, branchId],
   );
-
-  const handleOtpAcknowledged = useCallback(() => {
-    if (!activeOtpItemId) {
-      setOtpModalVisible(false);
-      return;
-    }
-    setAcknowledgedRedItems((prev) => {
-      const next = new Set(prev);
-      next.add(activeOtpItemId);
-      return next;
-    });
-    setOtpModalVisible(false);
-    setActiveOtpItemId(null);
-    showToast('Supervisor acknowledgement recorded', 'success');
-  }, [activeOtpItemId]);
 
   const lastTriggeredRedResponse = useRef<Record<string, 'Yes' | 'No' | 'N/A' | null>>({});
   const handleResponse = useCallback(
@@ -336,8 +334,6 @@ export default function ChecklistScreen() {
     })();
   }, [yellowCount, yellowAlertSent, ensureInspection, userRolesId, branchId]);
 
-  const pendingRedCount = triggeredRedItems.size - acknowledgedRedItems.size;
-  const submitBlocked = pendingRedCount > 0;
 
   const handleSaveDraft = async () => {
     await saveDraft(branchId, today, {
@@ -467,14 +463,6 @@ export default function ChecklistScreen() {
       setHighlightedPage(targetPage);
       animatePage(targetPage);
       Alert.alert('Incomplete Inspection', `Please complete page ${targetPage} before submitting.`);
-      return;
-    }
-
-    if (submitBlocked) {
-      showToast(
-        `${pendingRedCount} RED item(s) pending supervisor acknowledgement`,
-        'error'
-      );
       return;
     }
 
@@ -620,16 +608,6 @@ export default function ChecklistScreen() {
         type={toast.type}
         onHide={() => setToast((p) => ({ ...p, visible: false }))}
       />
-
-      {activeOtpItemId && activeInspectionId && (
-        <SupervisorOtpModal
-          visible={otpModalVisible}
-          inspectionId={activeInspectionId}
-          checklistItemId={activeOtpItemId}
-          onAcknowledged={handleOtpAcknowledged}
-          onClose={() => setOtpModalVisible(false)}
-        />
-      )}
 
       <View style={{ backgroundColor: '#1e3a5f', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -812,12 +790,6 @@ export default function ChecklistScreen() {
                     <View style={{ backgroundColor: badge.backgroundColor, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: badge.color }}>{badge.label}</Text>
                     </View>
-                    {item.risk_level === 'RED' && response !== null && !acknowledgedRedItems.has(item.id) && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#dc2626' }}>⚠️</Text>
-                        <Text style={{ fontSize: 12, color: '#dc2626', fontWeight: '700' }}>Pending OTP</Text>
-                      </View>
-                    )}
                   </View>
 
                   <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', lineHeight: 22, marginVertical: 12 }}>

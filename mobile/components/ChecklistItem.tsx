@@ -76,9 +76,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
   }, [showRemark]);
 
   // Fire the RED-trigger callback exactly once per qualifying response change.
-  // Skip entirely once the supervisor has acknowledged — prevents re-opening
-  // the OTP modal when a section is collapsed and re-expanded (which remounts
-  // the component and resets the ref).
   useEffect(() => {
     if (!isRed || !onRedTriggered) return;
     if (isRedAcknowledged) return;
@@ -173,27 +170,6 @@ export const ChecklistItem: React.FC<ChecklistItemProps> = ({
               {risk_level}
             </Text>
           </View>
-          {isRed && !isRedAcknowledged && (
-            <Text style={{ marginLeft: 8, fontSize: 11, color: '#DC2626', fontWeight: '600' }}>
-              Pending supervisor OTP
-            </Text>
-          )}
-        </View>
-      )}
-
-      {isRed && !isRedAcknowledged && response !== null && (
-        <View
-          style={{
-            backgroundColor: '#DC2626',
-            borderRadius: 6,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            marginBottom: 8,
-          }}
-        >
-          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
-            ⚠️ RED RISK — Supervisor acknowledgement required
-          </Text>
         </View>
       )}
 

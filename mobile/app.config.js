@@ -150,9 +150,10 @@ if (expoOwner) {
 // Channel names must match the `channel` field in eas.json build profiles.
 // OTA runtime — updates only apply within the same app version (1.1.0 → 1.1.0).
 config.expo.runtimeVersion = { policy: 'appVersion' };
+// NEVER: useOtaUpdates prompts before reload so officers can verify each rollout.
 config.expo.updates = {
   enabled: true,
-  checkAutomatically: 'ON_LOAD',
+  checkAutomatically: 'NEVER',
   fallbackToCacheTimeout: 0,
   url: `https://u.expo.dev/${easProjectId}`,
 };

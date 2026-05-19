@@ -85,8 +85,11 @@ export default function StoreReportsScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'inspections', filter: `branch_id=eq.${branchId}` },
-        () => {
+        (payload) => {
           queryClient.invalidateQueries({ queryKey: ['audit-store-reports', branchId] });
+          if (payload.eventType === 'DELETE') {
+            queryClient.invalidateQueries({ queryKey: ['audit-branch-list'] });
+          }
         },
       )
       .subscribe();

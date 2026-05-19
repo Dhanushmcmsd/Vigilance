@@ -15,6 +15,8 @@ interface BranchCardProps {
   disabled?: boolean;
   statusLabel?: string;
   statusTone?: BranchCardStatusTone;
+  /** Overrides the default accessibility label derived from disabled state. */
+  accessibilityLabel?: string;
 }
 
 const statusColors: Record<BranchCardStatusTone, { bg: string; text: string }> = {
@@ -32,8 +34,15 @@ export const BranchCard: React.FC<BranchCardProps> = ({
   disabled = false,
   statusLabel,
   statusTone = 'completed',
+  accessibilityLabel: accessibilityLabelProp,
 }) => {
   const tone = statusLabel ? statusColors[statusTone] : null;
+  const locationLine = [location, city].filter(Boolean).join(', ');
+  const defaultA11yLabel = disabled
+    ? `Unavailable, ${branchName}, ${locationLine}${statusLabel ? `, ${statusLabel}` : ''}`
+    : statusLabel?.toLowerCase().includes('refill')
+      ? `Refill inspection, ${branchName}, ${locationLine}, ${statusLabel}`
+      : `Select ${branchName}, ${locationLine}${statusLabel ? `, ${statusLabel}` : ''}`;
 
   return (
     <TouchableOpacity
@@ -42,7 +51,7 @@ export const BranchCard: React.FC<BranchCardProps> = ({
       activeOpacity={disabled ? 1 : 0.7}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
-      accessibilityLabel={`${disabled ? 'Unavailable' : 'Select'} ${branchName}, ${[location, city].filter(Boolean).join(', ')}${statusLabel ? `, ${statusLabel}` : ''}`}
+      accessibilityLabel={accessibilityLabelProp ?? defaultA11yLabel}
       style={{
         backgroundColor: disabled ? '#f3f4f6' : COLOR.surface,
         borderRadius: RADIUS.md,
@@ -53,7 +62,12 @@ export const BranchCard: React.FC<BranchCardProps> = ({
         alignItems: 'center',
         minHeight: TOUCH.rowHeight,
         borderWidth: 1,
-        borderColor: statusTone === 'completed' && disabled ? '#6ee7b7' : disabled ? '#e5e7eb' : COLOR.border,
+        borderColor:
+          statusTone === 'completed' && !disabled
+            ? '#6ee7b7'
+            : disabled
+              ? '#e5e7eb'
+              : COLOR.border,
         opacity: disabled ? 0.72 : 1,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },

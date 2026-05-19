@@ -21,6 +21,7 @@ export interface LocationGateResult {
   distanceMetres: number | null;
   officerCoords: OfficerCoords | null;
   check: () => Promise<void>;
+  reset: () => void;
 }
 
 function haversineMetres(
@@ -84,5 +85,11 @@ export function useLocationGate(
     }
   }, [branchLat, branchLon, radiusMetres]);
 
-  return { status, distanceMetres, officerCoords, check };
+  const reset = useCallback(() => {
+    setStatus('idle');
+    setDistanceMetres(null);
+    setOfficerCoords(null);
+  }, []);
+
+  return { status, distanceMetres, officerCoords, check, reset };
 }

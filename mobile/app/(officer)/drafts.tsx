@@ -69,6 +69,21 @@ export default function DraftsScreen() {
       await load();
       if (r.attempted === 0) {
         showToast('No queued submissions.', 'warning');
+      } else if (r.branchCompleted > 0) {
+        haptics.warning();
+        Alert.alert(
+          'Store already completed',
+          'Another officer submitted this store while you were offline. That queued report was removed.',
+        );
+        if (r.succeeded > 0) {
+          showToast(`Synced ${r.succeeded} other submission(s).`, 'success');
+        }
+      } else if (r.abandoned > 0) {
+        haptics.error();
+        Alert.alert(
+          'Sync failed',
+          'Some submissions could not sync after 3 attempts. Check your connection and try again, or contact support.',
+        );
       } else if (r.failed === 0) {
         haptics.success();
         showToast(`Synced ${r.succeeded} of ${r.attempted}.`, 'success');

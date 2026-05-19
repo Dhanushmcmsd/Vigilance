@@ -77,6 +77,7 @@ export default function ConfirmScreen() {
     timeIn: string;
     timeOut: string;
     answeredCount: string;
+    totalItems: string;
     filesCount: string;
   }>();
   const router = useRouter();
@@ -152,7 +153,10 @@ export default function ConfirmScreen() {
             { label: 'Date', value: params.date },
             { label: 'Time In', value: params.timeIn || '—' },
             { label: 'Time Out', value: params.timeOut || '—' },
-            { label: 'Items Answered', value: `${params.answeredCount} / ${params.answeredCount}` },
+            {
+              label: 'Items Answered',
+              value: `${params.answeredCount ?? '0'} / ${params.totalItems ?? params.answeredCount ?? '0'}`,
+            },
             { label: 'Photos Attached', value: params.filesCount || '0' },
           ].map(({ label, value }) => (
             <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>

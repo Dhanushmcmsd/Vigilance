@@ -576,7 +576,8 @@ export default function ChecklistScreen() {
                   date,
                   timeIn,
                   timeOut,
-                  answeredCount: String(items.length),
+                  answeredCount: String(answeredCount),
+                  totalItems: String(items.length),
                   filesCount: String(totalAttachmentCount),
                 },
               });

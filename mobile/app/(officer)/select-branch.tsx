@@ -75,6 +75,7 @@ export default function SelectBranchScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
+  const [refilling, setRefilling] = useState(false);
   const [officerCoords, setOfficerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // ── Batch 16: Near Me state ──────────────────────────────────────────────
@@ -263,17 +264,21 @@ export default function SelectBranchScreen() {
             style: 'destructive',
             onPress: async () => {
               if (!lock.inspectionId) {
-                showToast('Inspection ID not found. Please try again.', );
+                showToast('Inspection ID not found. Please try again.');
                 return;
               }
-              const result = await deleteAndResetInspection(lock.inspectionId);
-              if (!result.success) {
-                showToast(result.message);
-                return;
+              setRefilling(true);
+              try {
+                const result = await deleteAndResetInspection(lock.inspectionId);
+                if (!result.success) {
+                  showToast(result.message);
+                  return;
+                }
+                setPendingBranch(item);
+                locationGate.check();
+              } finally {
+                setRefilling(false);
               }
-              // Data deleted — now open a fresh inspection for this branch
-              setPendingBranch(item);
-              locationGate.check();
             },
           },
         ],
@@ -309,10 +314,14 @@ export default function SelectBranchScreen() {
       },
     });
     setPendingBranch(null);
+    locationGate.reset();
   };
 
   const handleRetry = () => { locationGate.check(); };
-  const handleCancel = () => { setPendingBranch(null); };
+  const handleCancel = () => {
+    setPendingBranch(null);
+    locationGate.reset();
+  };
 
   const gateModalVisible =
     pendingBranch !== null && locationGate.status !== 'idle';
@@ -457,6 +466,13 @@ export default function SelectBranchScreen() {
           >
             <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
           </TouchableOpacity>
+        </View>
+      ) : refilling ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={{ marginTop: 12, color: '#6b7280', textAlign: 'center' }}>
+            Removing previous submission…
+          </Text>
         </View>
       ) : (
         <FlatList

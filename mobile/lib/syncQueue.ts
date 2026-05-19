@@ -121,40 +121,94 @@ export const clearQueue = async (): Promise<void> => writeQueue([]);
 
 // ── flush ───────────────────────────────────────────────────────────────────
 
+export const MAX_SYNC_ATTEMPTS = 3;
+
+/** Item cannot be synced — drop from queue (another officer completed the branch). */
+export class BranchCompletedSyncError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BranchCompletedSyncError';
+  }
+}
+
+/** Item exceeded retry limit — officer must reconnect or contact support. */
+export class SyncAttemptsExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SyncAttemptsExhaustedError';
+  }
+}
+
 export interface FlushResult {
   attempted: number;
   succeeded: number;
   failed: number;
+  /** Queued items dropped because another officer submitted first. */
+  branchCompleted: number;
+  /** Items removed after MAX_SYNC_ATTEMPTS failures. */
+  abandoned: number;
 }
 
 /**
  * Drains queued items into Supabase. Returns counts. Safe to call repeatedly;
  * if any item fails it stays in the queue for the next reconnect.
  */
+const emptyFlush = (): FlushResult => ({
+  attempted: 0,
+  succeeded: 0,
+  failed: 0,
+  branchCompleted: 0,
+  abandoned: 0,
+});
+
 export const flushQueue = async (): Promise<FlushResult> => {
   const net = await NetInfo.fetch();
-  if (!net.isConnected) return { attempted: 0, succeeded: 0, failed: 0 };
+  if (!net.isConnected) return emptyFlush();
 
   const queue = await readQueue();
-  if (queue.length === 0) return { attempted: 0, succeeded: 0, failed: 0 };
+  if (queue.length === 0) return emptyFlush();
 
   const remaining: QueuedInspection[] = [];
   let succeeded = 0;
   let failed = 0;
+  let branchCompleted = 0;
+  let abandoned = 0;
 
   for (const item of queue) {
     try {
       await syncOne(item);
       succeeded += 1;
     } catch (err) {
+      if (err instanceof BranchCompletedSyncError) {
+        branchCompleted += 1;
+        failed += 1;
+        if (__DEV__) console.warn('[syncQueue] branch already completed', err.message);
+        continue;
+      }
+      const nextAttempts = item.attempts + 1;
+      if (
+        err instanceof SyncAttemptsExhaustedError ||
+        nextAttempts >= MAX_SYNC_ATTEMPTS
+      ) {
+        abandoned += 1;
+        failed += 1;
+        if (__DEV__) console.warn('[syncQueue] abandoning queue item after retries', err);
+        continue;
+      }
       failed += 1;
-      remaining.push({ ...item, attempts: item.attempts + 1 });
-      if (__DEV__) console.warn('[syncQueue] flush failed', err);
+      remaining.push({ ...item, attempts: nextAttempts });
+      if (__DEV__) console.warn('[syncQueue] flush failed, will retry', err);
     }
   }
 
   await writeQueue(remaining);
-  return { attempted: queue.length, succeeded, failed };
+  return {
+    attempted: queue.length,
+    succeeded,
+    failed,
+    branchCompleted,
+    abandoned,
+  };
 };
 
 /**
@@ -214,7 +268,14 @@ async function syncOne(item: QueuedInspection): Promise<void> {
     if (upErr) throw upErr;
   } else {
     const claim = await claimBranchInspection(branchId);
-    if (!claim.inspectionId) throw new Error(claim.message || 'Could not claim inspection');
+    if (claim.errorCode === 'BRANCH_COMPLETED') {
+      throw new BranchCompletedSyncError(
+        claim.message || 'Another officer already submitted this store today.',
+      );
+    }
+    if (!claim.inspectionId) {
+      throw new Error(claim.message || 'Could not claim inspection');
+    }
     resolvedId = claim.inspectionId;
     const { error: upErr } = await supabase
       .from('inspections')

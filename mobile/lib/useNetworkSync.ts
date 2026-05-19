@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 
 import { flushQueue, FlushResult } from './syncQueue';
@@ -35,7 +36,20 @@ export function useNetworkSync(): NetworkSyncState {
       setState((s) => ({ ...s, syncing: true }));
       try {
         const result = await flushQueue();
-        if (!cancelled) setState((s) => ({ ...s, lastFlush: result, syncing: false }));
+        if (!cancelled) {
+          setState((s) => ({ ...s, lastFlush: result, syncing: false }));
+          if (result.branchCompleted > 0) {
+            Alert.alert(
+              'Store already completed',
+              'Another officer submitted a store you had queued offline. That submission was removed from the queue.',
+            );
+          } else if (result.abandoned > 0) {
+            Alert.alert(
+              'Sync failed',
+              'Some offline submissions could not sync after 3 attempts. Open Drafts to retry when your connection is stable.',
+            );
+          }
+        }
       } catch (err) {
         if (__DEV__) console.warn('[useNetworkSync] flush threw', err);
         if (!cancelled) setState((s) => ({ ...s, syncing: false }));

@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS public.inspections (
   officer_latitude    numeric(10,7),
   officer_longitude   numeric(10,7),
   device_info         text,
+  sync_status         text          DEFAULT 'synced' CHECK (sync_status IN ('pending','synced','failed')),
+  device_id           text,
+  app_version         text,
   created_at          timestamptz   DEFAULT now(),
   updated_at          timestamptz   DEFAULT now(),
   submitted_at        timestamptz

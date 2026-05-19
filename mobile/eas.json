@@ -13,6 +13,7 @@
     },
     "production": {
       "channel": "production",
+      "environment": "production",
       "autoIncrement": true,
       "distribution": "internal",
       "android": {
@@ -24,6 +25,7 @@
     },
     "production-store": {
       "extends": "production",
+      "environment": "production",
       "distribution": "store",
       "android": {
         "buildType": "app-bundle"

@@ -249,7 +249,7 @@ async function syncOne(item: QueuedInspection): Promise<void> {
 
   let resolvedId = inspectionId;
   if (resolvedId) {
-    const { error: upErr } = await supabase
+    const { data: submittedRows, error: upErr } = await supabase
       .from('inspections')
       .update({
         branch_id: branchId,
@@ -264,8 +264,13 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         device_id: audit.deviceId,
         app_version: audit.appVersion,
       })
-      .eq('id', resolvedId);
+      .eq('id', resolvedId)
+      .eq('status', 'draft')
+      .select('id, status');
     if (upErr) throw upErr;
+    if (!submittedRows?.length || submittedRows[0]?.status !== 'submitted') {
+      throw new Error('Could not finalize offline submission.');
+    }
   } else {
     const claim = await claimBranchInspection(branchId);
     if (claim.errorCode === 'BRANCH_COMPLETED') {
@@ -277,7 +282,7 @@ async function syncOne(item: QueuedInspection): Promise<void> {
       throw new Error(claim.message || 'Could not claim inspection');
     }
     resolvedId = claim.inspectionId;
-    const { error: upErr } = await supabase
+    const { data: submittedRows, error: upErr } = await supabase
       .from('inspections')
       .update({
         branch_id: branchId,
@@ -292,8 +297,13 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         device_id: audit.deviceId,
         app_version: audit.appVersion,
       })
-      .eq('id', resolvedId);
+      .eq('id', resolvedId)
+      .eq('status', 'draft')
+      .select('id, status');
     if (upErr) throw upErr;
+    if (!submittedRows?.length || submittedRows[0]?.status !== 'submitted') {
+      throw new Error('Could not finalize offline submission.');
+    }
   }
 
   // Responses (idempotent upsert keyed on inspection + item).

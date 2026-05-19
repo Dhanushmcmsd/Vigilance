@@ -280,9 +280,14 @@ CREATE POLICY "Officers insert own inspections" ON public.inspections
   );
 
 CREATE POLICY "Officers update own draft inspections" ON public.inspections
-  FOR UPDATE USING (
+  FOR UPDATE
+  USING (
     officer_id = public.current_user_roles_id()
     AND status = 'draft'
+  )
+  WITH CHECK (
+    officer_id = public.current_user_roles_id()
+    AND status IN ('draft', 'submitted')
   );
 
 CREATE POLICY "Head update status and comment" ON public.inspections

@@ -551,7 +551,7 @@ export default function ChecklistScreen() {
               }
 
               const submitAudit = await getDeviceAudit();
-              await supabase
+              const { data: submittedRows, error: statusErr } = await supabase
                 .from('inspections')
                 .update({
                   status: 'submitted',
@@ -561,7 +561,16 @@ export default function ChecklistScreen() {
                   device_id: submitAudit.deviceId,
                   app_version: submitAudit.appVersion,
                 })
-                .eq('id', inspectionId);
+                .eq('id', inspectionId)
+                .eq('status', 'draft')
+                .select('id, status');
+
+              if (statusErr) throw new Error(statusErr.message);
+              if (!submittedRows?.length || submittedRows[0]?.status !== 'submitted') {
+                throw new Error(
+                  'Could not finalize submission. Your answers were saved — tap Submit again or contact support.',
+                );
+              }
 
               setInspectionActive(false);
               await deleteDraft(branchId, today);

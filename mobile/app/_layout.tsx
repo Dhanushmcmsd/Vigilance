@@ -8,9 +8,11 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../context/AuthContext';
 import { queryClient } from '../lib/queryClient';
 import { useNetworkSync } from '../lib/useNetworkSync';
+import { useOtaUpdates } from '../lib/useOtaUpdates';
 
 function NetworkSyncMount() {
   useNetworkSync();
+  useOtaUpdates();
   return null;
 }
 

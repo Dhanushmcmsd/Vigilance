@@ -1,0 +1,56 @@
+name: EAS OTA Update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/eas-ota-update.yml'
+
+concurrency:
+  group: eas-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish OTA to expo.dev
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Publish production channel OTA
+        run: |
+          eas update \
+            --channel production \
+            --non-interactive \
+            --message "main ${{ github.sha }}: audit login + mobile audit UX"
+
+      - name: Publish preview channel OTA
+        run: |
+          eas update \
+            --channel preview \
+            --non-interactive \
+            --message "main ${{ github.sha }}: audit login + mobile audit UX"

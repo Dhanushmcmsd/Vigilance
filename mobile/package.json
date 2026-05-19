@@ -9,7 +9,9 @@
     "web": "expo start --web",
     "lint": "tsc --noEmit",
     "prebuild": "expo prebuild --clean",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "update:preview": "eas update --channel preview --non-interactive --message",
+    "update:production": "eas update --channel production --non-interactive --message"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

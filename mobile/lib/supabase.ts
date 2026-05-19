@@ -78,7 +78,7 @@ export type NotificationStatus = 'sent' | 'failed' | 'pending';
 export interface UserRole {
   id: string;
   user_id: string | null;
-  role: 'officer' | 'head' | 'management' | 'admin';
+  role: 'officer' | 'head' | 'management' | 'admin' | 'audit';
   name: string;
   phone?: string | null;
   is_active?: boolean;

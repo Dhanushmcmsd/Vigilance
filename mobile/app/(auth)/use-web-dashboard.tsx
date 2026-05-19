@@ -8,7 +8,7 @@
  * with a clear "use the web dashboard" message and a one-tap sign-out.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -30,8 +30,15 @@ const DASHBOARD_URL =
 export default function UseWebDashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signOut, userName, userRole } = useAuth();
+  const { signOut, userName, userRole, loading } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (userRole === 'audit') {
+      router.replace('/(audit)');
+    }
+  }, [userRole, loading, router]);
 
   const roleLabel =
     userRole === 'admin'

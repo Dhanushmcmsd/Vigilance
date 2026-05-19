@@ -207,7 +207,7 @@ ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Officers select own row" ON public.user_roles
   FOR SELECT USING (
     user_id = auth.uid()
-    OR public.current_user_role() IN ('head','management','admin')
+    OR public.current_user_role() IN ('head','management','admin','audit')
   );
 
 CREATE POLICY "Admin full access to user_roles" ON public.user_roles
@@ -246,7 +246,7 @@ ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Officers select own inspections" ON public.inspections
   FOR SELECT USING (
     officer_id = public.current_user_roles_id()
-    OR public.current_user_role() IN ('head','management','admin')
+    OR public.current_user_role() IN ('head','management','admin','audit')
   );
 
 CREATE POLICY "Officers insert own inspections" ON public.inspections

@@ -21,6 +21,7 @@ export default function RootLayout() {
         <AuthProvider>
           <NetworkSyncMount />
           <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(officer)" />
             <Stack.Screen name="(audit)" />

@@ -42,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .select('id, role, name')
       .eq('user_id', userId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
     if (!error && data) {
       const role = data.role as Role;
       setUserRole(role);

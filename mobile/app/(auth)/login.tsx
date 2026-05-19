@@ -104,7 +104,7 @@ export default function LoginScreen() {
             Vigilance
           </Text>
           <Text style={{ fontSize: FONT.body, color: COLOR.textOnPrimaryMuted, marginTop: 6, fontWeight: '600' }}>
-            Field Officer Portal
+            Officers & Audit (mobile)
           </Text>
         </View>
 

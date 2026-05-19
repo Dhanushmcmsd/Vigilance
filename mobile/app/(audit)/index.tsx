@@ -9,6 +9,7 @@ import {
   Animated,
   StatusBar,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,19 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { RADIUS, SPACING } from '../../lib/a11y';
-
-const AUDIT = {
-  bg: '#0f172a',
-  surface: '#1e293b',
-  accent: '#6366f1',
-  accentSoft: '#312e81',
-  text: '#f8fafc',
-  textMuted: '#94a3b8',
-  border: '#334155',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-} as const;
+import { AUDIT, auditScoreColor } from '../../lib/auditTheme';
 
 interface BranchInspectionRow {
   id: string;
@@ -60,9 +49,10 @@ interface BranchSummary {
 export default function AuditHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userName } = useAuth();
+  const { userName, signOut } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
   const newDotAnim = useRef<Record<string, Animated.Value>>({});
 
   const { data: branches, isLoading, refetch, isRefetching } = useQuery<BranchSummary[]>({
@@ -108,11 +98,7 @@ export default function AuditHomeScreen() {
       .channel('audit-inspections-realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'inspections',
-        },
+        { event: 'INSERT', schema: 'public', table: 'inspections' },
         (payload) => {
           const row = payload.new as { branch_id?: string; status?: string };
           if (row.status !== 'submitted' || !row.branch_id) return;
@@ -152,35 +138,71 @@ export default function AuditHomeScreen() {
       (b.city ?? '').toLowerCase().includes(search.toLowerCase()),
   );
 
-  const scoreColor = (score: number | null) => {
-    if (score === null) return AUDIT.textMuted;
-    if (score >= 80) return AUDIT.success;
-    if (score >= 60) return AUDIT.warning;
-    return AUDIT.danger;
+  const onSignOut = async () => {
+    Alert.alert('Sign out', 'Leave the audit app?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          await signOut();
+          setSigningOut(false);
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: AUDIT.bg, paddingTop: insets.top }}>
       <StatusBar barStyle="light-content" />
 
-      <View style={{ padding: SPACING.lg, paddingBottom: SPACING.md }}>
-        <Text
+      <View
+        style={{
+          padding: SPACING.lg,
+          paddingBottom: SPACING.md,
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: 11,
+              color: AUDIT.accent,
+              fontWeight: '800',
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+            }}
+          >
+            VIGILANCE · MOBILE AUDIT
+          </Text>
+          <Text style={{ fontSize: 26, fontWeight: '900', color: AUDIT.text, marginTop: 4 }}>
+            All Stores
+          </Text>
+          <Text style={{ fontSize: 14, color: AUDIT.textMuted, marginTop: 2 }}>
+            {userName} · Read-only reports
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onSignOut}
+          disabled={signingOut}
           style={{
-            fontSize: 11,
-            color: AUDIT.accent,
-            fontWeight: '800',
-            letterSpacing: 2,
-            textTransform: 'uppercase',
+            padding: 10,
+            borderRadius: RADIUS.md,
+            backgroundColor: AUDIT.surface,
+            borderWidth: 1,
+            borderColor: AUDIT.border,
           }}
         >
-          VIGILANCE AUDIT
-        </Text>
-        <Text style={{ fontSize: 26, fontWeight: '900', color: AUDIT.text, marginTop: 4 }}>
-          Store Reports
-        </Text>
-        <Text style={{ fontSize: 14, color: AUDIT.textMuted, marginTop: 2 }}>
-          {userName} · All branches
-        </Text>
+          {signingOut ? (
+            <ActivityIndicator color={AUDIT.accent} size="small" />
+          ) : (
+            <Ionicons name="log-out-outline" size={22} color={AUDIT.accent} />
+          )}
+        </TouchableOpacity>
       </View>
 
       <View
@@ -200,7 +222,7 @@ export default function AuditHomeScreen() {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search branches..."
+          placeholder="Search stores..."
           placeholderTextColor={AUDIT.textMuted}
           style={{ flex: 1, color: AUDIT.text, fontSize: 15, paddingVertical: 12, paddingLeft: 8 }}
         />
@@ -226,6 +248,12 @@ export default function AuditHomeScreen() {
           }}
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={AUDIT.accent} />
+          }
+          ListHeaderComponent={
+            <Text style={{ fontSize: 12, color: AUDIT.textMuted, marginBottom: SPACING.md, lineHeight: 18 }}>
+              Select a store → browse by day this month, or open monthly folders for older field
+              officer checklists (PDF).
+            </Text>
           }
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -253,6 +281,7 @@ export default function AuditHomeScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="storefront-outline" size={20} color={AUDIT.accent} />
                     <Text style={{ fontSize: 16, fontWeight: '800', color: AUDIT.text }}>
                       {item.branch_name}
                     </Text>
@@ -274,7 +303,13 @@ export default function AuditHomeScreen() {
                   </Text>
                 </View>
                 {item.lastScore !== null && (
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: scoreColor(item.lastScore) }}>
+                  <Text
+                    style={{
+                      fontSize: 22,
+                      fontWeight: '900',
+                      color: auditScoreColor(item.lastScore),
+                    }}
+                  >
                     {item.lastScore.toFixed(0)}%
                   </Text>
                 )}

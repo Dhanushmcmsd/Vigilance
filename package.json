@@ -1,0 +1,35 @@
+{
+  "name": "vigilance-management-system",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Vigilance Management System — monorepo for mobile (Expo), web (Vite), and Supabase backend.",
+  "//": "This repo is NOT an npm workspace because Expo + workspaces is still rough on Windows + Metro. Instead the root package.json acts as a thin orchestrator: a single `npm install` from the repo root installs both sub-projects via the postinstall hook.",
+  "scripts": {
+    "//install": "Install both sub-projects. Used by CI and by humans running `npm install` at the repo root. Mobile uses --legacy-peer-deps because Expo SDK 53 has unavoidable peer conflicts on react/react-native (https://docs.expo.dev/get-started/installation/#install-the-expo-cli).",
+    "postinstall": "npm --prefix web install --no-audit --no-fund && npm --prefix mobile install --no-audit --no-fund --legacy-peer-deps",
+    "install:web": "npm --prefix web install",
+    "install:mobile": "npm --prefix mobile install --legacy-peer-deps",
+
+    "//dev": "Dev servers — each in its own terminal.",
+    "dev": "npm run dev:web",
+    "dev:web": "npm --prefix web run dev",
+    "dev:mobile": "npm --prefix mobile start",
+
+    "//build": "Production builds.",
+    "build:web": "npm --prefix web run build",
+
+    "//lint": "TypeScript-only lint for now (no ESLint config in repo). CI calls these.",
+    "lint": "npm run lint:web && npm run lint:mobile",
+    "lint:web": "npm --prefix web run lint",
+    "lint:mobile": "npm --prefix mobile run lint",
+
+    "//supabase": "Supabase helpers — require the supabase CLI to be installed locally.",
+    "db:diff": "supabase db diff --schema public",
+    "db:push": "supabase db push",
+    "functions:deploy": "supabase functions deploy"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

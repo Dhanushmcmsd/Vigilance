@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #0A0A0F;
+  color: #F5F5F0;
+}
+
+/* ── shadcn/ui design tokens ────────────────────────────────────────────────
+   Backed by CSS variables so swapping light/dark requires only toggling
+   `.dark` on <html>. Values are HSL triples (no `hsl()` wrapper) — Tailwind
+   wraps them via `hsl(var(--name))` in tailwind.config.js. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer components {
+  .input {
+    @apply block rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition;
+  }
+  .label {
+    @apply block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 transition disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium px-4 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-600;
+  }
+  .btn-xs {
+    @apply rounded px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition;
+  }
+  .btn-xs-red {
+    @apply bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200;
+  }
+  .btn-xs-green {
+    @apply bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200;
+  }
+  .btn-xs-blue {
+    @apply bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200;
+  }
+  .th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide;
+  }
+  .td {
+    @apply px-4 py-3 text-sm text-gray-700 dark:text-gray-300;
+  }
+  .tr {
+    @apply hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .badge-green {
+    @apply bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400;
+  }
+  .badge-red {
+    @apply bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400;
+  }
+  .badge-blue {
+    @apply bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400;
+  }
+  .badge-role {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300;
+  }
+  .dashboard-last-updated {
+    color: rgba(148, 163, 184, 0.72);
+    text-shadow: 0 0 14px rgba(148, 163, 184, 0.28);
+  }
+  .dark .dashboard-last-updated {
+    color: rgba(148, 163, 184, 0.58);
+    text-shadow: 0 0 16px rgba(148, 163, 184, 0.22);
+  }
+}
+
+/* Premium golden cursor enhancement (desktop pointer only) */
+html.vms-custom-cursor,
+html.vms-custom-cursor body {
+  cursor: default;
+}
+
+html.vms-custom-cursor input,
+html.vms-custom-cursor textarea,
+html.vms-custom-cursor select,
+html.vms-custom-cursor [contenteditable='true'] {
+  cursor: text;
+}
+
+.vms-cursor-glow,
+.vms-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 35;
+  will-change: transform;
+}
+
+.vms-cursor-glow {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 232, 160, 0.45) 0%,
+    rgba(212, 175, 55, 0.2) 45%,
+    transparent 70%
+  );
+  filter: blur(1px);
+  opacity: 0.85;
+  transition: opacity 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.vms-cursor-ring {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff9e6 0%, #d4af37 55%, #9a7b1a 100%);
+  box-shadow:
+    0 0 6px 1px rgba(212, 175, 55, 0.55),
+    0 0 14px 4px rgba(212, 175, 55, 0.2);
+  transition: transform 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+
+html.vms-cursor-hover .vms-cursor-glow {
+  width: 36px;
+  height: 36px;
+  opacity: 1;
+}
+
+html.vms-cursor-hover .vms-cursor-ring {
+  width: 10px;
+  height: 10px;
+}
+
+@media print {
+  nav, aside, .no-print, button { display: none !important; }
+  body { background: white !important; color: black !important; }
+  .print-full { display: block !important; }
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+  .print-watermark::before {
+    content: 'CONFIDENTIAL';
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    font-size: 72px;
+    color: rgba(0,0,0,0.05);
+    pointer-events: none;
+    z-index: 1000;
+  }
+}

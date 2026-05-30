@@ -1,11 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 // Simplified RoleGuard for testing
-const RoleGuard = ({ children, allowedRoles }: any) => {
+const RoleGuard = ({ children }: any) => {
   const user = null; // Mocked unauthenticated user
   if (!user) return <div>Redirected to Login</div>;
   return children;

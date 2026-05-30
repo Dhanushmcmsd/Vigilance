@@ -1,6 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 

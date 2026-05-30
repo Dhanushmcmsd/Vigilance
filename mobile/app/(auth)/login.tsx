@@ -107,7 +107,7 @@ export default function LoginScreen() {
             Field officer & audit (mobile)
           </Text>
           <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 8, textAlign: 'center' }}>
-            officer@vigilance.app · audit@company.app
+            officer@example.com · audit@example.com
           </Text>
         </View>
 

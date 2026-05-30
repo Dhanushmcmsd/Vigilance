@@ -51,8 +51,8 @@ const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
 
 const easProjectId =
-  process.env.EAS_PROJECT_ID || 'b63bc80d-778c-4eb8-b0f7-b974238318e6';
-const expoOwner = process.env.EXPO_OWNER || 'dhanushraghav';
+  process.env.EAS_PROJECT_ID || '[YOUR_EAS_PROJECT_ID]';
+const expoOwner = process.env.EXPO_OWNER || '[YOUR_EXPO_ACCOUNT]';
 
 const config = {
   expo: {
@@ -68,7 +68,7 @@ const config = {
 
     ios: {
       supportsTablet: false,
-      bundleIdentifier: 'com.vigilance.kerala',
+      bundleIdentifier: 'com.yourcompany.vigilance',
       buildNumber: String(buildNumber),
       infoPlist: {
         NSCameraUsageDescription:
@@ -81,7 +81,7 @@ const config = {
     },
 
     android: {
-      package: 'com.vigilance.kerala',
+      package: 'com.yourcompany.vigilance',
       versionCode: buildNumber,
       edgeToEdgeEnabled: false,
       adaptiveIcon: {

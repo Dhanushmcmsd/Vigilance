@@ -6,7 +6,7 @@ Use the **production** Android APK (v1.1.0, build 3):
 
 https://expo.dev/artifacts/eas/4dRiwwpRDbTugeZnSwqfq3.apk
 
-(Build dashboard: https://expo.dev/accounts/dhanushraghav/projects/vigilance-management-system/builds?channel=production)
+(Build dashboard: https://expo.dev/accounts/[YOUR_ACCOUNT]/projects/vigilance-management-system/builds?channel=production)
 
 After install, open the app once on Wi‑Fi. When an OTA is available you will see **Update available** → tap **Update now** → after restart, **Update successful** confirms the bundle.
 

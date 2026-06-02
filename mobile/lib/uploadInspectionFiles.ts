@@ -5,8 +5,8 @@ export async function uploadInspectionFiles(
   inspectionId: string,
   itemFiles: Record<string, ItemAttachment[]>,
 ): Promise<void> {
-  for (const [checklistItemId, attachments] of Object.entries(itemFiles)) {
-    for (const file of attachments) {
+  const uploadTasks = Object.entries(itemFiles).flatMap(([checklistItemId, attachments]) =>
+    attachments.map(async (file) => {
       const ext = file.name.split('.').pop() ?? 'bin';
       const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${file.name}`;
       const blob = await (await fetch(file.uri)).blob();
@@ -17,7 +17,7 @@ export async function uploadInspectionFiles(
       const { data: uploadData, error: uploadErr } = await supabase.storage
         .from('inspection-files')
         .upload(path, blob, { contentType });
-      if (uploadErr || !uploadData) continue;
+      if (uploadErr || !uploadData) return;
       const { data: urlData } = supabase.storage.from('inspection-files').getPublicUrl(path);
       await supabase.from('inspection_files').insert({
         inspection_id: inspectionId,
@@ -42,6 +42,8 @@ export async function uploadInspectionFiles(
             { onConflict: 'inspection_id,checklist_item_id' },
           );
       }
-    }
-  }
+    }),
+  );
+
+  await Promise.allSettled(uploadTasks);
 }

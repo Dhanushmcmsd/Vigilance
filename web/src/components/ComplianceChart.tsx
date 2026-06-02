@@ -12,7 +12,7 @@ import {
 
 const SERIES_COLORS = ['#0ea5e9', '#8b5cf6', '#22c55e', '#f97316', '#ef4444', '#6366f1'];
 
-export default function ComplianceChart({ data }: { data: Array<Record<string, string | number>> }) {
+export default function ComplianceChart({ data }: { data: Array<Record<string, string | number | null>> }) {
   const seriesKeys = data.length > 0
     ? Object.keys(data[0]).filter((key) => key !== 'label')
     : [];

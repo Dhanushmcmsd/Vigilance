@@ -157,7 +157,7 @@ export default function CeoMapPage() {
         branchStats.set(insp.branch_id, existing);
       });
 
-      branchStats.forEach((value, branchId) => {
+      branchStats.forEach((value) => {
         value.avg = value.count ? value.avg / value.count : 0;
       });
 

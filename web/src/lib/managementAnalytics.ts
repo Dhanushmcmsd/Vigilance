@@ -201,10 +201,10 @@ export function computeComplianceTrend(
 
   return sortedKeys.map((label) => {
     const regionMap = grouped.get(label) ?? new Map<string, number[]>();
-    const values: Record<string, number | string | undefined> = { label };
+    const values: Record<string, number | string | null> = { label };
     regionNames.forEach((region) => {
       const scores = regionMap.get(region) ?? [];
-      values[region] = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : undefined;
+      values[region] = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     });
     return values;
   });

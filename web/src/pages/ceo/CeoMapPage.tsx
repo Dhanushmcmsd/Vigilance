@@ -101,6 +101,7 @@ export default function CeoMapPage() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const heatCirclesRef = useRef<L.Circle[]>([]);
 
   const { data: branches, isLoading: branchesLoading } = useQuery({
     queryKey: ['branches'],
@@ -139,6 +140,44 @@ export default function CeoMapPage() {
           marker.addTo(mapInstanceRef.current!);
           markersRef.current.push(marker);
         }
+      });
+    }
+
+    // Store risk heat layer
+    heatCirclesRef.current.forEach((circle) => circle.remove());
+    heatCirclesRef.current = [];
+
+    if (branches && inspections) {
+      const branchStats = new Map<string, { count: number; avg: number }>();
+      inspections.forEach((insp) => {
+        if (!insp.branch_id) return;
+        const existing = branchStats.get(insp.branch_id) ?? { count: 0, avg: 0 };
+        existing.count += 1;
+        existing.avg += insp.compliance_score ?? 0;
+        branchStats.set(insp.branch_id, existing);
+      });
+
+      branchStats.forEach((value, branchId) => {
+        value.avg = value.count ? value.avg / value.count : 0;
+      });
+
+      branches.forEach((b) => {
+        if (b.latitude === null || b.longitude === null) return;
+        const stats = branchStats.get(b.id);
+        if (!stats) return;
+
+        const circleColor = stats.avg >= 80 ? '#22c55e' : stats.avg >= 60 ? '#eab308' : '#ef4444';
+        const circle = L.circle([b.latitude, b.longitude], {
+          radius: 220 + stats.count * 80,
+          color: circleColor,
+          fillColor: circleColor,
+          fillOpacity: 0.12,
+          weight: 1,
+          interactive: false,
+        });
+
+        circle.addTo(mapInstanceRef.current!);
+        heatCirclesRef.current.push(circle);
       });
     }
 
@@ -194,6 +233,10 @@ export default function CeoMapPage() {
           <div className="flex items-center gap-2">
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#2563eb' }} />
             <span className="text-gray-300">Store Location</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ffffff', opacity: 0.28, border: '1px solid rgba(255,255,255,0.4)' }} />
+            <span className="text-gray-300">Inspection heat</span>
           </div>
           <div className="flex items-center gap-2">
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#22c55e' }} />

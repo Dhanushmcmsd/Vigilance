@@ -72,21 +72,16 @@ export function AlertFeed({ alerts, onAlertClick }: AlertFeedProps) {
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <div
-                      className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded text-[10px] font-mono font-bold"
-                      style={{
-                        backgroundColor: 'rgba(255,255,255,0.05)',
-                        color: '#F5F5F0'
-                      }}
-                    >
-                      {alert.section}
-                    </div>
-
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-text-primary">
-                          {alert.storeName}
-                        </span>
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <div className="min-w-0">
+                          <span className="text-sm font-semibold text-text-primary truncate">
+                            {alert.storeName}
+                          </span>
+                          <div className="mt-1 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300 max-w-[160px] truncate">
+                            {alert.section}
+                          </div>
+                        </div>
                         <span
                           className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
                           style={{

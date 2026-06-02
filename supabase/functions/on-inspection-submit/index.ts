@@ -8,8 +8,11 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://vigilance-web.vercel.app';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const FROM_ADDR = resolveResendFrom();
+
+function isFailedResponse(response: string | null | undefined) {
+  return response === 'No' || response === 'Bad';
+}
 
 serve(async (req: Request) => {
   try {
@@ -65,7 +68,7 @@ serve(async (req: Request) => {
 
     const isUrgent = ['critical', 'high'].includes(insp.risk_level);
     const noResponses = (insp.inspection_responses as any[])
-      .filter((r: any) => r.response === 'No');
+      .filter((r: any) => isFailedResponse(r.response));
 
     const noItemsHtml = noResponses.length > 0
       ? `<h3 style="color:#dc2626">Failed Items (${noResponses.length})</h3>

@@ -9,7 +9,7 @@ export interface DraftForm {
   date: string;
   timeIn: string;
   timeOut: string;
-  responses: Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }>;
+  responses: Record<string, { response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null; remark: string }>;
   generalRemark: string;
   /** @deprecated Legacy flat file list — use itemFiles */
   fileUris?: string[];

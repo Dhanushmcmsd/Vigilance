@@ -1,4 +1,5 @@
 import type { ManagementInspection } from './inspectionQueries';
+import { isViolationResponse } from './checklistScoring';
 
 interface CeoMetrics {
   openRedFlags: number;
@@ -58,23 +59,20 @@ export function computeCeoMetrics(inspections: ManagementInspection[]): CeoMetri
 
   const redFlags = inspections.flatMap(inspection =>
     inspection.responses.filter(r =>
-      r.risk_level === 'RED' &&
-      ((r.trigger_on_no && r.response === 'No') || (!r.trigger_on_no && r.response === 'Yes'))
+      r.risk_level === 'RED' && isViolationResponse(r.response, r.trigger_on_no)
     )
   );
 
   const yellowFlags = inspections.flatMap(inspection =>
     inspection.responses.filter(r =>
-      r.risk_level === 'YELLOW' &&
-      ((r.trigger_on_no && r.response === 'No') || (!r.trigger_on_no && r.response === 'Yes'))
+      r.risk_level === 'YELLOW' && isViolationResponse(r.response, r.trigger_on_no)
     )
   );
 
   const storeRedCounts = new Map<string, number>();
   inspections.forEach(inspection => {
     const redInStore = inspection.responses.filter(r =>
-      r.risk_level === 'RED' &&
-      ((r.trigger_on_no && r.response === 'No') || (!r.trigger_on_no && r.response === 'Yes'))
+      r.risk_level === 'RED' && isViolationResponse(r.response, r.trigger_on_no)
     ).length;
     if (redInStore > 0) {
       storeRedCounts.set(inspection.branch_id, (storeRedCounts.get(inspection.branch_id) || 0) + redInStore);
@@ -114,8 +112,7 @@ export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem
   inspections.forEach(inspection => {
     inspection.responses.forEach(response => {
       if (response.risk_level === 'RED' || response.risk_level === 'YELLOW') {
-        const isTriggered = (response.trigger_on_no && response.response === 'No') ||
-                          (!response.trigger_on_no && response.response === 'Yes');
+        const isTriggered = isViolationResponse(response.response, response.trigger_on_no);
         
         if (isTriggered) {
           const timestamp = new Date(inspection.submitted_at);
@@ -150,8 +147,7 @@ export function computeSectionBreakdown(inspections: ManagementInspection[]): Se
         sectionMap.set(section, { red: 0, yellow: 0, green: 0 });
       }
 
-      const isViolation = (response.trigger_on_no && response.response === 'No') ||
-                         (!response.trigger_on_no && response.response === 'Yes');
+      const isViolation = isViolationResponse(response.response, response.trigger_on_no);
 
       if (isViolation) {
         const data = sectionMap.get(section)!;
@@ -173,8 +169,7 @@ export function computeSlaTickets(inspections: ManagementInspection[]): SlaTicke
   inspections.forEach(inspection => {
     inspection.responses.forEach(response => {
       if (response.risk_level === 'RED') {
-        const isTriggered = (response.trigger_on_no && response.response === 'No') ||
-                          (!response.trigger_on_no && response.response === 'Yes');
+        const isTriggered = isViolationResponse(response.response, response.trigger_on_no);
         
         if (isTriggered) {
           const flaggedTime = new Date(inspection.submitted_at);
@@ -247,8 +242,7 @@ export function computeStoreCards(inspections: ManagementInspection[]): StoreCar
 
     inspection.responses.forEach(response => {
       store.total++;
-      const isViolation = (response.trigger_on_no && response.response === 'No') ||
-                         (!response.trigger_on_no && response.response === 'Yes');
+      const isViolation = isViolationResponse(response.response, response.trigger_on_no);
 
       if (isViolation) {
         store.violations++;

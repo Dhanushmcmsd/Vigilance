@@ -1,4 +1,4 @@
-export type ChecklistResponse = 'Yes' | 'No' | 'N/A' | null;
+export type ChecklistResponse = 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null;
 
 /** When true, answering "No" indicates a violation. When false, "Yes" is the violation. */
 export function isViolationResponse(
@@ -6,6 +6,8 @@ export function isViolationResponse(
   triggerOnNo: boolean,
 ): boolean {
   if (!response || response === 'N/A') return false;
+  if (response === 'Bad') return true;
+  if (response === 'Good' || response === 'Moderate') return false;
   return triggerOnNo ? response === 'No' : response === 'Yes';
 }
 
@@ -19,11 +21,11 @@ export function isCompliantResponse(
 
 /** Button styling: highlight the answer that matches compliance vs violation. */
 export function responseButtonColors(
-  value: 'Yes' | 'No',
+  value: 'Yes' | 'No' | 'Good' | 'Moderate' | 'Bad',
   selected: ChecklistResponse,
   triggerOnNo: boolean,
 ): { activeColor: string; activeBg: string; inactiveColor: string } {
-  const violation = isViolationResponse(value, triggerOnNo);
+  const violation = value === 'Bad' ? true : isViolationResponse(value, triggerOnNo);
   const active = selected === value;
   if (active) {
     return violation

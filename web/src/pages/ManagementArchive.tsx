@@ -45,7 +45,7 @@ export default function ManagementArchive() {
     [monthInspections, prevMonthInspections],
   );
   const underperformers = useMemo(() => computeUnderperformers(monthInspections), [monthInspections]);
-  const trendData = useMemo(() => computeComplianceTrend(monthInspections, false), [monthInspections]);
+  const trendData = useMemo(() => computeComplianceTrend(monthInspections, true), [monthInspections]);
 
   return (
     <div className="space-y-8">
@@ -60,7 +60,7 @@ export default function ManagementArchive() {
           </Link>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Management archive</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Historical compliance by calendar month — frozen snapshots for leadership review.
+            Historical compliance by calendar month with region‑level trend analysis for leadership review.
           </p>
         </div>
         <div className="flex items-center gap-2">

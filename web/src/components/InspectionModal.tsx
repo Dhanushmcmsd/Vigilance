@@ -48,7 +48,7 @@ export default function InspectionModal({ open, onClose, branch, inspections }: 
     const counts = new Map<string, number>();
     branchInspections.forEach((inspection) => {
       inspection.responses
-        .filter((response) => response.response === 'No')
+        .filter((response) => response.response === 'Bad' || response.response === 'No')
         .forEach((response) => {
           const key = `${response.section} — ${response.item_text}`;
           counts.set(key, (counts.get(key) ?? 0) + 1);

@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { RADIUS, SPACING } from '../../lib/a11y';
 import { AUDIT, auditScoreColor } from '../../lib/auditTheme';
 import { buildAuditPdfHtml } from '../../lib/auditPdf';
+import { isViolationResponse } from '../../lib/checklistScoring';
 
 const PDF_MIME_TYPE = 'application/pdf';
 
@@ -354,37 +355,35 @@ export default function AuditReportDetailScreen() {
                 {section.toUpperCase()}
               </Text>
             </View>
-            {items.map((r, idx) => (
-              <View
-                key={r.id}
-                style={{
-                  flexDirection: 'row',
-                  padding: SPACING.md,
-                  borderBottomWidth: idx < items.length - 1 ? 1 : 0,
-                  borderBottomColor: AUDIT.border,
-                  backgroundColor: r.response === 'No' ? 'rgba(239,68,68,0.06)' : 'transparent',
-                }}
-              >
-                <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
-                  {r.checklist_item?.item_text ?? 'â€”'}
-                </Text>
-                <Text
+            {items.map((r, idx) => {
+              const violation = isViolationResponse(r.response, r.checklist_item?.trigger_on_no ?? true);
+              return (
+                <View
+                  key={r.id}
                   style={{
-                    fontWeight: '800',
-                    fontSize: 13,
-                    marginLeft: 8,
-                    color:
-                      r.response === 'Yes'
-                        ? AUDIT.success
-                        : r.response === 'No'
-                          ? AUDIT.danger
-                          : AUDIT.textMuted,
+                    flexDirection: 'row',
+                    padding: SPACING.md,
+                    borderBottomWidth: idx < items.length - 1 ? 1 : 0,
+                    borderBottomColor: AUDIT.border,
+                    backgroundColor: violation ? 'rgba(239,68,68,0.06)' : 'transparent',
                   }}
                 >
-                  {r.response}
-                </Text>
-              </View>
-            ))}
+                  <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
+                    {r.checklist_item?.item_text ?? 'â€”'}
+                  </Text>
+                  <Text
+                    style={{
+                      fontWeight: '800',
+                      fontSize: 13,
+                      marginLeft: 8,
+                      color: violation ? AUDIT.danger : r.response === 'Yes' ? AUDIT.success : AUDIT.textMuted,
+                    }}
+                  >
+                    {r.response}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         ))}
 

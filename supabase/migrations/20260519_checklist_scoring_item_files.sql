@@ -11,6 +11,8 @@ IMMUTABLE
 AS $$
   SELECT CASE
     WHEN p_response IS NULL OR p_response = 'N/A' THEN NULL
+    WHEN p_response = 'Bad' THEN FALSE
+    WHEN p_response IN ('Good', 'Moderate') THEN TRUE
     WHEN p_trigger_on_no THEN p_response = 'Yes'
     ELSE p_response = 'No'
   END;
@@ -69,7 +71,7 @@ BEGIN
         COALESCE(rc.trigger_on_no, ct.trigger_on_no, true)
       ) IS TRUE
     ),
-    COUNT(*) FILTER (WHERE ir.response IN ('Yes', 'No'))
+    COUNT(*) FILTER (WHERE ir.response IN ('Yes', 'No', 'Good', 'Moderate', 'Bad'))
   INTO v_compliant_count, v_total_count
   FROM public.inspection_responses ir
   JOIN public.checklist_templates ct ON ct.id = ir.checklist_item_id

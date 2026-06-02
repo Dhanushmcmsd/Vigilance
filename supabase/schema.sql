@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS public.inspection_responses (
   id                 uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
   inspection_id      uuid  REFERENCES public.inspections(id) ON DELETE CASCADE,
   checklist_item_id  uuid  REFERENCES public.checklist_templates(id),
-  response           text  CHECK (response IN ('Yes','No','N/A')),
+  response           text  CHECK (response IN ('Yes','No','N/A','Good','Moderate','Bad')),
   remarks            text,
   created_at         timestamptz DEFAULT now()
 );

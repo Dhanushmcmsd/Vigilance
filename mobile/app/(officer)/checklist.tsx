@@ -37,6 +37,14 @@ const nowTime = () => {
 
 const YELLOW_REALTIME_THRESHOLD = 3;
 const ITEMS_PER_PAGE = 4;
+const STAFF_BEHAVIOUR_ITEM_TEXT = 'Staff behaviour towards customers';
+const STAFF_BEHAVIOUR_OPTIONS = [
+  { label: 'GOOD', value: 'Good' as const },
+  { label: 'MODERATE', value: 'Moderate' as const },
+  { label: 'BAD', value: 'Bad' as const },
+];
+
+const isStaffBehaviourItem = (itemText: string) => itemText?.trim() === STAFF_BEHAVIOUR_ITEM_TEXT;
 
 export default function ChecklistScreen() {
   const { branchId, branchName, branchType, officerLat, officerLon, inspectionId: routeInspectionId, isEdit } =
@@ -55,10 +63,10 @@ export default function ChecklistScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const [items, setItems] = useState<any[]>([]);
-  const [responses, setResponses] = useState<Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }>>({});
+  const [responses, setResponses] = useState<Record<string, { response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null; remark: string }>>({});
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [date] = useState(today);
-  const [timeIn] = useState(nowTime());
+  const [timeIn, setTimeIn] = useState(nowTime());
   const [timeOut, setTimeOut] = useState('');
   const [generalRemark, setGeneralRemark] = useState('');
   const [itemFiles, setItemFiles] = useState<Record<string, ItemAttachment[]>>({});
@@ -153,6 +161,7 @@ export default function ChecklistScreen() {
   };
 
   useEffect(() => {
+    if (!branchId) return;
     loadDraft(branchId, today).then((draft) => {
       if (draft) {
         Alert.alert('Resume Draft?', 'A saved draft was found for this branch today. Resume it?', [
@@ -161,6 +170,7 @@ export default function ChecklistScreen() {
             text: 'Resume', onPress: () => {
               setResponses(draft.responses as any);
               setGeneralRemark(draft.generalRemark);
+              setTimeIn(draft.timeIn || timeIn);
               setTimeOut(draft.timeOut);
               if (draft.itemFiles) setItemFiles(draft.itemFiles);
             },
@@ -168,7 +178,7 @@ export default function ChecklistScreen() {
         ]);
       }
     });
-  }, []);
+  }, [branchId, today, timeIn]);
 
   const sections = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -260,21 +270,17 @@ export default function ChecklistScreen() {
     [ensureInspection, triggeredRedItems, userRolesId, branchId],
   );
 
-  const lastTriggeredRedResponse = useRef<Record<string, 'Yes' | 'No' | 'N/A' | null>>({});
+  const lastTriggeredRedResponse = useRef<Record<string, 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null>>({});
   const handleResponse = useCallback(
-    (itemId: string, response: 'Yes' | 'No' | 'N/A' | null) => {
+    (itemId: string, response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null) => {
       setResponses((prev) => {
         const previous = prev[itemId]?.response ?? null;
         const next = { ...prev, [itemId]: { ...prev[itemId], response } };
 
         const item = items.find((i) => i.id === itemId);
+        const triggers = item && response ? isViolationResponse(response, item.trigger_on_no ?? true) : false;
         if (item?.risk_level === 'YELLOW') {
-          const triggers =
-            (item.trigger_on_no && response === 'No') ||
-            (!item.trigger_on_no && response === 'Yes');
-          const previouslyTriggered =
-            (item.trigger_on_no && previous === 'No') ||
-            (!item.trigger_on_no && previous === 'Yes');
+          const previouslyTriggered = isViolationResponse(previous, item.trigger_on_no ?? true);
           if (triggers && !previouslyTriggered) {
             setYellowCount((c) => c + 1);
           } else if (!triggers && previouslyTriggered) {
@@ -283,20 +289,13 @@ export default function ChecklistScreen() {
         }
 
         if (item?.risk_level === 'RED' && response !== null) {
-          const triggers =
-            (item.trigger_on_no && response === 'No') ||
-            (!item.trigger_on_no && response === 'Yes');
           if (triggers && lastTriggeredRedResponse.current[itemId] !== response) {
             lastTriggeredRedResponse.current[itemId] = response;
             handleRedTriggered(itemId);
           }
         }
 
-        if (
-          item &&
-          response &&
-          isViolationResponse(response, item.trigger_on_no ?? true)
-        ) {
+        if (item && response && triggers) {
           setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
         }
 
@@ -367,13 +366,22 @@ export default function ChecklistScreen() {
   }, []);
 
   const pickImageForItem = useCallback(
-    async (itemId: string) => {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
-        quality: 0.8,
-      });
-      if (!result.canceled) {
+    (itemId: string) => {
+      const pickFromCamera = async () => {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            'Camera permission needed',
+            'Enable camera access to take photos for this inspection.',
+          );
+          return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.8,
+        });
+        if (!result.canceled) return;
         appendItemFiles(
           itemId,
           result.assets.map((a) => ({
@@ -382,7 +390,34 @@ export default function ChecklistScreen() {
             type: 'image' as const,
           })),
         );
-      }
+      };
+
+      const pickFromGallery = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsMultipleSelection: true,
+          quality: 0.8,
+        });
+        if (!result.canceled) return;
+        appendItemFiles(
+          itemId,
+          result.assets.map((a) => ({
+            uri: a.uri,
+            name: a.fileName || `photo_${Date.now()}.jpg`,
+            type: 'image' as const,
+          })),
+        );
+      };
+
+      Alert.alert(
+        'Add photo',
+        'Choose a source for the inspection image.',
+        [
+          { text: 'Camera', onPress: pickFromCamera },
+          { text: 'Gallery', onPress: pickFromGallery },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
     },
     [appendItemFiles],
   );
@@ -496,6 +531,8 @@ export default function ChecklistScreen() {
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
+            const effectiveTimeOut = timeOut || nowTime();
+            setTimeOut(effectiveTimeOut);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
               // If a RED already triggered while online, an inspections row
@@ -507,7 +544,7 @@ export default function ChecklistScreen() {
                 branchType: branchType || '',
                 date,
                 timeIn,
-                timeOut,
+                timeOut: effectiveTimeOut,
                 responses: responses as any,
                 generalRemark,
                 itemFiles,
@@ -549,7 +586,7 @@ export default function ChecklistScreen() {
                 .from('inspections')
                 .update({
                   status: 'submitted',
-                  time_out: timeOut || null,
+                  time_out: effectiveTimeOut || null,
                   submitted_at: submittedAt,
                   ...(isEdit === '1' ? { edited_at: submittedAt } : {}),
                   sync_status: 'synced',
@@ -579,7 +616,7 @@ export default function ChecklistScreen() {
                   branchType: branchType || '',
                   date,
                   timeIn,
-                  timeOut,
+                  timeOut: effectiveTimeOut,
                   answeredCount: String(answeredCount),
                   totalItems: String(items.length),
                   filesCount: String(totalAttachmentCount),
@@ -804,11 +841,13 @@ export default function ChecklistScreen() {
 
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
                     {(
-                      [
-                        { label: 'YES', value: 'Yes' as const },
-                        { label: 'NO', value: 'No' as const },
-                        { label: 'N/A', value: 'N/A' as const },
-                      ]
+                      isStaffBehaviourItem(item.item_text)
+                        ? STAFF_BEHAVIOUR_OPTIONS
+                        : [
+                            { label: 'YES', value: 'Yes' as const },
+                            { label: 'NO', value: 'No' as const },
+                            { label: 'N/A', value: 'N/A' as const },
+                          ]
                     ).map((button) => {
                       const active = response === button.value;
                       const colors =

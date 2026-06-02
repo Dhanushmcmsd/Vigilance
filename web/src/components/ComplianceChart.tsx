@@ -10,13 +10,13 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-interface TrendPoint {
-  label: string;
-  cfc: number;
-  store: number;
-}
+const SERIES_COLORS = ['#0ea5e9', '#8b5cf6', '#22c55e', '#f97316', '#ef4444', '#6366f1'];
 
-export default function ComplianceChart({ data }: { data: TrendPoint[] }) {
+export default function ComplianceChart({ data }: { data: Array<Record<string, string | number>> }) {
+  const seriesKeys = data.length > 0
+    ? Object.keys(data[0]).filter((key) => key !== 'label')
+    : [];
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm p-5 h-[360px]">
       <div className="flex items-center justify-between mb-4">
@@ -34,8 +34,18 @@ export default function ComplianceChart({ data }: { data: TrendPoint[] }) {
           <Legend />
           <ReferenceLine y={80} stroke="#16a34a" strokeDasharray="4 4" label="80%" />
           <ReferenceLine y={60} stroke="#eab308" strokeDasharray="4 4" label="60%" />
-          <Line type="monotone" dataKey="cfc" name="CFC" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 3 }} />
-          <Line type="monotone" dataKey="store" name="Store" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} />
+          {seriesKeys.map((key, index) => (
+            <Line
+              key={key}
+              type="monotone"
+              dataKey={key}
+              name={key}
+              stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
+              strokeWidth={3}
+              dot={{ r: 3 }}
+              connectNulls
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>

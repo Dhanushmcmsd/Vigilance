@@ -32,7 +32,7 @@ const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
     { label: 'Analytics', path: '/dashboard/analytics', icon: TrendingUp },
     { label: 'Store Map', path: '/dashboard/map', icon: Map },
     { label: 'Monthly Archive', path: '/dashboard/archive', icon: Archive },
-    { label: 'Audit Reports', path: '/dashboard/audit-archive', icon: FileText },
+    { label: 'Vigilance Report', path: '/dashboard/audit-archive', icon: FileText },
     { label: 'Live Alerts', path: '/dashboard/alerts', icon: AlertTriangle },
     { label: 'Escalations', path: '/dashboard/escalations', icon: Zap },
   ],

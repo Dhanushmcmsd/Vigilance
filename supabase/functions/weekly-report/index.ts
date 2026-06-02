@@ -65,7 +65,7 @@ serve(async (_req: Request) => {
     const issueMap: Record<string, { text: string; section: string; count: number }> = {};
     thisWeekData.forEach((i: any) => {
       (i.inspection_responses ?? []).forEach((r: any) => {
-        if (r.response === 'No' && r.checklist_items) {
+        if ((r.response === 'No' || r.response === 'Bad') && r.checklist_items) {
           const key = r.checklist_items.item_text;
           if (!issueMap[key]) issueMap[key] = { text: key, section: r.checklist_items.section, count: 0 };
           issueMap[key].count++;

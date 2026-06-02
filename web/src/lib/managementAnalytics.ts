@@ -170,23 +170,44 @@ export function computeComplianceTrend(
   inspections: ManagementInspection[],
   useWeekly: boolean,
 ) {
-  const grouped = new Map<string, { cfc: number[]; store: number[] }>();
+  const grouped = new Map<string, Map<string, number[]>>();
+  const regions = new Set<string>();
+
   inspections.forEach((item) => {
     const date = new Date(item.inspection_date);
     const key = useWeekly
       ? `W${Math.ceil(date.getDate() / 7)} ${date.toLocaleDateString('en-IN', { month: 'short' })}`
       : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-    const entry = grouped.get(key) ?? { cfc: [], store: [] };
-    if (item.branch_type.toLowerCase().includes('cfc')) entry.cfc.push(item.compliance_score);
-    else entry.store.push(item.compliance_score);
+    const region = item.region || 'Unassigned';
+    regions.add(region);
+
+    const entry = grouped.get(key) ?? new Map<string, number[]>();
+    const scores = entry.get(region) ?? [];
+    scores.push(item.compliance_score);
+    entry.set(region, scores);
     grouped.set(key, entry);
   });
 
-  return Array.from(grouped.entries()).map(([label, value]) => ({
-    label,
-    cfc: value.cfc.length ? value.cfc.reduce((a, b) => a + b, 0) / value.cfc.length : 0,
-    store: value.store.length ? value.store.reduce((a, b) => a + b, 0) / value.store.length : 0,
-  }));
+  const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
+    const parseKey = (label: string) => {
+      const match = label.match(/^W(\d+)/);
+      if (match) return Number(match[1]);
+      return Number(label.slice(0, 2)) || 0;
+    };
+    return parseKey(a) - parseKey(b);
+  });
+
+  const regionNames = Array.from(regions).sort();
+
+  return sortedKeys.map((label) => {
+    const regionMap = grouped.get(label) ?? new Map<string, number[]>();
+    const values: Record<string, number | string | undefined> = { label };
+    regionNames.forEach((region) => {
+      const scores = regionMap.get(region) ?? [];
+      values[region] = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : undefined;
+    });
+    return values;
+  });
 }
 
 export interface HeatmapCell {

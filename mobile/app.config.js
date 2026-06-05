@@ -51,8 +51,8 @@ const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
 
 const easProjectId =
-  process.env.EAS_PROJECT_ID || '[YOUR_EAS_PROJECT_ID]';
-const expoOwner = process.env.EXPO_OWNER || '[YOUR_EXPO_ACCOUNT]';
+  process.env.EAS_PROJECT_ID || '019e400c-1c21-7602-9da7-c583493da043';
+const expoOwner = process.env.EXPO_OWNER || 'Dhanushmcmsd';
 
 const config = {
   expo: {

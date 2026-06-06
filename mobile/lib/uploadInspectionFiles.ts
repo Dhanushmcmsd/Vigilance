@@ -1,10 +1,10 @@
 import { supabase } from './supabase';
 import type { ItemAttachment } from '../components/ItemAttachments';
 
-function resolveFileType(file: ItemAttachment): string {
+function resolveFileType(file: { type?: string; name?: string }): string {
   if (file.type === 'image') return 'image';
   const ext = (file.name ?? '').split('.').pop()?.toLowerCase() ?? '';
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return 'image';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'].includes(ext)) return 'image';
   return file.type ?? 'document';
 }
 
@@ -23,9 +23,10 @@ export async function uploadInspectionFiles(
         const resolvedType = resolveFileType(file);
         const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${file.name}`;
         const blob = await (await fetch(file.uri)).blob();
+        const imageExt = ext === 'jpg' || ext === 'bin' ? 'jpeg' : ext;
         const contentType =
           resolvedType === 'image'
-            ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
+            ? `image/${imageExt}`
             : 'application/octet-stream';
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from('inspection-files')

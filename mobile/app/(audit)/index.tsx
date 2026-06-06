@@ -71,22 +71,26 @@ export default function AuditHomeScreen() {
 
       if (error) throw error;
 
-      return (data as BranchRow[]).map((b) => {
-        const submitted = (b.inspections ?? []).filter((i) => i.status !== 'draft');
-        const sorted = [...submitted].sort(
-          (a, c) =>
-            new Date(c.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
-        );
-        return {
-          id: b.id,
-          branch_name: b.branch_name,
-          city: b.city,
-          region: b.region,
-          reportCount: submitted.length,
-          lastScore: sorted[0]?.compliance_score ?? null,
-          lastDate: sorted[0]?.inspection_date ?? null,
-        };
-      });
+      return (data as BranchRow[])
+        .map((b) => {
+          const submitted = (b.inspections ?? []).filter((i) => i.status !== 'draft');
+          const sorted = [...submitted].sort(
+            (a, c) =>
+              new Date(c.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
+          );
+          return {
+            id: b.id,
+            branch_name: b.branch_name,
+            city: b.city,
+            region: b.region,
+            reportCount: submitted.length,
+            lastScore: sorted[0]?.compliance_score ?? null,
+            lastDate: sorted[0]?.inspection_date ?? null,
+            latestSubmittedAt: sorted[0]?.submitted_at ?? null,
+          };
+        })
+        .sort((a, b) => new Date(b.latestSubmittedAt ?? 0).getTime() - new Date(a.latestSubmittedAt ?? 0).getTime())
+        .map(({ latestSubmittedAt, ...branch }) => branch);
     },
   });
 

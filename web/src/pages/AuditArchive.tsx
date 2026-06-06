@@ -11,6 +11,13 @@ interface AuditArchiveProps {
   backLabel: string;
 }
 
+const staffBehaviourColor = (val: string) => {
+  if (val === 'Good') return 'text-green-600';
+  if (val === 'Moderate') return 'text-yellow-500';
+  if (val === 'Bad') return 'text-red-600';
+  return 'text-gray-700 dark:text-gray-300';
+};
+
 export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps) {
   const { data = [], isLoading } = useManagementInspections();
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -271,17 +278,31 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
                     {expanded && (
                       <tr className="border-t border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60">
                         <td colSpan={9} className="px-6 py-5">
-                          <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-5">
+                            <div className="grid gap-3 md:grid-cols-2">
                             {row.responses.map((response) => (
                               <div key={response.id} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{response.section}</div>
                                 <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{response.item_text}</p>
                                 <p className="mt-2 text-sm">
-                                  <span className="font-semibold text-teal-500">{response.response}</span>
+                                  <span className={`font-semibold ${staffBehaviourColor(response.response)}`}>{response.response}</span>
                                   {response.remarks ? <span className="text-slate-500"> · {response.remarks}</span> : null}
                                 </p>
                               </div>
                             ))}
+                            </div>
+                            {row.photos.length > 0 && (
+                              <section>
+                                <h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Photo Evidence</h3>
+                                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                                  {row.photos.map((photo) => (
+                                    <a key={photo.url} href={photo.url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                                      <img src={photo.url} alt={photo.name ?? 'Inspection evidence'} className="h-24 w-full object-cover" />
+                                    </a>
+                                  ))}
+                                </div>
+                              </section>
+                            )}
                           </div>
                         </td>
                       </tr>

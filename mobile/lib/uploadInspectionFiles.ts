@@ -1,6 +1,13 @@
 import { supabase } from './supabase';
 import type { ItemAttachment } from '../components/ItemAttachments';
 
+function resolveFileType(file: ItemAttachment): string {
+  if (file.type === 'image') return 'image';
+  const ext = (file.name ?? '').split('.').pop()?.toLowerCase() ?? '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return 'image';
+  return file.type ?? 'document';
+}
+
 export async function uploadInspectionFiles(
   inspectionId: string,
   itemFiles: Record<string, ItemAttachment[]>,
@@ -12,11 +19,12 @@ export async function uploadInspectionFiles(
   const uploadTasks = Object.entries(itemFiles).flatMap(([checklistItemId, attachments]) =>
     attachments.map(async (file) => {
       try {
-        const ext = file.name.split('.').pop() ?? 'bin';
+        const ext = (file.name ?? '').split('.').pop()?.toLowerCase() ?? 'bin';
+        const resolvedType = resolveFileType(file);
         const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${file.name}`;
         const blob = await (await fetch(file.uri)).blob();
         const contentType =
-          file.type === 'image'
+          resolvedType === 'image'
             ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
             : 'application/octet-stream';
         const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -34,7 +42,7 @@ export async function uploadInspectionFiles(
           checklist_item_id: checklistItemId,
           file_url: urlData.publicUrl,
           file_name: file.name,
-          file_type: file.type,
+          file_type: resolvedType,
         });
         if (insertErr) {
           errors.push(`Failed to record ${file.name} in database: ${insertErr.message}`);
@@ -42,7 +50,7 @@ export async function uploadInspectionFiles(
           return;
         }
 
-        if (file.type === 'image') {
+        if (resolvedType === 'image') {
           const uploadedAt = new Date().toISOString();
           const { error: upsertErr } = await supabase
             .from('inspection_answers')

@@ -41,6 +41,7 @@ interface ReviewInspection {
   officer_name: string;
   city: string;
   files: string[];
+  imageFiles: ReviewAttachment[];
   responses: ReviewResponse[];
 }
 
@@ -49,6 +50,13 @@ const scoreColor = (score: number) => {
   if (score >= 60) return 'text-yellow-600 stroke-yellow-500';
   if (score >= 40) return 'text-orange-600 stroke-orange-500';
   return 'text-red-600 stroke-red-500';
+};
+
+const staffBehaviourColor = (val: string) => {
+  if (val === 'Good') return 'text-green-600';
+  if (val === 'Moderate') return 'text-yellow-500';
+  if (val === 'Bad') return 'text-red-600';
+  return 'text-gray-700 dark:text-gray-300';
 };
 
 export default function HeadReview() {
@@ -118,6 +126,13 @@ export default function HeadReview() {
         officer_name: item.user_roles?.name ?? 'Unknown Officer',
         city: item.branches?.city ?? '-',
         files: (item.inspection_files ?? []).map((f: any) => f.file_url).filter(Boolean),
+        imageFiles: (item.inspection_files ?? [])
+          .filter((f: any) => f.file_type === 'image')
+          .map((f: any) => ({
+            url: f.file_url,
+            name: f.file_name ?? undefined,
+            type: 'image' as const,
+          })),
         responses: (item.inspection_responses ?? []).map((r: any) => {
           const ct = r.checklist_templates;
           const triggerOnNo = ct?.trigger_on_no ?? true;
@@ -205,9 +220,7 @@ export default function HeadReview() {
           trigger_on_no: r.trigger_on_no,
           attachments: r.attachments,
         })),
-        photos: selected.files
-          .filter((f) => /\.(jpe?g|png|webp)$/i.test(f))
-          .map((url) => ({ url })),
+        photos: selected.imageFiles.map((file) => ({ url: file.url })),
       };
       const filename = await generateInspectionPdf(data);
       setToast(`Downloaded ${filename}`);
@@ -475,7 +488,7 @@ export default function HeadReview() {
                                       </div>
                                     )}
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">{response.response}</span>
+                                  <span className={`text-xs font-semibold shrink-0 ${staffBehaviourColor(response.response)}`}>{response.response}</span>
                                 </div>
                               </div>
                             ))}
@@ -485,6 +498,19 @@ export default function HeadReview() {
                     ))}
                   </div>
                 </div>
+
+                {selected.imageFiles.length > 0 && (
+                  <section>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Photo Evidence</h3>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {selected.imageFiles.map((file) => (
+                        <a key={file.url} href={file.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:opacity-90">
+                          <img src={file.url} alt={file.name ?? 'Inspection evidence'} className="w-full h-24 object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
                 <div>
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Photos / Files</h3>

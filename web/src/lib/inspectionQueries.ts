@@ -31,7 +31,7 @@ export interface ManagementInspection {
   officer_photo_url: string | null;
   responses: InspectionResponseRow[];
   file_count: number;
-  photos: { url: string; uploaded_at: string | null; source: 'answers' | 'files' }[];
+  photos: { url: string; name?: string; uploaded_at: string | null; source: 'answers' | 'files' }[];
 }
 
 const INSPECTION_SELECT = `
@@ -52,7 +52,7 @@ const INSPECTION_SELECT = `
     branch_types:branch_type_id ( type_name )
   ),
   user_roles:officer_id ( name, profile_photo_url ),
-  inspection_files ( id, file_url, file_type, uploaded_at ),
+  inspection_files ( id, file_url, file_name, file_type, uploaded_at ),
   inspection_answers ( photo_url, photo_uploaded_at ),
   inspection_responses (
     id,
@@ -96,9 +96,10 @@ function mapInspectionRow(item: Record<string, unknown>): ManagementInspection {
       source: 'answers' as const,
     }));
   const filePhotos = ((item.inspection_files as Record<string, unknown>[]) ?? [])
-    .filter((file) => /\.(jpe?g|png|webp)$/i.test(String(file.file_url ?? '')))
+    .filter((file) => file.file_type === 'image' || /\.(jpe?g|png|gif|webp|heic)$/i.test(String(file.file_url ?? '')))
     .map((file) => ({
       url: String(file.file_url),
+      name: String(file.file_name ?? 'Inspection evidence'),
       uploaded_at: (file.uploaded_at as string | null) ?? null,
       source: 'files' as const,
     }));

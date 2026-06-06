@@ -170,7 +170,7 @@ export default function ChecklistScreen() {
             text: 'Resume', onPress: () => {
               setResponses(draft.responses as any);
               setGeneralRemark(draft.generalRemark);
-              setTimeIn(draft.timeIn || timeIn);
+              setTimeIn(draft.timeIn || nowTime());
               setTimeOut(draft.timeOut);
               if (draft.itemFiles) setItemFiles(draft.itemFiles);
             },
@@ -178,7 +178,7 @@ export default function ChecklistScreen() {
         ]);
       }
     });
-  }, [branchId, today, timeIn]);
+  }, [branchId]);
 
   const sections = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -381,7 +381,7 @@ export default function ChecklistScreen() {
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.8,
         });
-        if (!result.canceled) return;
+        if (result.canceled) return;
         appendItemFiles(
           itemId,
           result.assets.map((a) => ({
@@ -398,7 +398,7 @@ export default function ChecklistScreen() {
           allowsMultipleSelection: true,
           quality: 0.8,
         });
-        if (!result.canceled) return;
+        if (result.canceled) return;
         appendItemFiles(
           itemId,
           result.assets.map((a) => ({
@@ -531,7 +531,7 @@ export default function ChecklistScreen() {
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
-            const effectiveTimeOut = timeOut || nowTime();
+            const effectiveTimeOut = nowTime();
             setTimeOut(effectiveTimeOut);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
@@ -595,7 +595,8 @@ export default function ChecklistScreen() {
                 .from('inspections')
                 .update({
                   status: 'submitted',
-                  time_out: effectiveTimeOut || null,
+                  time_in: timeIn,
+                  time_out: effectiveTimeOut,
                   submitted_at: submittedAt,
                   ...(isEdit === '1' ? { edited_at: submittedAt } : {}),
                   sync_status: 'synced',

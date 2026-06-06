@@ -22,7 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { RADIUS, SPACING } from '../../lib/a11y';
 import { AUDIT, auditScoreColor } from '../../lib/auditTheme';
 import { buildAuditPdfHtml } from '../../lib/auditPdf';
-import { isViolationResponse } from '../../lib/checklistScoring';
+import { isViolationResponse, type ChecklistResponse } from '../../lib/checklistScoring';
 
 const PDF_MIME_TYPE = 'application/pdf';
 
@@ -77,11 +77,12 @@ interface ChecklistItemRef {
   item_text: string;
   section: string;
   item_order: number;
+  trigger_on_no: boolean;
 }
 
 interface ResponseRow {
   id: string;
-  response: string | null;
+  response: ChecklistResponse;
   remarks: string | null;
   checklist_item: ChecklistItemRef | null;
 }
@@ -125,7 +126,7 @@ export default function AuditReportDetailScreen() {
           inspection_responses (
             id, response, remarks,
             checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
-              item_text, section, item_order
+              item_text, section, item_order, trigger_on_no
             )
           ),
           inspection_files ( id, file_url, file_name, file_type ),

@@ -123,15 +123,18 @@ const isImageEvidence = (file: ReportDetail['inspection_files'][number]) => {
 };
 
 /**
- * Formats a stored HH:MM or HH:MM:SS time string for display.
- * Returns '-' for null/empty, handles both 'HH:MM' and 'HH:MM:SS'.
+ * Formats DB time strings to 12-hour display (e.g. "08:05 PM").
+ * Accepts HH:MM, HH:MM:SS, and HH:MM:SS.micros.
  */
 const formatReportTime = (value: string | null | undefined): string => {
   if (!value || value.trim() === '') return '-';
-  // Match HH:MM or HH:MM:SS
-  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?/);
   if (!match) return value.trim();
-  return `${match[1].padStart(2, '0')}:${match[2]}`;
+  const h = Math.min(23, Math.max(0, Number(match[1])));
+  const m = Math.min(59, Math.max(0, Number(match[2])));
+  const isPm = h >= 12;
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${isPm ? 'PM' : 'AM'}`;
 };
 
 export default function AuditReportDetailScreen() {

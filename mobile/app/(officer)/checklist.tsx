@@ -29,7 +29,6 @@ import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttac
 import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 import { claimBranchInspection } from '../../lib/branchLocks';
-import { compressImage } from '../../lib/imageUtils';
 
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
@@ -409,42 +408,54 @@ export default function ChecklistScreen() {
 
           const attachments = await Promise.all(
             result.assets.map(async (a) => {
+              if (!a?.uri) return null;
               const normalizedUri = await normalizeCameraUri(a.uri);
               return {
-                uri: await compressImage(normalizedUri),
+                uri: normalizedUri,
                 name: a.fileName || `photo_${Date.now()}.jpg`,
                 type: 'image' as const,
               };
             }),
           );
-          if (!attachments.length) {
+          const validAttachments = attachments.filter((file): file is ItemAttachment => !!file?.uri);
+          if (!validAttachments.length) {
             showToast('Could not attach captured photo. Please retry.', 'error');
             return;
           }
           appendItemFiles(
             itemId,
-            attachments,
+            validAttachments,
           );
+          showToast(`${validAttachments.length} photo(s) added`, 'success');
         } catch {
           showToast('Camera capture failed. Please try again.', 'error');
         }
       };
 
       const pickFromGallery = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsMultipleSelection: true,
-          quality: 0.8,
-        });
-        if (result.canceled) return;
-        appendItemFiles(
-          itemId,
-          result.assets.map((a) => ({
-            uri: a.uri,
-            name: a.fileName || `photo_${Date.now()}.jpg`,
-            type: 'image' as const,
-          })),
-        );
+        try {
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsMultipleSelection: true,
+            quality: 0.8,
+          });
+          if (result.canceled) return;
+          const attachments = result.assets
+            .filter((a) => !!a?.uri)
+            .map((a) => ({
+              uri: a.uri,
+              name: a.fileName || `photo_${Date.now()}.jpg`,
+              type: 'image' as const,
+            }));
+          if (!attachments.length) {
+            showToast('No valid gallery image selected.', 'warning');
+            return;
+          }
+          appendItemFiles(itemId, attachments);
+          showToast(`${attachments.length} photo(s) added`, 'success');
+        } catch {
+          showToast('Gallery selection failed. Please try again.', 'error');
+        }
       };
 
       Alert.alert(

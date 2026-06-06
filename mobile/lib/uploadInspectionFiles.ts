@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import * as FileSystem from 'expo-file-system';
 import type { ItemAttachment } from '../components/ItemAttachments';
 
 function resolveFileType(file: { type?: string; name?: string }): string {
@@ -22,12 +23,26 @@ export async function uploadInspectionFiles(
         const ext = (file.name ?? '').split('.').pop()?.toLowerCase() ?? 'bin';
         const resolvedType = resolveFileType(file);
         const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${file.name}`;
-        const blob = await (await fetch(file.uri)).blob();
         const imageExt = ext === 'jpg' || ext === 'bin' ? 'jpeg' : ext;
+
+        // Resolve contentType before blob creation
         const contentType =
           resolvedType === 'image'
             ? `image/${imageExt}`
             : 'application/octet-stream';
+
+        let blob: Blob;
+        try {
+          const base64 = await FileSystem.readAsStringAsync(file.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const byteArray = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          blob = new Blob([byteArray], { type: contentType });
+        } catch {
+          // fallback for http/https URIs (non-camera files)
+          blob = await (await fetch(file.uri)).blob();
+        }
+
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from('inspection-files')
           .upload(path, blob, { contentType });

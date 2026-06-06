@@ -547,7 +547,7 @@ export default function ChecklistScreen() {
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
-            const effectiveTimeIn = timeIn?.trim() ? timeIn : nowTime();
+            const effectiveTimeIn = timeIn || nowTime();
             const effectiveTimeOut = nowTime();
             if (effectiveTimeIn !== timeIn) setTimeIn(effectiveTimeIn);
             setTimeOut(effectiveTimeOut);

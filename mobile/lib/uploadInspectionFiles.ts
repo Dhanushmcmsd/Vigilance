@@ -9,6 +9,33 @@ function resolveFileType(file: { type?: string; name?: string }): string {
   return file.type ?? 'document';
 }
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = base64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const output: number[] = [];
+
+  for (let i = 0; i < clean.length; i += 4) {
+    const e1 = chars.indexOf(clean[i]);
+    const e2 = chars.indexOf(clean[i + 1]);
+    const e3 = chars.indexOf(clean[i + 2]);
+    const e4 = chars.indexOf(clean[i + 3]);
+
+    const c1 = (e1 << 2) | (e2 >> 4);
+    output.push(c1);
+
+    if (clean[i + 2] !== '=') {
+      const c2 = ((e2 & 15) << 4) | (e3 >> 2);
+      output.push(c2);
+    }
+    if (clean[i + 3] !== '=') {
+      const c3 = ((e3 & 3) << 6) | e4;
+      output.push(c3);
+    }
+  }
+
+  return new Uint8Array(output);
+}
+
 export async function uploadInspectionFiles(
   inspectionId: string,
   itemFiles: Record<string, ItemAttachment[]>,
@@ -36,7 +63,7 @@ export async function uploadInspectionFiles(
           const base64 = await FileSystem.readAsStringAsync(file.uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          const byteArray = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          const byteArray = base64ToUint8Array(base64);
           blob = new Blob([byteArray], { type: contentType });
         } catch {
           // fallback for http/https URIs (non-camera files)

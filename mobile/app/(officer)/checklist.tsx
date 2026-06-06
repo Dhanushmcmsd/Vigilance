@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -34,6 +35,10 @@ const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const toValidTime = (value: string | null | undefined, fallback: string) => {
+  const normalized = value?.trim() ?? '';
+  return /^\d{1,2}:\d{2}$/.test(normalized) ? normalized : fallback;
 };
 
 const YELLOW_REALTIME_THRESHOLD = 3;
@@ -383,12 +388,23 @@ export default function ChecklistScreen() {
           quality: 0.8,
         });
         if (result.canceled) return;
+
+        const normalizeCameraUri = async (uri: string) => {
+          if (!uri.startsWith('content://')) return uri;
+          const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}camera_${Date.now()}.jpg`;
+          await FileSystem.copyAsync({ from: uri, to: target });
+          return target;
+        };
+
         const attachments = await Promise.all(
-          result.assets.map(async (a) => ({
-            uri: await compressImage(a.uri),
+          result.assets.map(async (a) => {
+            const normalizedUri = await normalizeCameraUri(a.uri);
+            return {
+            uri: await compressImage(normalizedUri),
             name: a.fileName || `photo_${Date.now()}.jpg`,
             type: 'image' as const,
-          })),
+          };
+          }),
         );
         appendItemFiles(
           itemId,
@@ -547,8 +563,8 @@ export default function ChecklistScreen() {
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
-            const effectiveTimeIn = timeIn || nowTime();
             const effectiveTimeOut = nowTime();
+            const effectiveTimeIn = toValidTime(timeIn, effectiveTimeOut);
             if (effectiveTimeIn !== timeIn) setTimeIn(effectiveTimeIn);
             setTimeOut(effectiveTimeOut);
             const netState = await NetInfo.fetch();

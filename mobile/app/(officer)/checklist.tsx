@@ -571,7 +571,16 @@ export default function ChecklistScreen() {
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
-              await uploadInspectionFiles(inspectionId, itemFiles);
+              const uploadResult = await uploadInspectionFiles(inspectionId, itemFiles);
+              if (uploadResult.errors.length > 0) {
+                console.warn('Photo upload errors:', uploadResult.errors);
+                if (uploadResult.failedCount > 0 && uploadResult.successCount === 0) {
+                  throw new Error(`Failed to upload ${uploadResult.failedCount} photo(s). Please check your connection and try again.`);
+                } else if (uploadResult.failedCount > 0) {
+                  // Some photos failed but some succeeded - warn but don't block submission
+                  showToast(`${uploadResult.failedCount} photo(s) failed to upload but submission was recorded.`, 'warning');
+                }
+              }
 
               if (generalRemark.trim()) {
                 await supabase.from('general_remarks').insert({

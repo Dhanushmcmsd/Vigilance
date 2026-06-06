@@ -39,6 +39,10 @@ function monthLabel(year: number, monthIndex: number): string {
   });
 }
 
+function reportSortTime(report: AuditReportRow): number {
+  return new Date(report.submitted_at ?? report.inspection_date).getTime();
+}
+
 /** Inspections in the current calendar month, grouped by day (newest first). */
 export function groupStoreReports(reports: AuditReportRow[], now = new Date()): AuditStoreReportGroups {
   const currentYear = now.getFullYear();
@@ -63,9 +67,7 @@ export function groupStoreReports(reports: AuditReportRow[], now = new Date()): 
     }
   }
 
-  currentMonthDays.sort(
-    (a, b) => new Date(b.inspection_date).getTime() - new Date(a.inspection_date).getTime(),
-  );
+  currentMonthDays.sort((a, b) => reportSortTime(b) - reportSortTime(a));
 
   const monthFolders: AuditMonthFolder[] = [...folderCounts.entries()]
     .map(([key, { year, month, count }]) => ({
@@ -96,7 +98,7 @@ export function reportsInMonth(
 ): AuditReportRow[] {
   return reports
     .filter((r) => r.inspection_date.startsWith(yearMonth))
-    .sort((a, b) => new Date(b.inspection_date).getTime() - new Date(a.inspection_date).getTime());
+    .sort((a, b) => reportSortTime(b) - reportSortTime(a));
 }
 
 export function monthFolderLabel(yearMonth: string): string {

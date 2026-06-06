@@ -82,6 +82,7 @@ interface ChecklistItemRef {
 
 interface ResponseRow {
   id: string;
+  checklist_item_id: string;
   response: ChecklistResponse;
   remarks: string | null;
   checklist_item: ChecklistItemRef | null;
@@ -90,6 +91,7 @@ interface ResponseRow {
 interface ReportDetail {
   id: string;
   inspection_date: string;
+  created_at: string | null;
   status: string;
   compliance_score: number | null;
   risk_level: string | null;
@@ -99,7 +101,14 @@ interface ReportDetail {
   time_out: string | null;
   officer: { name: string; phone: string | null } | null;
   inspection_responses: ResponseRow[];
-  inspection_files: { id: string; file_url: string; file_name: string; file_type: string }[];
+  inspection_files: {
+    id: string;
+    file_url: string;
+    file_name: string;
+    file_type: string;
+    checklist_item_id: string | null;
+  }[];
+  inspection_answers: { photo_url: string | null; photo_uploaded_at: string | null }[];
   general_remarks: { remark_text: string }[];
 }
 
@@ -115,6 +124,17 @@ const formatReportTime = (value: string | null | undefined) => {
   const match = value.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return value;
   return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
+const formatTimestampTime = (value: string | null | undefined) => {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 };
 
 export default function AuditReportDetailScreen() {
@@ -134,16 +154,17 @@ export default function AuditReportDetailScreen() {
         .from('inspections')
         .select(
           `
-          id, inspection_date, status, compliance_score, risk_level,
+          id, inspection_date, created_at, status, compliance_score, risk_level,
           head_comment, submitted_at, time_in, time_out,
           officer:user_roles!inspections_officer_id_fkey ( name, phone ),
           inspection_responses (
-            id, response, remarks,
+            id, checklist_item_id, response, remarks,
             checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
               item_text, section, item_order, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type ),
+          inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
+          inspection_answers ( photo_url, photo_uploaded_at ),
           general_remarks ( remark_text )
         `,
         )
@@ -163,6 +184,17 @@ export default function AuditReportDetailScreen() {
     });
     return grouped;
   }, [data?.inspection_responses]);
+
+  const itemEvidenceMap = useMemo(() => {
+    const map = new Map<string, ReportDetail['inspection_files']>();
+    (data?.inspection_files ?? []).forEach((file) => {
+      if (!isImageEvidence(file) || !file.checklist_item_id) return;
+      const list = map.get(file.checklist_item_id) ?? [];
+      list.push(file);
+      map.set(file.checklist_item_id, list);
+    });
+    return map;
+  }, [data?.inspection_files]);
 
   const handleDownloadPdf = async () => {
     if (!data) return;
@@ -216,7 +248,25 @@ export default function AuditReportDetailScreen() {
     );
   }
 
-  const imageFiles = (data.inspection_files ?? []).filter(isImageEvidence);
+  const imageFiles = [
+    ...(data.inspection_files ?? []).filter(isImageEvidence),
+    ...((data.inspection_answers ?? [])
+      .filter((p) => !!p.photo_url)
+      .map((p, idx) => ({
+        id: `answer-photo-${idx}`,
+        file_url: p.photo_url as string,
+        file_name: 'Inspection photo',
+        file_type: 'image',
+        checklist_item_id: null,
+      }))),
+  ].filter((file, idx, arr) => arr.findIndex((f) => f.file_url === file.file_url) === idx);
+
+  const timeInDisplay = data.time_in
+    ? formatReportTime(data.time_in)
+    : formatTimestampTime(data.created_at ?? data.submitted_at);
+  const timeOutDisplay = data.time_out
+    ? formatReportTime(data.time_out)
+    : formatTimestampTime(data.submitted_at);
 
   return (
     <View style={{ flex: 1, backgroundColor: AUDIT.bg, paddingTop: insets.top }}>
@@ -320,11 +370,11 @@ export default function AuditReportDetailScreen() {
           <View style={{ flexDirection: 'row', marginTop: 12, gap: SPACING.xl }}>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Time In</Text>
-              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{formatReportTime(data.time_in)}</Text>
+              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{timeInDisplay}</Text>
             </View>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Time Out</Text>
-              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{formatReportTime(data.time_out)}</Text>
+              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{timeOutDisplay}</Text>
             </View>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Status</Text>
@@ -372,6 +422,7 @@ export default function AuditReportDetailScreen() {
             </View>
             {items.map((r, idx) => {
               const violation = isViolationResponse(r.response, r.checklist_item?.trigger_on_no ?? true);
+              const linkedEvidence = itemEvidenceMap.get(r.checklist_item_id) ?? [];
               return (
                 <View
                   key={r.id}
@@ -383,19 +434,44 @@ export default function AuditReportDetailScreen() {
                     backgroundColor: violation ? 'rgba(239,68,68,0.06)' : 'transparent',
                   }}
                 >
-                  <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
-                    {r.checklist_item?.item_text ?? '-'}
-                  </Text>
-                  <Text
-                    style={{
-                      fontWeight: '800',
-                      fontSize: 13,
-                      marginLeft: 8,
-                      color: violation ? AUDIT.danger : r.response === 'Yes' ? AUDIT.success : AUDIT.textMuted,
-                    }}
-                  >
-                    {r.response}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
+                        {r.checklist_item?.item_text ?? '-'}
+                      </Text>
+                      <Text
+                        style={{
+                          fontWeight: '800',
+                          fontSize: 13,
+                          marginLeft: 8,
+                          color: violation ? AUDIT.danger : r.response === 'Yes' ? AUDIT.success : AUDIT.textMuted,
+                        }}
+                      >
+                        {r.response}
+                      </Text>
+                    </View>
+                    {r.remarks ? (
+                      <Text style={{ marginTop: 6, color: AUDIT.textMuted, fontSize: 12, lineHeight: 18 }}>
+                        Remark: {r.remarks}
+                      </Text>
+                    ) : null}
+                    {linkedEvidence.length > 0 ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                        {linkedEvidence.map((f) => (
+                          <TouchableOpacity
+                            key={f.id}
+                            onPress={() => Linking.openURL(f.file_url)}
+                            style={{ marginRight: 8 }}
+                          >
+                            <Image
+                              source={{ uri: f.file_url }}
+                              style={{ width: 64, height: 64, borderRadius: RADIUS.md }}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    ) : null}
+                  </View>
                 </View>
               );
             })}

@@ -447,6 +447,18 @@ export default function ChecklistScreen() {
     () => Object.values(itemFiles).reduce((sum, list) => sum + list.length, 0),
     [itemFiles],
   );
+  const evidenceReviewItems = useMemo(
+    () =>
+      Object.entries(itemFiles).flatMap(([itemId, files]) => {
+        const itemText = items.find((item) => item.id === itemId)?.item_text ?? 'Checklist item';
+        return files.map((file) => ({
+          key: `${itemId}:${file.uri}`,
+          itemText,
+          file,
+        }));
+      }),
+    [itemFiles, items],
+  );
 
   const pageCount = useMemo(() => Math.ceil(items.length / ITEMS_PER_PAGE), [items.length]);
   const currentPageItems = useMemo(
@@ -535,7 +547,9 @@ export default function ChecklistScreen() {
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
+            const effectiveTimeIn = timeIn?.trim() ? timeIn : nowTime();
             const effectiveTimeOut = nowTime();
+            if (effectiveTimeIn !== timeIn) setTimeIn(effectiveTimeIn);
             setTimeOut(effectiveTimeOut);
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
@@ -547,7 +561,7 @@ export default function ChecklistScreen() {
                 branchName,
                 branchType: branchType || '',
                 date,
-                timeIn,
+                timeIn: effectiveTimeIn,
                 timeOut: effectiveTimeOut,
                 responses: responses as any,
                 generalRemark,
@@ -599,7 +613,7 @@ export default function ChecklistScreen() {
                 .from('inspections')
                 .update({
                   status: 'submitted',
-                  time_in: timeIn,
+                  time_in: effectiveTimeIn,
                   time_out: effectiveTimeOut,
                   submitted_at: submittedAt,
                   ...(isEdit === '1' ? { edited_at: submittedAt } : {}),
@@ -629,7 +643,7 @@ export default function ChecklistScreen() {
                   branchName,
                   branchType: branchType || '',
                   date,
-                  timeIn,
+                  timeIn: effectiveTimeIn,
                   timeOut: effectiveTimeOut,
                   answeredCount: String(answeredCount),
                   totalItems: String(items.length),
@@ -982,6 +996,68 @@ export default function ChecklistScreen() {
                 }}
               />
             )}
+          </View>
+        )}
+
+        {isLastPage && evidenceReviewItems.length > 0 && (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              padding: 16,
+              shadowColor: '#000',
+              shadowOpacity: 0.06,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 3,
+              marginBottom: 16,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>
+              Evidence review before submit
+            </Text>
+            <Text style={{ marginTop: 4, marginBottom: 10, fontSize: 12, color: '#64748b' }}>
+              Confirm each captured image/document before final submission.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {evidenceReviewItems.map(({ key, itemText, file }) => (
+                <View key={key} style={{ width: 118, marginRight: 10 }}>
+                  {file.type === 'image' ? (
+                    <Image
+                      source={{ uri: file.uri }}
+                      style={{ width: 118, height: 92, borderRadius: 10, backgroundColor: '#e2e8f0' }}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 118,
+                        height: 92,
+                        borderRadius: 10,
+                        backgroundColor: '#f1f5f9',
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="document-text-outline" size={22} color="#64748b" />
+                      <Text
+                        numberOfLines={1}
+                        style={{ marginTop: 6, fontSize: 10, color: '#475569', paddingHorizontal: 6 }}
+                      >
+                        {file.name}
+                      </Text>
+                    </View>
+                  )}
+                  <Text
+                    numberOfLines={2}
+                    style={{ marginTop: 6, fontSize: 10, color: '#475569', lineHeight: 14 }}
+                  >
+                    {itemText}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         )}
 

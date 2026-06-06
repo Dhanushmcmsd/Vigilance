@@ -1,493 +1,393 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
   ActivityIndicator,
-  Image,
   Linking,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-
 import { supabase } from '../../lib/supabase';
-import { COLOR, FONT, RADIUS, SPACING, TOUCH, riskPalette } from '../../lib/a11y';
-import { haptics } from '../../lib/haptics';
+import { isViolationResponse, type ChecklistResponse } from '../../lib/checklistScoring';
 
-interface DetailRow {
-  id: string;
-  inspection_date: string;
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  compliance_score: number | null;
-  risk_level: 'low' | 'medium' | 'high' | 'critical' | null;
-  head_comment: string | null;
-  submitted_at: string | null;
-  time_in: string | null;
-  time_out: string | null;
-  branch: { branch_name: string } | null;
-  inspection_responses: ResponseRow[];
-  inspection_files: FileRow[];
-  general_remarks: { remark_text: string }[];
+interface ChecklistItemRef {
+  item_text: string;
+  section: string;
+  item_order: number;
+  trigger_on_no: boolean;
 }
 
 interface ResponseRow {
   id: string;
-  response: 'Yes' | 'No' | 'N/A';
+  checklist_item_id: string;
+  response: ChecklistResponse;
   remarks: string | null;
-  checklist_item: {
-    item_text: string;
-    section: string;
-    item_order: number;
-    risk_classifications: { risk_level: 'RED' | 'YELLOW' | 'GREEN' } | null;
-  } | null;
+  checklist_item: ChecklistItemRef | null;
 }
 
 interface FileRow {
   id: string;
   file_url: string;
   file_name: string;
-  file_type: 'image' | 'document';
+  file_type: string;
+  checklist_item_id: string | null;
 }
 
+interface SubmissionDetail {
+  id: string;
+  inspection_date: string;
+  status: string;
+  compliance_score: number | null;
+  risk_level: string | null;
+  time_in: string | null;
+  time_out: string | null;
+  submitted_at: string | null;
+  inspection_responses: ResponseRow[];
+  inspection_files: FileRow[];
+  general_remarks: { remark_text: string }[];
+}
+
+const isImageFile = (f: FileRow) => {
+  const type = (f.file_type ?? '').toLowerCase();
+  const name = (f.file_name ?? '').toLowerCase();
+  const url = (f.file_url ?? '').toLowerCase();
+  return (
+    type === 'image' ||
+    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) ||
+    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url)
+  );
+};
+
+/**
+ * Formats a stored HH:MM or HH:MM:SS time string for display.
+ * Returns '-' for null/empty.
+ */
+const formatTime = (value: string | null | undefined): string => {
+  if (!value || value.trim() === '') return '-';
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value.trim();
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
+const scoreColor = (score: number) => {
+  if (score >= 80) return '#16a34a';
+  if (score >= 50) return '#d97706';
+  return '#dc2626';
+};
+
 export default function SubmissionDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { inspectionId, branchName } = useLocalSearchParams<{
+    inspectionId: string;
+    branchName: string;
+  }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { data, isLoading, error } = useQuery<DetailRow | null>({
-    queryKey: ['submission-detail', id],
-    enabled: !!id,
+  const { data, isLoading, error } = useQuery<SubmissionDetail | null>({
+    queryKey: ['submission-detail', inspectionId],
+    enabled: !!inspectionId,
     queryFn: async () => {
-      const { data: row, error } = await supabase
+      const { data: row, error: qErr } = await supabase
         .from('inspections')
         .select(
           `
-          id, inspection_date, status, compliance_score, risk_level, head_comment,
-          submitted_at, time_in, time_out,
-          branch:branches!inspections_branch_id_fkey ( branch_name ),
+          id, inspection_date, status, compliance_score, risk_level,
+          time_in, time_out, submitted_at,
           inspection_responses (
-            id, response, remarks,
+            id, checklist_item_id, response, remarks,
             checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
-              item_text, section, item_order,
-              risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey ( risk_level )
+              item_text, section, item_order, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type ),
+          inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
           general_remarks ( remark_text )
         `,
         )
-        .eq('id', id!)
+        .eq('id', inspectionId!)
         .maybeSingle();
-      if (error) throw error;
-      return (row as unknown) as DetailRow | null;
+      if (qErr) throw qErr;
+      return row as SubmissionDetail | null;
     },
   });
 
+  const sections = useMemo(() => {
+    const grouped: Record<string, ResponseRow[]> = {};
+    (data?.inspection_responses ?? []).forEach((r) => {
+      const sec = r.checklist_item?.section ?? 'General';
+      if (!grouped[sec]) grouped[sec] = [];
+      grouped[sec].push(r);
+    });
+    return grouped;
+  }, [data?.inspection_responses]);
+
+  const itemEvidenceMap = useMemo(() => {
+    const map = new Map<string, FileRow[]>();
+    (data?.inspection_files ?? []).forEach((f) => {
+      if (!isImageFile(f) || !f.checklist_item_id) return;
+      const list = map.get(f.checklist_item_id) ?? [];
+      list.push(f);
+      map.set(f.checklist_item_id, list);
+    });
+    return map;
+  }, [data?.inspection_files]);
+
+  const allImages = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.inspection_files ?? []).filter((f) => {
+      if (!isImageFile(f)) return false;
+      if (seen.has(f.file_url)) return false;
+      seen.add(f.file_url);
+      return true;
+    });
+  }, [data?.inspection_files]);
+
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLOR.brand} />
+      <View style={{ flex: 1, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
       </View>
     );
   }
 
   if (error || !data) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={56} color={COLOR.danger} />
-        <Text style={styles.errorTitle}>Couldn't load this inspection</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.actionButton, { backgroundColor: COLOR.brandStrong, marginTop: SPACING.lg }]}
-        >
-          <Text style={styles.actionPrimaryText}>Go back</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+        <Text style={{ color: '#1e293b', marginTop: 12 }}>Submission not found</Text>
       </View>
     );
   }
 
-  // Group responses by section.
-  const grouped = new Map<string, ResponseRow[]>();
-  for (const r of data.inspection_responses) {
-    const sec = r.checklist_item?.section ?? 'Other';
-    if (!grouped.has(sec)) grouped.set(sec, []);
-    grouped.get(sec)!.push(r);
-  }
-  for (const list of grouped.values()) {
-    list.sort(
-      (a, b) =>
-        (a.checklist_item?.item_order ?? 0) - (b.checklist_item?.item_order ?? 0),
-    );
-  }
-
-  const photos = data.inspection_files.filter((f: FileRow) => f.file_type === 'image');
-  const docs = data.inspection_files.filter((f: FileRow) => f.file_type !== 'image');
+  const timeInDisplay = formatTime(data.time_in);
+  const timeOutDisplay = formatTime(data.time_out);
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            router.back();
-          }}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="arrow-back" size={24} color={COLOR.textOnPrimary} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {data.branch?.branch_name ?? 'Inspection'}
-        </Text>
-        <View style={{ width: 80 }} />
-      </View>
-
-      <ScrollView
-        contentContainerStyle={{
-          padding: SPACING.lg,
-          paddingBottom: insets.bottom + SPACING.xl,
+    <View style={{ flex: 1, backgroundColor: '#f1f5f9', paddingTop: insets.top }}>
+      {/* Header */}
+      <View
+        style={{
+          backgroundColor: '#1e3a5f',
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
         }}
       >
-        {/* Summary */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryDate}>
-            {data.inspection_date}
-            {data.submitted_at
-              ? ` · submitted ${new Date(data.submitted_at).toLocaleString('en-IN')}`
-              : ''}
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </TouchableOpacity>
+        <Text style={{ flex: 1, color: '#fff', fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
+          {branchName}
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}>
+        {/* Summary card */}
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 12,
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 3,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1, marginBottom: 12 }}>
+            INSPECTION SUMMARY
           </Text>
-          <View style={styles.summaryRow}>
-            <SummaryStat
-              label="Score"
-              value={
-                data.compliance_score != null
-                  ? `${data.compliance_score.toFixed(0)}%`
-                  : '—'
-              }
-            />
-            <SummaryStat label="Risk" value={(data.risk_level ?? '—').toUpperCase()} />
-            <SummaryStat label="Status" value={data.status.toUpperCase()} />
-          </View>
-          {(data.time_in || data.time_out) && (
-            <Text style={styles.summaryTime}>
-              {data.time_in ?? '—'} → {data.time_out ?? '—'}
-            </Text>
-          )}
-          {data.head_comment ? (
-            <View style={styles.commentBox}>
-              <Text style={styles.commentLabel}>Supervisor comment</Text>
-              <Text style={styles.commentText}>{data.head_comment}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+            <View>
+              <Text style={{ fontSize: 11, color: '#64748b' }}>Date</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 2 }}>
+                {new Date(data.inspection_date).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </Text>
             </View>
-          ) : null}
+            {data.compliance_score !== null && (
+              <Text style={{ fontSize: 28, fontWeight: '900', color: scoreColor(data.compliance_score) }}>
+                {data.compliance_score.toFixed(0)}%
+              </Text>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 24 }}>
+            <View>
+              <Text style={{ fontSize: 11, color: '#64748b' }}>Time In</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 2 }}>{timeInDisplay}</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 11, color: '#64748b' }}>Time Out</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 2 }}>{timeOutDisplay}</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 11, color: '#64748b' }}>Status</Text>
+              <Text style={{ color: '#16a34a', fontWeight: '700', marginTop: 2 }}>
+                {data.status?.toUpperCase()}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* General remarks */}
-        {data.general_remarks.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>General remarks</Text>
-            {data.general_remarks.map((g: { remark_text: string }, i: number) => (
-              <Text key={i} style={styles.bodyText}>
-                {g.remark_text}
+        {/* Checklist sections */}
+        {Object.entries(sections).map(([section, items]) => (
+          <View
+            key={section}
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              marginBottom: 12,
+              overflow: 'hidden',
+              shadowColor: '#000',
+              shadowOpacity: 0.05,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 2,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: '#1e293b',
+                padding: 12,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#38bdf8', letterSpacing: 1 }}>
+                {section.toUpperCase()}
               </Text>
-            ))}
-          </View>
-        )}
-
-        {/* Photos */}
-        {photos.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos ({photos.length})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {photos.map((p: FileRow) => (
-                <Image
-                  key={p.id}
-                  source={{ uri: p.file_url }}
-                  style={styles.photo}
-                  accessibilityLabel={p.file_name}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Documents */}
-        {docs.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Documents ({docs.length})</Text>
-            {docs.map((d: FileRow) => (
-              <TouchableOpacity
-                key={d.id}
-                onPress={() => Linking.openURL(d.file_url)}
-                style={styles.docRow}
-                accessibilityRole="link"
-                accessibilityLabel={`Open ${d.file_name}`}
-              >
-                <Ionicons name="document-outline" size={22} color={COLOR.brand} />
-                <Text style={styles.docName} numberOfLines={1}>
-                  {d.file_name}
-                </Text>
-                <Ionicons
-                  name="open-outline"
-                  size={20}
-                  color={COLOR.borderStrong}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Checklist by section */}
-        {[...grouped.entries()].map(([section, items]) => (
-          <View key={section} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section}</Text>
-            {items.map((r) => {
-              const risk = r.checklist_item?.risk_classifications?.risk_level;
-              const palette =
-                risk === 'RED'
-                  ? riskPalette.red
-                  : risk === 'YELLOW'
-                  ? riskPalette.yellow
-                  : risk === 'GREEN'
-                  ? riskPalette.green
-                  : null;
+            </View>
+            {items.map((r, idx) => {
+              const violation = isViolationResponse(r.response, r.checklist_item?.trigger_on_no ?? true);
+              const linkedEvidence = itemEvidenceMap.get(r.checklist_item_id) ?? [];
               return (
                 <View
                   key={r.id}
-                  style={[
-                    styles.itemCard,
-                    palette ? { borderLeftColor: palette.fg, borderLeftWidth: 4 } : null,
-                  ]}
+                  style={{
+                    padding: 12,
+                    borderBottomWidth: idx < items.length - 1 ? 1 : 0,
+                    borderBottomColor: '#f1f5f9',
+                    backgroundColor: violation ? 'rgba(239,68,68,0.05)' : 'transparent',
+                  }}
                 >
-                  <Text style={styles.itemText}>
-                    {r.checklist_item?.item_order != null
-                      ? `${r.checklist_item.item_order}. `
-                      : ''}
-                    {r.checklist_item?.item_text ?? '—'}
-                  </Text>
-                  <View style={styles.itemFootRow}>
-                    <ResponsePill response={r.response} />
-                    {risk && palette && (
-                      <View style={[styles.riskPill, { backgroundColor: palette.bg }]}>
-                        <Text style={[styles.riskPillText, { color: palette.fg }]}>
-                          {risk}
-                        </Text>
-                      </View>
-                    )}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                    <Text style={{ flex: 1, color: '#0f172a', fontSize: 13, lineHeight: 18 }}>
+                      {r.checklist_item?.item_text ?? '-'}
+                    </Text>
+                    <Text
+                      style={{
+                        fontWeight: '800',
+                        fontSize: 13,
+                        marginLeft: 8,
+                        color: violation
+                          ? '#dc2626'
+                          : r.response === 'Yes'
+                          ? '#16a34a'
+                          : '#64748b',
+                      }}
+                    >
+                      {r.response}
+                    </Text>
                   </View>
-                  {r.remarks ? <Text style={styles.remark}>{r.remarks}</Text> : null}
+                  {r.remarks ? (
+                    <Text style={{ marginTop: 6, color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      Remark: {r.remarks}
+                    </Text>
+                  ) : null}
+                  {linkedEvidence.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={{ marginTop: 8 }}
+                    >
+                      {linkedEvidence.map((f) => (
+                        <TouchableOpacity
+                          key={f.id}
+                          onPress={() => Linking.openURL(f.file_url)}
+                          style={{ marginRight: 8 }}
+                        >
+                          <Image
+                            source={{ uri: f.file_url }}
+                            style={{ width: 64, height: 64, borderRadius: 8 }}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  ) : null}
                 </View>
               );
             })}
           </View>
         ))}
+
+        {/* General Remarks */}
+        {(data.general_remarks ?? []).length > 0 && (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 12,
+              shadowColor: '#000',
+              shadowOpacity: 0.05,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 2,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1, marginBottom: 8 }}>
+              GENERAL REMARKS
+            </Text>
+            {data.general_remarks.map((r, i) => (
+              <Text key={i} style={{ color: '#0f172a', fontSize: 13, lineHeight: 20 }}>
+                {r.remark_text}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {/* All photo evidence */}
+        {allImages.length > 0 && (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 12,
+              shadowColor: '#000',
+              shadowOpacity: 0.05,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 2,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1, marginBottom: 12 }}>
+              PHOTO EVIDENCE
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {allImages.map((f) => (
+                <TouchableOpacity key={f.id} onPress={() => Linking.openURL(f.file_url)}>
+                  <Image
+                    source={{ uri: f.file_url }}
+                    style={{ width: 100, height: 100, borderRadius: 10 }}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
-
-function SummaryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={{ flex: 1 }}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
-function ResponsePill({ response }: { response: 'Yes' | 'No' | 'N/A' }) {
-  const bg =
-    response === 'Yes' ? '#dcfce7' : response === 'No' ? '#fee2e2' : '#e5e7eb';
-  const fg =
-    response === 'Yes' ? '#166534' : response === 'No' ? '#b91c1c' : '#374151';
-  return (
-    <View style={[styles.respPill, { backgroundColor: bg }]}>
-      <Text style={[styles.respPillText, { color: fg }]}>{response}</Text>
-    </View>
-  );
-}
-
-const styles = {
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLOR.bg,
-    padding: SPACING.xl,
-  } as const,
-  errorTitle: {
-    fontSize: FONT.h2,
-    fontWeight: '800',
-    color: COLOR.text,
-    marginTop: SPACING.md,
-  } as const,
-  header: {
-    backgroundColor: COLOR.brand,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  } as const,
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: TOUCH.minHeight,
-    paddingHorizontal: SPACING.sm,
-    gap: SPACING.xs,
-  } as const,
-  backText: {
-    color: COLOR.textOnPrimary,
-    fontSize: FONT.body,
-    fontWeight: '600',
-  } as const,
-  headerTitle: {
-    flex: 1,
-    color: COLOR.textOnPrimary,
-    fontSize: FONT.h1,
-    fontWeight: '800',
-    textAlign: 'center',
-  } as const,
-  summaryCard: {
-    backgroundColor: COLOR.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLOR.border,
-    marginBottom: SPACING.lg,
-  } as const,
-  summaryDate: {
-    fontSize: FONT.body,
-    color: COLOR.textMuted,
-    marginBottom: SPACING.md,
-  } as const,
-  summaryRow: { flexDirection: 'row', gap: SPACING.md } as const,
-  summaryTime: {
-    fontSize: FONT.body,
-    color: COLOR.textMuted,
-    marginTop: SPACING.md,
-  } as const,
-  statLabel: {
-    fontSize: FONT.xs,
-    fontWeight: '700',
-    color: COLOR.textMuted,
-    letterSpacing: 0.4,
-  } as const,
-  statValue: {
-    fontSize: FONT.h2,
-    fontWeight: '900',
-    color: COLOR.text,
-    marginTop: 4,
-  } as const,
-  commentBox: {
-    marginTop: SPACING.md,
-    padding: SPACING.md,
-    backgroundColor: COLOR.warningSoft,
-    borderRadius: RADIUS.md,
-  } as const,
-  commentLabel: {
-    fontSize: FONT.xs,
-    fontWeight: '800',
-    color: COLOR.warning,
-    letterSpacing: 0.4,
-    marginBottom: 4,
-  } as const,
-  commentText: {
-    fontSize: FONT.body,
-    color: COLOR.text,
-    lineHeight: 22,
-  } as const,
-  section: { marginBottom: SPACING.xl } as const,
-  sectionTitle: {
-    fontSize: FONT.h2,
-    fontWeight: '800',
-    color: COLOR.text,
-    marginBottom: SPACING.md,
-  } as const,
-  bodyText: {
-    fontSize: FONT.body,
-    color: COLOR.text,
-    lineHeight: 22,
-    marginBottom: SPACING.sm,
-  } as const,
-  photo: {
-    width: 140,
-    height: 140,
-    borderRadius: RADIUS.md,
-    marginRight: SPACING.sm,
-    backgroundColor: COLOR.borderStrong,
-  } as const,
-  docRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    backgroundColor: COLOR.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLOR.border,
-    padding: SPACING.md,
-    minHeight: TOUCH.minHeight,
-    marginBottom: SPACING.sm,
-  } as const,
-  docName: {
-    flex: 1,
-    fontSize: FONT.body,
-    fontWeight: '600',
-    color: COLOR.text,
-  } as const,
-  itemCard: {
-    backgroundColor: COLOR.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLOR.border,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  } as const,
-  itemText: {
-    fontSize: FONT.body,
-    color: COLOR.text,
-    lineHeight: 22,
-    fontWeight: '600',
-  } as const,
-  itemFootRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  } as const,
-  respPill: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: RADIUS.pill,
-  } as const,
-  respPillText: { fontSize: FONT.body, fontWeight: '800' } as const,
-  riskPill: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: RADIUS.pill,
-  } as const,
-  riskPillText: { fontSize: FONT.xs, fontWeight: '800', letterSpacing: 0.5 } as const,
-  remark: {
-    fontSize: FONT.body,
-    color: COLOR.textMuted,
-    marginTop: SPACING.sm,
-    fontStyle: 'italic',
-    lineHeight: 22,
-  } as const,
-  actionButton: {
-    minHeight: TOUCH.minHeight,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  } as const,
-  actionPrimaryText: {
-    color: '#fff',
-    fontSize: FONT.body,
-    fontWeight: '700',
-  } as const,
-};

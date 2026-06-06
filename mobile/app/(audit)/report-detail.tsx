@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -108,33 +108,30 @@ interface ReportDetail {
     file_type: string;
     checklist_item_id: string | null;
   }[];
-  inspection_answers: { photo_url: string | null; photo_uploaded_at: string | null }[];
   general_remarks: { remark_text: string }[];
 }
 
 const isImageEvidence = (file: ReportDetail['inspection_files'][number]) => {
   const type = (file.file_type ?? '').toLowerCase();
-  const name = file.file_name ?? '';
-  const url = file.file_url ?? '';
-  return type === 'image' || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url);
+  const name = (file.file_name ?? '').toLowerCase();
+  const url = (file.file_url ?? '').toLowerCase();
+  return (
+    type === 'image' ||
+    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) ||
+    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url)
+  );
 };
 
-const formatReportTime = (value: string | null | undefined) => {
-  if (!value) return '-';
-  const match = value.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return value;
+/**
+ * Formats a stored HH:MM or HH:MM:SS time string for display.
+ * Returns '-' for null/empty, handles both 'HH:MM' and 'HH:MM:SS'.
+ */
+const formatReportTime = (value: string | null | undefined): string => {
+  if (!value || value.trim() === '') return '-';
+  // Match HH:MM or HH:MM:SS
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value.trim();
   return `${match[1].padStart(2, '0')}:${match[2]}`;
-};
-
-const formatTimestampTime = (value: string | null | undefined) => {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
 };
 
 export default function AuditReportDetailScreen() {
@@ -164,7 +161,6 @@ export default function AuditReportDetailScreen() {
             )
           ),
           inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
-          inspection_answers ( photo_url, photo_uploaded_at ),
           general_remarks ( remark_text )
         `,
         )
@@ -185,6 +181,7 @@ export default function AuditReportDetailScreen() {
     return grouped;
   }, [data?.inspection_responses]);
 
+  // Map checklist_item_id -> image files so each checklist row can show its evidence
   const itemEvidenceMap = useMemo(() => {
     const map = new Map<string, ReportDetail['inspection_files']>();
     (data?.inspection_files ?? []).forEach((file) => {
@@ -194,6 +191,17 @@ export default function AuditReportDetailScreen() {
       map.set(file.checklist_item_id, list);
     });
     return map;
+  }, [data?.inspection_files]);
+
+  // All image files for the global photo evidence section (deduped by URL)
+  const imageFiles = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.inspection_files ?? []).filter((f) => {
+      if (!isImageEvidence(f)) return false;
+      if (seen.has(f.file_url)) return false;
+      seen.add(f.file_url);
+      return true;
+    });
   }, [data?.inspection_files]);
 
   const handleDownloadPdf = async () => {
@@ -227,8 +235,8 @@ export default function AuditReportDetailScreen() {
 
   const handleShareReport = async () => {
     if (!data) return;
-    const text = `Vigilance Inspection Report\nStore: ${branchName}\nDate: ${data.inspection_date}\nScore: ${data.compliance_score?.toFixed(0) ?? 'â€”'}%\nStatus: ${data.status?.toUpperCase()}\n\nPowered by Vigilance Management System`;
-    await Share.share({ message: text, title: `Inspection â€” ${branchName}` });
+    const text = `Vigilance Inspection Report\nStore: ${branchName}\nDate: ${data.inspection_date}\nScore: ${data.compliance_score?.toFixed(0) ?? '-'}%\nStatus: ${data.status?.toUpperCase()}\n\nPowered by Vigilance Management System`;
+    await Share.share({ message: text, title: `Inspection - ${branchName}` });
   };
 
   if (isLoading) {
@@ -248,25 +256,11 @@ export default function AuditReportDetailScreen() {
     );
   }
 
-  const imageFiles = [
-    ...(data.inspection_files ?? []).filter(isImageEvidence),
-    ...((data.inspection_answers ?? [])
-      .filter((p) => !!p.photo_url)
-      .map((p, idx) => ({
-        id: `answer-photo-${idx}`,
-        file_url: p.photo_url as string,
-        file_name: 'Inspection photo',
-        file_type: 'image',
-        checklist_item_id: null,
-      }))),
-  ].filter((file, idx, arr) => arr.findIndex((f) => f.file_url === file.file_url) === idx);
-
-  const timeInDisplay = data.time_in
-    ? formatReportTime(data.time_in)
-    : formatTimestampTime(data.created_at ?? data.submitted_at);
-  const timeOutDisplay = data.time_out
-    ? formatReportTime(data.time_out)
-    : formatTimestampTime(data.submitted_at);
+  // FIX: Use the stored time_in / time_out columns directly.
+  // Never fall back to created_at for time_in — that is the draft creation timestamp,
+  // not the officer's arrival time. If time_in is missing, show '-'.
+  const timeInDisplay = formatReportTime(data.time_in);
+  const timeOutDisplay = formatReportTime(data.time_out);
 
   return (
     <View style={{ flex: 1, backgroundColor: AUDIT.bg, paddingTop: insets.top }}>
@@ -354,6 +348,7 @@ export default function AuditReportDetailScreen() {
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: insets.bottom + 32 }}
       >
+        {/* Inspection Summary */}
         <View
           style={{
             backgroundColor: AUDIT.surface,
@@ -381,7 +376,7 @@ export default function AuditReportDetailScreen() {
               <Text style={{ color: AUDIT.success, fontWeight: '700' }}>{data.status?.toUpperCase()}</Text>
             </View>
           </View>
-          {data.head_comment && (
+          {data.head_comment ? (
             <View
               style={{
                 marginTop: 12,
@@ -393,9 +388,10 @@ export default function AuditReportDetailScreen() {
               <Text style={{ fontSize: 11, color: AUDIT.textMuted, marginBottom: 4 }}>Head Comment</Text>
               <Text style={{ color: AUDIT.text, fontSize: 13 }}>{data.head_comment}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
+        {/* Checklist sections */}
         {Object.entries(sections).map(([section, items]) => (
           <View
             key={section}
@@ -444,7 +440,11 @@ export default function AuditReportDetailScreen() {
                           fontWeight: '800',
                           fontSize: 13,
                           marginLeft: 8,
-                          color: violation ? AUDIT.danger : r.response === 'Yes' ? AUDIT.success : AUDIT.textMuted,
+                          color: violation
+                            ? AUDIT.danger
+                            : r.response === 'Yes'
+                            ? AUDIT.success
+                            : AUDIT.textMuted,
                         }}
                       >
                         {r.response}
@@ -455,8 +455,13 @@ export default function AuditReportDetailScreen() {
                         Remark: {r.remarks}
                       </Text>
                     ) : null}
+                    {/* Per-item photo evidence from inspection_files */}
                     {linkedEvidence.length > 0 ? (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginTop: 8 }}
+                      >
                         {linkedEvidence.map((f) => (
                           <TouchableOpacity
                             key={f.id}
@@ -466,6 +471,7 @@ export default function AuditReportDetailScreen() {
                             <Image
                               source={{ uri: f.file_url }}
                               style={{ width: 64, height: 64, borderRadius: RADIUS.md }}
+                              resizeMode="cover"
                             />
                           </TouchableOpacity>
                         ))}
@@ -478,6 +484,7 @@ export default function AuditReportDetailScreen() {
           </View>
         ))}
 
+        {/* General Remarks */}
         {(data.general_remarks ?? []).length > 0 && (
           <View
             style={{
@@ -508,6 +515,7 @@ export default function AuditReportDetailScreen() {
           </View>
         )}
 
+        {/* All photo evidence */}
         {imageFiles.length > 0 && (
           <View
             style={{
@@ -536,6 +544,7 @@ export default function AuditReportDetailScreen() {
                   <Image
                     source={{ uri: f.file_url }}
                     style={{ width: 100, height: 100, borderRadius: RADIUS.md }}
+                    resizeMode="cover"
                   />
                 </TouchableOpacity>
               ))}

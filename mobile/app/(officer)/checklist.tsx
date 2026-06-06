@@ -374,48 +374,60 @@ export default function ChecklistScreen() {
   const pickImageForItem = useCallback(
     (itemId: string) => {
       const pickFromCamera = async () => {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert(
-            'Camera permission needed',
-            'Enable camera access to take photos for this inspection.',
-          );
-          return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
-        });
-        if (result.canceled) return;
-
-        const normalizeCameraUri = async (uri: string) => {
-          if (!uri.startsWith('content://')) return uri;
-          const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}camera_${Date.now()}.jpg`;
-          try {
-            await FileSystem.copyAsync({ from: uri, to: target });
-            return target;
-          } catch {
-            // If copy fails on a device variant, keep original URI so
-            // preview + upload can still attempt fallback handling.
-            return uri;
+        try {
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permission.granted) {
+            Alert.alert(
+              'Camera permission needed',
+              'Enable camera access to take photos for this inspection.',
+            );
+            return;
           }
-        };
 
-        const attachments = await Promise.all(
-          result.assets.map(async (a) => {
-            const normalizedUri = await normalizeCameraUri(a.uri);
-            return {
-              uri: await compressImage(normalizedUri),
-              name: a.fileName || `photo_${Date.now()}.jpg`,
-              type: 'image' as const,
-            };
-          }),
-        );
-        appendItemFiles(
-          itemId,
-          attachments,
-        );
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.8,
+          });
+          if (result.canceled) return;
+          if (!result.assets?.length) {
+            showToast('No photo captured. Please try again.', 'warning');
+            return;
+          }
+
+          const normalizeCameraUri = async (uri: string) => {
+            if (!uri.startsWith('content://')) return uri;
+            const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}camera_${Date.now()}.jpg`;
+            try {
+              await FileSystem.copyAsync({ from: uri, to: target });
+              return target;
+            } catch {
+              // If copy fails on a device variant, keep original URI so
+              // preview + upload can still attempt fallback handling.
+              return uri;
+            }
+          };
+
+          const attachments = await Promise.all(
+            result.assets.map(async (a) => {
+              const normalizedUri = await normalizeCameraUri(a.uri);
+              return {
+                uri: await compressImage(normalizedUri),
+                name: a.fileName || `photo_${Date.now()}.jpg`,
+                type: 'image' as const,
+              };
+            }),
+          );
+          if (!attachments.length) {
+            showToast('Could not attach captured photo. Please retry.', 'error');
+            return;
+          }
+          appendItemFiles(
+            itemId,
+            attachments,
+          );
+        } catch {
+          showToast('Camera capture failed. Please try again.', 'error');
+        }
       };
 
       const pickFromGallery = async () => {

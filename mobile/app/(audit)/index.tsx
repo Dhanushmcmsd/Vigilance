@@ -42,6 +42,7 @@ interface BranchSummary {
   reportCount: number;
   lastScore: number | null;
   lastDate: string | null;
+  latestSubmittedAt: string | null;
 }
 
 export default function AuditHomeScreen() {
@@ -89,8 +90,7 @@ export default function AuditHomeScreen() {
             latestSubmittedAt: sorted[0]?.submitted_at ?? null,
           };
         })
-        .sort((a, b) => new Date(b.latestSubmittedAt ?? 0).getTime() - new Date(a.latestSubmittedAt ?? 0).getTime())
-        .map(({ latestSubmittedAt, ...branch }) => branch);
+        .sort((a, b) => new Date(b.latestSubmittedAt ?? 0).getTime() - new Date(a.latestSubmittedAt ?? 0).getTime());
     },
   });
 
@@ -143,11 +143,17 @@ export default function AuditHomeScreen() {
     };
   }, [queryClient]);
 
-  const filtered = (branches ?? []).filter(
-    (b) =>
-      b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
-      (b.city ?? '').toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = (branches ?? [])
+    .filter(
+      (b) =>
+        b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
+        (b.city ?? '').toLowerCase().includes(search.toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.latestSubmittedAt ?? 0).getTime() -
+        new Date(a.latestSubmittedAt ?? 0).getTime(),
+    );
 
   const listHeader = (
     <View>

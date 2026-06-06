@@ -20,7 +20,14 @@ import NetInfo from '@react-native-community/netinfo';
 import { supabase } from './supabase';
 import { claimBranchInspection } from './branchLocks';
 import { getDeviceAudit } from './deviceInfo';
+import { uploadInspectionFiles } from './uploadInspectionFiles';
 import type { DraftForm } from './storage';
+
+const normalizeTime = (value: string | null | undefined, fallback: string): string => {
+  const normalized = value?.trim() ?? '';
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(normalized)) return normalized;
+  return fallback;
+};
 
 export type QueuedInspection = DraftForm & {
   inspectionId?: string;
@@ -246,6 +253,10 @@ async function syncOne(item: QueuedInspection): Promise<void> {
   // Device audit — populated on every flush so re-tries from a different
   // device (rare but possible) show up correctly in the audit log.
   const audit = await getDeviceAudit();
+  const now = new Date();
+  const fallbackTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const normalizedTimeOut = normalizeTime(timeOut, fallbackTime);
+  const normalizedTimeIn = normalizeTime(timeIn, normalizedTimeOut);
 
   let resolvedId = inspectionId;
   if (resolvedId) {
@@ -254,8 +265,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
       .update({
         branch_id: branchId,
         inspection_date: date,
-        time_in: timeIn || null,
-        time_out: timeOut || null,
+        time_in: normalizedTimeIn,
+        time_out: normalizedTimeOut,
         status: 'submitted',
         submitted_at: new Date().toISOString(),
         officer_latitude: officerLat,
@@ -287,8 +298,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
       .update({
         branch_id: branchId,
         inspection_date: date,
-        time_in: timeIn || null,
-        time_out: timeOut || null,
+        time_in: normalizedTimeIn,
+        time_out: normalizedTimeOut,
         status: 'submitted',
         submitted_at: new Date().toISOString(),
         officer_latitude: officerLat,
@@ -330,6 +341,13 @@ async function syncOne(item: QueuedInspection): Promise<void> {
   }
 
   const queuedItemFiles = itemFiles ?? {};
+  if (Object.keys(queuedItemFiles).length > 0) {
+    const uploadResult = await uploadInspectionFiles(resolvedId!, queuedItemFiles);
+    if (uploadResult.failedCount > 0 && uploadResult.successCount === 0) {
+      throw new Error(uploadResult.errors[0] ?? 'Failed to upload queued inspection files');
+    }
+  }
+
   const legacyUris = fileUris ?? [];
   const fileRows: Array<{
     inspection_id: string;
@@ -339,17 +357,6 @@ async function syncOne(item: QueuedInspection): Promise<void> {
     checklist_item_id?: string;
   }> = [];
 
-  for (const [checklistItemId, attachments] of Object.entries(queuedItemFiles)) {
-    for (const file of attachments) {
-      fileRows.push({
-        inspection_id: resolvedId!,
-        file_url: file.uri,
-        file_name: file.name,
-        file_type: file.type,
-        checklist_item_id: checklistItemId,
-      });
-    }
-  }
   for (const uri of legacyUris) {
     fileRows.push({
       inspection_id: resolvedId!,

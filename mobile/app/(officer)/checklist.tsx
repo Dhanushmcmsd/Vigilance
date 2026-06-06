@@ -392,18 +392,24 @@ export default function ChecklistScreen() {
         const normalizeCameraUri = async (uri: string) => {
           if (!uri.startsWith('content://')) return uri;
           const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}camera_${Date.now()}.jpg`;
-          await FileSystem.copyAsync({ from: uri, to: target });
-          return target;
+          try {
+            await FileSystem.copyAsync({ from: uri, to: target });
+            return target;
+          } catch {
+            // If copy fails on a device variant, keep original URI so
+            // preview + upload can still attempt fallback handling.
+            return uri;
+          }
         };
 
         const attachments = await Promise.all(
           result.assets.map(async (a) => {
             const normalizedUri = await normalizeCameraUri(a.uri);
             return {
-            uri: await compressImage(normalizedUri),
-            name: a.fileName || `photo_${Date.now()}.jpg`,
-            type: 'image' as const,
-          };
+              uri: await compressImage(normalizedUri),
+              name: a.fileName || `photo_${Date.now()}.jpg`,
+              type: 'image' as const,
+            };
           }),
         );
         appendItemFiles(

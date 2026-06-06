@@ -17,10 +17,27 @@ export interface AuditPdfInspection {
   inspection_date: string;
   status: string;
   compliance_score: number | null;
+  time_in?: string | null;
+  time_out?: string | null;
   officer: { name: string } | null;
   inspection_responses: AuditPdfResponseRow[];
+  inspection_files?: { file_url: string; file_name?: string | null; file_type?: string | null }[];
   general_remarks: { remark_text: string }[];
 }
+
+const isImageEvidence = (file: NonNullable<AuditPdfInspection['inspection_files']>[number]) => {
+  const type = (file.file_type ?? '').toLowerCase();
+  const name = file.file_name ?? '';
+  const url = file.file_url ?? '';
+  return type === 'image' || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url);
+};
+
+const formatReportTime = (value: string | null | undefined) => {
+  if (!value) return '-';
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
 
 export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string): string {
   const sections: Record<string, AuditPdfResponseRow[]> = {};
@@ -62,6 +79,26 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
   `,
     )
     .join('');
+  const imageFiles = (data.inspection_files ?? []).filter(isImageEvidence);
+  const photoHtml = imageFiles.length
+    ? `
+    <div class="section">
+      <h3>Photo Evidence</h3>
+      <div class="photos">
+        ${imageFiles
+          .map(
+            (file) => `
+          <div class="photo">
+            <img src="${file.file_url}" />
+            <p>${file.file_name ?? 'Inspection evidence'}</p>
+          </div>
+        `,
+          )
+          .join('')}
+      </div>
+    </div>
+  `
+    : '';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <style>
@@ -79,6 +116,10 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
     .resp-no { color: #dc2626; }
     .resp-na { color: #6b7280; }
     .no-row { background: #fef2f2; }
+    .photos { display: flex; flex-wrap: wrap; gap: 12px; }
+    .photo { width: 150px; }
+    .photo img { width: 150px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .photo p { margin: 4px 0 0; font-size: 10px; color: #64748b; word-break: break-word; }
     .footer { margin-top: 40px; font-size: 11px; color: #94a3b8; text-align: center; }
   </style>
   </head><body>
@@ -86,6 +127,7 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
   <p class="meta">Date: ${data.inspection_date} | Officer: ${data.officer?.name ?? '—'} | Status: ${(data.status ?? '').toUpperCase()}</p>
   <div class="score-box">${data.compliance_score?.toFixed(0) ?? '—'}% Compliance</div>
   ${sectionHtml}
+  ${photoHtml}
   ${
     data.general_remarks?.length
       ? `<div class="section"><h3>General Remarks</h3><p>${data.general_remarks.map((r) => r.remark_text).join('<br>')}</p></div>`

@@ -49,7 +49,7 @@ export default function StoreReportsScreen() {
         )
         .eq('branch_id', branchId!)
         .neq('status', 'draft')
-        .order('inspection_date', { ascending: false });
+        .order('submitted_at', { ascending: false });
       if (error) throw error;
       return (rows ?? []) as unknown as AuditReportRow[];
     },

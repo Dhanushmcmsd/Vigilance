@@ -28,6 +28,7 @@ import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttac
 import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 import { claimBranchInspection } from '../../lib/branchLocks';
+import { compressImage } from '../../lib/imageUtils';
 
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
@@ -382,13 +383,16 @@ export default function ChecklistScreen() {
           quality: 0.8,
         });
         if (result.canceled) return;
-        appendItemFiles(
-          itemId,
-          result.assets.map((a) => ({
-            uri: a.uri,
+        const attachments = await Promise.all(
+          result.assets.map(async (a) => ({
+            uri: await compressImage(a.uri),
             name: a.fileName || `photo_${Date.now()}.jpg`,
             type: 'image' as const,
           })),
+        );
+        appendItemFiles(
+          itemId,
+          attachments,
         );
       };
 

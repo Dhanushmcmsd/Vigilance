@@ -103,6 +103,20 @@ interface ReportDetail {
   general_remarks: { remark_text: string }[];
 }
 
+const isImageEvidence = (file: ReportDetail['inspection_files'][number]) => {
+  const type = (file.file_type ?? '').toLowerCase();
+  const name = file.file_name ?? '';
+  const url = file.file_url ?? '';
+  return type === 'image' || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) || /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url);
+};
+
+const formatReportTime = (value: string | null | undefined) => {
+  if (!value) return '-';
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
 export default function AuditReportDetailScreen() {
   const { inspectionId, branchName } = useLocalSearchParams<{
     inspectionId: string;
@@ -202,7 +216,7 @@ export default function AuditReportDetailScreen() {
     );
   }
 
-  const imageFiles = (data.inspection_files ?? []).filter((f) => f.file_type === 'image');
+  const imageFiles = (data.inspection_files ?? []).filter(isImageEvidence);
 
   return (
     <View style={{ flex: 1, backgroundColor: AUDIT.bg, paddingTop: insets.top }}>
@@ -226,7 +240,7 @@ export default function AuditReportDetailScreen() {
               })}
             </Text>
             <Text style={{ fontSize: 13, color: AUDIT.textMuted, marginTop: 2 }}>
-              Officer: {data.officer?.name ?? 'â€”'}
+              Officer: {data.officer?.name ?? '-'}
             </Text>
           </View>
           {data.compliance_score !== null && (
@@ -306,11 +320,11 @@ export default function AuditReportDetailScreen() {
           <View style={{ flexDirection: 'row', marginTop: 12, gap: SPACING.xl }}>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Time In</Text>
-              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{data.time_in ?? 'â€”'}</Text>
+              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{formatReportTime(data.time_in)}</Text>
             </View>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Time Out</Text>
-              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{data.time_out ?? 'â€”'}</Text>
+              <Text style={{ color: AUDIT.text, fontWeight: '700' }}>{formatReportTime(data.time_out)}</Text>
             </View>
             <View>
               <Text style={{ fontSize: 11, color: AUDIT.textMuted }}>Status</Text>
@@ -370,7 +384,7 @@ export default function AuditReportDetailScreen() {
                   }}
                 >
                   <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
-                    {r.checklist_item?.item_text ?? 'â€”'}
+                    {r.checklist_item?.item_text ?? '-'}
                   </Text>
                   <Text
                     style={{

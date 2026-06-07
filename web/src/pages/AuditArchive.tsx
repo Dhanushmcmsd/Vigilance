@@ -4,6 +4,7 @@ import { ArrowLeft, Camera, ChevronDown, Download, FileDown, X } from 'lucide-re
 import { useManagementInspections } from '../hooks/useManagementInspections';
 import type { ManagementInspection } from '../lib/inspectionQueries';
 import { fetchInspectionForPdf } from '../lib/auditExport';
+import type { InspectionPdfData } from '../components/InspectionPdfReport';
 import RiskBadge from '../components/RiskBadge';
 
 interface AuditArchiveProps {
@@ -92,8 +93,13 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
     setExportingId(inspectionId);
     setToast('Generating audit PDF…');
     try {
-      const pdfData = await fetchInspectionForPdf(inspectionId);
-      if (!pdfData) throw new Error('Inspection not found');
+      const row = data.find((entry) => entry.id === inspectionId) ?? null;
+      let pdfData = await fetchInspectionForPdf(inspectionId);
+      // Guaranteed fallback: build from already-loaded archive row.
+      if (!pdfData && row) {
+        pdfData = mapRowToPdfData(row);
+      }
+      if (!pdfData) throw new Error('Inspection not found.');
       const { generateInspectionPdf } = await import('../components/InspectionPdfReport');
       const filename = await generateInspectionPdf(pdfData);
       setToast(`Downloaded ${filename}`);
@@ -350,4 +356,63 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
       )}
     </div>
   );
+}
+
+function mapRowToPdfData(row: ManagementInspection): InspectionPdfData {
+  const safeHttpUrl = (value: string | null | undefined): string | null => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  };
+
+  const itemAttachmentsByChecklist = new Map<string, { url: string; type: 'image' }[]>();
+  row.photos.forEach((photo) => {
+    const url = safeHttpUrl(photo.url);
+    if (!url) return;
+    // We do not have checklist-level mapping in archive row photos; attach globally per item.
+    row.responses.forEach((response) => {
+      const list = itemAttachmentsByChecklist.get(response.checklist_item_id) ?? [];
+      if (!list.some((item) => item.url === url)) list.push({ url, type: 'image' });
+      itemAttachmentsByChecklist.set(response.checklist_item_id, list);
+    });
+  });
+
+  return {
+    id: row.id,
+    branchName: row.branch_name,
+    branchType: row.branch_type,
+    officerName: row.officer_name,
+    city: row.city,
+    inspectionDate: row.inspection_date,
+    submittedAt: row.submitted_at,
+    timeIn: null,
+    timeOut: null,
+    complianceScore: row.compliance_score,
+    riskLevel: row.risk_level,
+    status: row.status,
+    headComment: null,
+    generalRemark: null,
+    responses: row.responses.map((response) => ({
+      section: response.section,
+      item_text: response.item_text,
+      response: response.response,
+      remarks: response.remarks,
+      risk_level:
+        response.risk_level === 'RED' || response.risk_level === 'YELLOW' || response.risk_level === 'GREEN'
+          ? response.risk_level
+          : null,
+      trigger_on_no: response.trigger_on_no,
+      attachments: itemAttachmentsByChecklist.get(response.checklist_item_id) ?? [],
+    })),
+    photos: row.photos
+      .map((photo) => safeHttpUrl(photo.url))
+      .filter((url): url is string => Boolean(url))
+      .map((url) => ({ url })),
+  };
 }

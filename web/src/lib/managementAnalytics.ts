@@ -210,6 +210,62 @@ export function computeComplianceTrend(
   });
 }
 
+export function computeStorePerformanceTrend(
+  inspections: ManagementInspection[],
+  maxStores = 4,
+): Array<Record<string, string | number | null>> {
+  if (!inspections.length) return [];
+
+  const storeCounts = new Map<string, number>();
+  inspections.forEach((item) => {
+    storeCounts.set(item.branch_name, (storeCounts.get(item.branch_name) ?? 0) + 1);
+  });
+
+  const topStores = Array.from(storeCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxStores)
+    .map(([name]) => name);
+
+  const byDay = new Map<string, Map<string, number[]>>();
+  inspections.forEach((item) => {
+    const day = new Date(item.inspection_date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+    });
+    const dayMap = byDay.get(day) ?? new Map<string, number[]>();
+    const existing = dayMap.get(item.branch_name) ?? [];
+    existing.push(item.compliance_score);
+    dayMap.set(item.branch_name, existing);
+
+    const overall = dayMap.get('Overall') ?? [];
+    overall.push(item.compliance_score);
+    dayMap.set('Overall', overall);
+    byDay.set(day, dayMap);
+  });
+
+  const orderedDays = Array.from(byDay.keys()).sort((a, b) => {
+    const parse = (label: string) => {
+      const [d, mon] = label.split(' ');
+      const month = new Date(`${mon} 1, 2024`).getMonth();
+      return month * 31 + Number(d);
+    };
+    return parse(a) - parse(b);
+  });
+
+  return orderedDays.map((label) => {
+    const dayMap = byDay.get(label) ?? new Map<string, number[]>();
+    const row: Record<string, string | number | null> = { label };
+    const series = ['Overall', ...topStores];
+    series.forEach((store) => {
+      const scores = dayMap.get(store) ?? [];
+      row[store] = scores.length
+        ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+        : null;
+    });
+    return row;
+  });
+}
+
 export interface HeatmapCell {
   branch: string;
   section: string;

@@ -34,7 +34,7 @@ export function SlaTable({ tickets, onViewTicket }: SlaTableProps) {
           bg: 'rgba(22,163,74,0.15)',
           border: '#16A34A',
           color: '#16A34A',
-          text: 'Within SLA'
+          text: 'On Track'
         };
       case 'due-soon':
         return {
@@ -62,7 +62,7 @@ export function SlaTable({ tickets, onViewTicket }: SlaTableProps) {
       }}
     >
       <h2 className="text-sm font-semibold text-text-primary mb-4">
-        Escalation SLA Tracker
+        Escalation Tracker
       </h2>
 
       <div className="overflow-x-auto">
@@ -81,7 +81,7 @@ export function SlaTable({ tickets, onViewTicket }: SlaTableProps) {
               <th className="py-4 px-4 text-left">Section</th>
               <th className="py-4 px-4 text-left">Issue</th>
               <th className="py-4 px-4 text-left">Flagged At</th>
-              <th className="py-4 px-4 text-left">SLA Status</th>
+              <th className="py-4 px-4 text-left">Status</th>
               <th className="py-4 px-4 text-left">Assigned To</th>
               <th className="py-4 px-4 text-left">View</th>
             </tr>
@@ -118,13 +118,14 @@ export function SlaTable({ tickets, onViewTicket }: SlaTableProps) {
                   <td className="py-4 px-4 text-text-primary font-medium">
                     {ticket.storeName}
                   </td>
-                  <td className="py-4 px-4">
+                  <td className="py-4 px-4 whitespace-nowrap">
                     <div
-                      className="inline-flex items-center justify-center w-7 h-7 rounded text-xs font-bold"
+                      className="inline-flex items-center rounded px-2 py-1 text-xs font-semibold max-w-[180px] truncate"
                       style={{
                         backgroundColor: 'rgba(37,99,235,0.2)',
                         color: '#3B82F6',
                       }}
+                      title={ticket.section}
                     >
                       {ticket.section}
                     </div>

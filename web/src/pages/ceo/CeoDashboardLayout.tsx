@@ -17,6 +17,16 @@ const BREADCRUMBS: Record<string, string> = {
   '/dashboard/settings': 'Settings',
 };
 
+const HEADER_SUBTITLES: Record<string, string> = {
+  '/dashboard': 'Live summary of compliance, alerts, and store health.',
+  '/dashboard/analytics': 'Performance trends and risk distribution across stores.',
+  '/dashboard/map': 'Geographic view of store compliance and risk density.',
+  '/dashboard/reports': 'Monthly and custom exports for management reporting.',
+  '/dashboard/alerts': 'Real-time critical and warning alert activity feed.',
+  '/dashboard/escalations': 'Action tracker for open critical issues.',
+  '/dashboard/settings': 'Configure dashboard preferences and workspace behavior.',
+};
+
 function CeoShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -28,6 +38,7 @@ function CeoShell() {
   const { metrics, alerts, notifications, isError, error, refetch } = useCeoDashboard();
 
   const breadcrumb = BREADCRUMBS[location.pathname] ?? 'Overview';
+  const subtitle = HEADER_SUBTITLES[location.pathname] ?? 'Operational intelligence for field compliance.';
 
   const drawerNotifications = notifications.map((n) => ({
     ...n,
@@ -39,13 +50,14 @@ function CeoShell() {
       <Sidebar onWidthChange={setSidebarWidth} />
       <TopBar
         breadcrumb={breadcrumb}
+        subtitle={subtitle}
         redAlertCount={metrics.openRedFlags}
         onNotificationClick={() => setNotificationDrawerOpen(true)}
         sidebarWidth={sidebarWidth}
       />
 
       <main
-        className="pt-20 px-4 sm:px-6 lg:px-8 pb-10 transition-[margin-left] duration-300"
+        className="pt-24 px-4 sm:px-6 lg:px-8 pb-10 transition-[margin-left] duration-300"
         style={{ marginLeft: sidebarWidth }}
       >
         {isError && (

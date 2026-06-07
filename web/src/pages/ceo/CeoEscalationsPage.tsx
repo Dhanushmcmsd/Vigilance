@@ -10,11 +10,12 @@ export default function CeoEscalationsPage() {
 
   return (
     <div className="max-w-6xl space-y-4">
-      <h1 className="text-lg font-semibold text-text-primary">Escalation SLA tracker</h1>
+      <h1 className="text-lg font-semibold text-text-primary">Escalation tracker</h1>
+      <p className="text-sm text-muted">Monitor open critical issues, their urgency status, and assignment.</p>
       <CeoDataState
         isLoading={isLoading}
         isEmpty={!isLoading && slaTickets.length === 0}
-        emptyMessage="No open RED escalations requiring SLA tracking."
+        emptyMessage="No open RED escalations requiring active tracking."
       >
         <SlaTable
           tickets={slaTickets}

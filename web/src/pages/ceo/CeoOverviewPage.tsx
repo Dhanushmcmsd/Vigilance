@@ -24,7 +24,7 @@ export default function CeoOverviewPage() {
           borderColor="critical"
           loading={isLoading}
         />
-        <StatCard label="SLA Breaches" value={metrics.slaBreaches} borderColor="critical" loading={isLoading} />
+        <StatCard label="Breaches" value={metrics.slaBreaches} borderColor="critical" loading={isLoading} />
         <StatCard
           label="Active Yellow Warnings"
           value={metrics.activeYellowWarnings}

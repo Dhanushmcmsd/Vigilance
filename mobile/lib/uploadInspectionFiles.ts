@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseAnonKey, supabaseUrl } from './supabase';
 import * as FileSystem from 'expo-file-system';
 import type { ItemAttachment } from '../components/ItemAttachments';
 
@@ -9,31 +9,63 @@ function resolveFileType(file: { type?: string; name?: string }): string {
   return file.type ?? 'document';
 }
 
-function base64ToUint8Array(base64: string): Uint8Array {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const clean = base64.replace(/[^A-Za-z0-9+/=]/g, '');
-  const output: number[] = [];
+function encodeStoragePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
 
-  for (let i = 0; i < clean.length; i += 4) {
-    const e1 = chars.indexOf(clean[i]);
-    const e2 = chars.indexOf(clean[i + 1]);
-    const e3 = chars.indexOf(clean[i + 2]);
-    const e4 = chars.indexOf(clean[i + 3]);
-
-    const c1 = (e1 << 2) | (e2 >> 4);
-    output.push(c1);
-
-    if (clean[i + 2] !== '=') {
-      const c2 = ((e2 & 15) << 4) | (e3 >> 2);
-      output.push(c2);
-    }
-    if (clean[i + 3] !== '=') {
-      const c3 = ((e3 & 3) << 6) | e4;
-      output.push(c3);
-    }
+async function uploadBinaryToInspectionBucket(
+  objectPath: string,
+  fileUri: string,
+  contentType: string,
+): Promise<void> {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase configuration for file upload');
   }
 
-  return new Uint8Array(output);
+  let localUri = fileUri;
+  if (fileUri.startsWith('http://') || fileUri.startsWith('https://')) {
+    const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}remote_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const downloaded = await FileSystem.downloadAsync(fileUri, target);
+    localUri = downloaded.uri;
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  let accessToken = sessionData.session?.access_token ?? null;
+  if (!accessToken) {
+    const refresh = await supabase.auth.refreshSession();
+    accessToken = refresh.data.session?.access_token ?? null;
+  }
+  if (!accessToken) {
+    throw new Error('Session expired while uploading. Please sign in again.');
+  }
+
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/inspection-files/${encodeStoragePath(objectPath)}`;
+  const headers: Record<string, string> = {
+    apikey: supabaseAnonKey,
+    'Content-Type': contentType,
+    'x-upsert': 'false',
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  const uploadOnce = async (httpMethod: 'POST' | 'PUT') =>
+    FileSystem.uploadAsync(uploadUrl, localUri, {
+      httpMethod,
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers,
+    });
+
+  let response = await uploadOnce('POST');
+  if (response.status < 200 || response.status >= 300) {
+    // Some Android devices/proxies reject POST binary bodies for this endpoint.
+    // Retry once with PUT before failing the submission.
+    const retry = await uploadOnce('PUT');
+    if (retry.status >= 200 && retry.status < 300) return;
+    const body = ((retry.body || response.body) || '').slice(0, 280);
+    throw new Error(`Storage upload failed (${retry.status}) ${body}`);
+  }
 }
 
 export async function uploadInspectionFiles(
@@ -49,7 +81,8 @@ export async function uploadInspectionFiles(
       try {
         const ext = (file.name ?? '').split('.').pop()?.toLowerCase() ?? 'bin';
         const resolvedType = resolveFileType(file);
-        const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${file.name}`;
+        const safeName = (file.name ?? `file_${Date.now()}.${ext || 'bin'}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${safeName}`;
         const imageExt = ext === 'jpg' || ext === 'bin' ? 'jpeg' : ext;
 
         // Resolve contentType before blob creation
@@ -58,27 +91,8 @@ export async function uploadInspectionFiles(
             ? `image/${imageExt}`
             : 'application/octet-stream';
 
-        let blob: Blob;
-        try {
-          const base64 = await FileSystem.readAsStringAsync(file.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const byteArray = base64ToUint8Array(base64);
-          blob = new Blob([byteArray], { type: contentType });
-        } catch {
-          // fallback for http/https URIs (non-camera files)
-          blob = await (await fetch(file.uri)).blob();
-        }
+        await uploadBinaryToInspectionBucket(path, file.uri, contentType);
 
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('inspection-files')
-          .upload(path, blob, { contentType });
-        if (uploadErr || !uploadData) {
-          const errMsg = uploadErr?.message || 'Upload failed';
-          errors.push(`Failed to upload ${file.name}: ${errMsg}`);
-          failedCount++;
-          return;
-        }
         const { data: urlData } = supabase.storage.from('inspection-files').getPublicUrl(path);
         const { error: insertErr } = await supabase.from('inspection_files').insert({
           inspection_id: inspectionId,

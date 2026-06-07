@@ -78,13 +78,14 @@ export async function fetchTodayBranchLocks(
   return mapLocks((data as []) ?? [], currentOfficerRolesId);
 }
 
-export async function claimBranchInspection(branchId: string): Promise<{
+export async function claimBranchInspection(branchId: string, timeIn?: string): Promise<{
   inspectionId: string | null;
   errorCode: 'BRANCH_COMPLETED' | 'BRANCH_IN_PROGRESS' | 'OFFICER_NOT_FOUND' | 'UNKNOWN' | null;
   message: string;
 }> {
   const { data, error } = await supabase.rpc('claim_branch_inspection', {
     p_branch_id: branchId,
+    ...(timeIn ? { p_time_in: timeIn } : {}),
   });
   if (error) {
     const msg = error.message ?? '';

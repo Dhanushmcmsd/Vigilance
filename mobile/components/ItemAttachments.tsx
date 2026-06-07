@@ -10,14 +10,22 @@ export interface ItemAttachment {
 
 interface Props {
   files: ItemAttachment[];
-  onAddPhoto: () => void;
+  onAddCamera: () => void;
+  onAddGallery: () => void;
   onAddDocument: () => void;
   onRemove: (uri: string) => void;
   /** Inline under remark field — no extra top divider */
   compact?: boolean;
 }
 
-export function ItemAttachments({ files, onAddPhoto, onAddDocument, onRemove, compact }: Props) {
+export function ItemAttachments({
+  files,
+  onAddCamera,
+  onAddGallery,
+  onAddDocument,
+  onRemove,
+  compact,
+}: Props) {
   return (
     <View
       style={
@@ -31,7 +39,7 @@ export function ItemAttachments({ files, onAddPhoto, onAddDocument, onRemove, co
       </Text>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: files.length ? 10 : 0 }}>
         <TouchableOpacity
-          onPress={onAddPhoto}
+          onPress={onAddCamera}
           style={{
             flex: 1,
             flexDirection: 'row',
@@ -44,7 +52,23 @@ export function ItemAttachments({ files, onAddPhoto, onAddDocument, onRemove, co
           }}
         >
           <Ionicons name="camera-outline" size={16} color="#2563eb" />
-          <Text style={{ color: '#2563eb', fontWeight: '700', fontSize: 12 }}>Photo</Text>
+          <Text style={{ color: '#2563eb', fontWeight: '700', fontSize: 12 }}>Camera</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onAddGallery}
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            backgroundColor: '#ecfeff',
+            borderRadius: 10,
+            paddingVertical: 10,
+          }}
+        >
+          <Ionicons name="images-outline" size={16} color="#0891b2" />
+          <Text style={{ color: '#0891b2', fontWeight: '700', fontSize: 12 }}>Gallery</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onAddDocument}

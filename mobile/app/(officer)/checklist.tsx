@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
@@ -207,10 +208,20 @@ export default function ChecklistScreen() {
       return;
     }
     void (async () => {
-      const claim = await claimBranchInspection(branchId);
+      const arrivalTime = nowTime();
+      const claim = await claimBranchInspection(branchId, arrivalTime);
       if (claim.inspectionId) {
         setActiveInspectionId(claim.inspectionId);
         setInspectionActive(true);
+        setTimeIn(arrivalTime);
+        supabase
+          .from('inspections')
+          .update({ time_in: arrivalTime })
+          .eq('id', claim.inspectionId)
+          .eq('status', 'draft')
+          .then(({ error }) => {
+            if (error) console.warn('[checklist] Could not persist time_in:', error.message);
+          });
       } else {
         Alert.alert('Store unavailable', claim.message, [
           { text: 'OK', onPress: () => router.back() },
@@ -230,7 +241,7 @@ export default function ChecklistScreen() {
     // Use the same idempotent RPC as the initial mount claim.
     // A direct INSERT would conflict with the unique constraint
     // (one draft per branch per day) that claim_branch_inspection enforces.
-    const claim = await claimBranchInspection(branchId);
+    const claim = await claimBranchInspection(branchId, nowTime());
     if (claim.inspectionId) {
       setActiveInspectionId(claim.inspectionId);
       setInspectionActive(true);
@@ -370,105 +381,171 @@ export default function ChecklistScreen() {
     }));
   }, []);
 
-  const pickImageForItem = useCallback(
-    (itemId: string) => {
-      const pickFromCamera = async () => {
+  const normalizeImageUri = useCallback(
+    async (
+      uri: string,
+      fallbackName: string,
+      base64Data?: string | null,
+    ): Promise<{ uri: string; name: string } | null> => {
+      const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+      const fileName = fallbackName.endsWith('.jpg') ? fallbackName : `${fallbackName}.jpg`;
+      const targetPath = `${cacheDir}${fileName}`;
+
+      // Samsung/high-res camera outputs can vary by URI scheme and metadata.
+      // If base64 is available, persist directly to app cache first so preview + upload
+      // always use a stable local file:// path independent of camera app behavior.
+      if (base64Data) {
         try {
-          const permission = await ImagePicker.requestCameraPermissionsAsync();
-          if (!permission.granted) {
-            Alert.alert(
-              'Camera permission needed',
-              'Enable camera access to take photos for this inspection.',
-            );
-            return;
-          }
-
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.8,
+          await FileSystem.writeAsStringAsync(targetPath, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
           });
-          if (result.canceled) return;
-          if (!result.assets?.length) {
-            showToast('No photo captured. Please try again.', 'warning');
-            return;
-          }
+          return { uri: targetPath, name: fileName };
+        } catch {
+          // continue into URI-based normalization
+        }
+      }
 
-          const normalizeCameraUri = async (uri: string) => {
-            if (!uri.startsWith('content://')) return uri;
-            const target = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}camera_${Date.now()}.jpg`;
-            try {
-              await FileSystem.copyAsync({ from: uri, to: target });
-              return target;
-            } catch {
-              // If copy fails on a device variant, keep original URI so
-              // preview + upload can still attempt fallback handling.
-              return uri;
-            }
-          };
+      try {
+        const transformed = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1600 } }],
+          { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: false },
+        );
+        if (transformed.uri?.startsWith('file://')) {
+          return { uri: transformed.uri, name: fileName };
+        }
+      } catch {
+        // fall through to alternate local-path fallbacks
+      }
 
-          const attachments = await Promise.all(
-            result.assets.map(async (a) => {
-              if (!a?.uri) return null;
-              const normalizedUri = await normalizeCameraUri(a.uri);
+      if (uri.startsWith('file://')) {
+        try {
+          const base64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          await FileSystem.writeAsStringAsync(targetPath, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          return { uri: targetPath, name: fileName };
+        } catch {
+          // If we cannot re-write the file, keep the original local path.
+          return { uri, name: fileName };
+        }
+      }
+
+      if (uri.startsWith('content://')) {
+        try {
+          await FileSystem.copyAsync({ from: uri, to: targetPath });
+          return { uri: targetPath, name: fileName };
+        } catch {
+          // continue to hard failure
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+  const pickCameraForItem = useCallback(
+    async (itemId: string) => {
+      try {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            'Camera permission needed',
+            'Enable camera access to take photos for this inspection.',
+          );
+          return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.72,
+          base64: true,
+          exif: false,
+        });
+        if (result.canceled) return;
+        if (!result.assets?.length) {
+          showToast('No photo captured. Please try again.', 'warning');
+          return;
+        }
+
+        const attachments = await Promise.all(
+          result.assets.map(async (asset) => {
+            if (!asset?.uri) return null;
+            const normalized = await normalizeImageUri(
+              asset.uri,
+              `camera_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+              asset.base64,
+            );
+            if (!normalized) return null;
+            return {
+              uri: normalized.uri,
+              name: asset.fileName || normalized.name,
+              type: 'image' as const,
+            };
+          }),
+        );
+        const validAttachments = attachments.filter((file): file is ItemAttachment => !!file?.uri);
+        if (!validAttachments.length) {
+          showToast('Could not attach captured photo. Please retry.', 'error');
+          return;
+        }
+        appendItemFiles(itemId, validAttachments);
+        showToast(`${validAttachments.length} camera photo(s) added`, 'success');
+      } catch {
+        showToast('Camera capture failed. Please try again.', 'error');
+      }
+    },
+    [appendItemFiles, normalizeImageUri],
+  );
+
+  const pickGalleryForItem = useCallback(
+    async (itemId: string) => {
+      try {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            'Gallery permission needed',
+            'Enable photo library access to attach images for this inspection.',
+          );
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsMultipleSelection: true,
+          quality: 0.8,
+        });
+        if (result.canceled) return;
+        const attachments = (
+          await Promise.all(
+            result.assets.map(async (asset) => {
+              if (!asset?.uri) return null;
+              const normalized = await normalizeImageUri(
+                asset.uri,
+                `gallery_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+              );
+              if (!normalized) return null;
               return {
-                uri: normalizedUri,
-                name: a.fileName || `photo_${Date.now()}.jpg`,
+                uri: normalized.uri,
+                name: asset.fileName || normalized.name,
                 type: 'image' as const,
               };
             }),
-          );
-          const validAttachments = attachments.filter((file): file is ItemAttachment => !!file?.uri);
-          if (!validAttachments.length) {
-            showToast('Could not attach captured photo. Please retry.', 'error');
-            return;
-          }
-          appendItemFiles(
-            itemId,
-            validAttachments,
-          );
-          showToast(`${validAttachments.length} photo(s) added`, 'success');
-        } catch {
-          showToast('Camera capture failed. Please try again.', 'error');
+          )
+        ).filter((file): file is ItemAttachment => !!file?.uri);
+        if (!attachments.length) {
+          showToast('Could not process selected image(s). Please try another photo.', 'warning');
+          return;
         }
-      };
-
-      const pickFromGallery = async () => {
-        try {
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsMultipleSelection: true,
-            quality: 0.8,
-          });
-          if (result.canceled) return;
-          const attachments = result.assets
-            .filter((a) => !!a?.uri)
-            .map((a) => ({
-              uri: a.uri,
-              name: a.fileName || `photo_${Date.now()}.jpg`,
-              type: 'image' as const,
-            }));
-          if (!attachments.length) {
-            showToast('No valid gallery image selected.', 'warning');
-            return;
-          }
-          appendItemFiles(itemId, attachments);
-          showToast(`${attachments.length} photo(s) added`, 'success');
-        } catch {
-          showToast('Gallery selection failed. Please try again.', 'error');
-        }
-      };
-
-      Alert.alert(
-        'Add photo',
-        'Choose a source for the inspection image.',
-        [
-          { text: 'Camera', onPress: pickFromCamera },
-          { text: 'Gallery', onPress: pickFromGallery },
-          { text: 'Cancel', style: 'cancel' },
-        ],
-      );
+        appendItemFiles(itemId, attachments);
+        showToast(`${attachments.length} gallery image(s) added`, 'success');
+      } catch {
+        showToast('Gallery selection failed. Please try again.', 'error');
+      }
     },
-    [appendItemFiles],
+    [appendItemFiles, normalizeImageUri],
   );
 
   const pickDocumentForItem = useCallback(
@@ -638,7 +715,10 @@ export default function ChecklistScreen() {
               if (uploadResult.errors.length > 0) {
                 console.warn('Photo upload errors:', uploadResult.errors);
                 if (uploadResult.failedCount > 0 && uploadResult.successCount === 0) {
-                  throw new Error(`Failed to upload ${uploadResult.failedCount} photo(s). Please check your connection and try again.`);
+                  throw new Error(
+                    uploadResult.errors[0] ??
+                      `Failed to upload ${uploadResult.failedCount} photo(s). Please try again.`,
+                  );
                 } else if (uploadResult.failedCount > 0) {
                   // Some photos failed but some succeeded - warn but don't block submission
                   showToast(`${uploadResult.failedCount} photo(s) failed to upload but submission was recorded.`, 'warning');
@@ -989,7 +1069,8 @@ export default function ChecklistScreen() {
                       <ItemAttachments
                         compact
                         files={itemAttachments}
-                        onAddPhoto={() => void pickImageForItem(item.id)}
+                        onAddCamera={() => void pickCameraForItem(item.id)}
+                        onAddGallery={() => void pickGalleryForItem(item.id)}
                         onAddDocument={() => void pickDocumentForItem(item.id)}
                         onRemove={(uri) => removeItemFile(item.id, uri)}
                       />

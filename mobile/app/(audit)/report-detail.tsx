@@ -108,6 +108,10 @@ interface ReportDetail {
     file_type: string;
     checklist_item_id: string | null;
   }[];
+  inspection_answers: {
+    checklist_item_id: string | null;
+    photo_url: string | null;
+  }[];
   general_remarks: { remark_text: string }[];
 }
 
@@ -164,6 +168,7 @@ export default function AuditReportDetailScreen() {
             )
           ),
           inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
+          inspection_answers ( checklist_item_id, photo_url ),
           general_remarks ( remark_text )
         `,
         )
@@ -193,8 +198,23 @@ export default function AuditReportDetailScreen() {
       list.push(file);
       map.set(file.checklist_item_id, list);
     });
+    (data?.inspection_answers ?? []).forEach((answer, index) => {
+      if (!answer.checklist_item_id || !answer.photo_url) return;
+      const pseudoFile = {
+        id: `answer:${answer.checklist_item_id}:${index}`,
+        file_url: answer.photo_url,
+        file_name: 'photo',
+        file_type: 'image',
+        checklist_item_id: answer.checklist_item_id,
+      };
+      const list = map.get(answer.checklist_item_id) ?? [];
+      if (!list.some((entry) => entry.file_url === pseudoFile.file_url)) {
+        list.push(pseudoFile);
+      }
+      map.set(answer.checklist_item_id, list);
+    });
     return map;
-  }, [data?.inspection_files]);
+  }, [data?.inspection_files, data?.inspection_answers]);
 
   // All image files for the global photo evidence section (deduped by URL)
   const imageFiles = useMemo(() => {

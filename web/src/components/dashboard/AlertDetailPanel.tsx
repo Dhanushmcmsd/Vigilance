@@ -76,18 +76,10 @@ export function AlertDetailPanel({ alert, onClose }: AlertDetailPanelProps) {
             <h3 className="text-lg font-semibold text-text-primary mb-2">
               {alert.storeName}
             </h3>
-            
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <span
-                className="w-6 h-6 flex items-center justify-center rounded text-xs font-mono font-bold"
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  color: '#F5F5F0'
-                }}
-              >
-                {alert.section}
-              </span>
-              <span>Section {alert.section}</span>
+
+            <div className="text-sm text-muted">
+              <span className="text-xs uppercase tracking-wider">Section</span>
+              <p className="mt-1 text-sm text-text-primary">{alert.section}</p>
             </div>
           </div>
 

@@ -107,7 +107,7 @@ export function computeCeoMetrics(inspections: ManagementInspection[]): CeoMetri
 }
 
 export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem[] {
-  const alerts: AlertItem[] = [];
+  const deduped = new Map<string, AlertItem>();
 
   inspections.forEach(inspection => {
     inspection.responses.forEach(response => {
@@ -118,7 +118,7 @@ export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem
           const timestamp = new Date(inspection.submitted_at);
           const hoursSince = Math.floor((Date.now() - timestamp.getTime()) / (1000 * 60 * 60));
           
-          alerts.push({
+          const alert: AlertItem = {
             id: `${inspection.id}-${response.id}`,
             storeName: inspection.branch_name,
             section: response.section,
@@ -128,13 +128,25 @@ export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem
             verifierName: inspection.officer_name,
             timestamp: inspection.submitted_at,
             remarks: response.remarks || undefined
-          });
+          };
+          const key = [
+            inspection.branch_name.trim().toLowerCase(),
+            response.section.trim().toLowerCase(),
+            response.item_text.trim().toLowerCase(),
+            alert.risk,
+          ].join('::');
+          const existing = deduped.get(key);
+          if (!existing || new Date(alert.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+            deduped.set(key, alert);
+          }
         }
       }
     });
   });
 
-  return alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 50);
+  return Array.from(deduped.values())
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 50);
 }
 
 export function computeSectionBreakdown(inspections: ManagementInspection[]): SectionData[] {
@@ -164,7 +176,7 @@ export function computeSectionBreakdown(inspections: ManagementInspection[]): Se
 }
 
 export function computeSlaTickets(inspections: ManagementInspection[]): SlaTicket[] {
-  const tickets: SlaTicket[] = [];
+  const deduped = new Map<string, SlaTicket>();
 
   inspections.forEach(inspection => {
     inspection.responses.forEach(response => {
@@ -179,7 +191,7 @@ export function computeSlaTickets(inspections: ManagementInspection[]): SlaTicke
           if (hoursSince > 24) slaStatus = 'breached';
           else if (hoursSince > 22) slaStatus = 'due-soon';
 
-          tickets.push({
+          const ticket: SlaTicket = {
             id: `${inspection.id}-${response.id}`,
             ticketId: `T${inspection.id.slice(0, 6).toUpperCase()}`,
             storeName: inspection.branch_name,
@@ -193,13 +205,28 @@ export function computeSlaTickets(inspections: ManagementInspection[]): SlaTicke
             }),
             slaStatus,
             assignedTo: 'Supervisor'
-          });
+          };
+          const key = [
+            inspection.branch_name.trim().toLowerCase(),
+            response.section.trim().toLowerCase(),
+            response.item_text.trim().toLowerCase(),
+          ].join('::');
+          const existing = deduped.get(key);
+          if (!existing) {
+            deduped.set(key, ticket);
+          } else {
+            const existingBreached = existing.slaStatus === 'breached';
+            const nextBreached = ticket.slaStatus === 'breached';
+            if (!existingBreached && nextBreached) {
+              deduped.set(key, ticket);
+            }
+          }
         }
       }
     });
   });
 
-  return tickets.sort((a, b) => {
+  return Array.from(deduped.values()).sort((a, b) => {
     if (a.slaStatus === 'breached' && b.slaStatus !== 'breached') return -1;
     if (a.slaStatus !== 'breached' && b.slaStatus === 'breached') return 1;
     return 0;

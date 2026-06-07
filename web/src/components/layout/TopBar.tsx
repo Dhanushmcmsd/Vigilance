@@ -2,6 +2,7 @@ import { Bell } from 'lucide-react';
 
 interface TopBarProps {
   breadcrumb: string;
+  subtitle?: string;
   redAlertCount: number;
   onNotificationClick: () => void;
   sidebarWidth?: number;
@@ -9,23 +10,27 @@ interface TopBarProps {
 
 export function TopBar({
   breadcrumb,
+  subtitle,
   redAlertCount,
   onNotificationClick,
   sidebarWidth = 240,
 }: TopBarProps) {
   return (
     <div
-      className="fixed top-0 right-0 h-16 flex items-center justify-between px-4 sm:px-6 border-b z-30 transition-[left] duration-300"
+      className="fixed top-0 right-0 h-20 flex items-center justify-between px-4 sm:px-6 border-b z-30 transition-[left] duration-300"
       style={{
         backgroundColor: '#111118',
         borderColor: 'rgba(255,255,255,0.07)',
         left: window.innerWidth < 768 ? '0' : sidebarWidth,
       }}
     >
-      <div className="flex items-center gap-2 text-sm min-w-0">
-        <span className="text-muted shrink-0 hidden sm:inline">Dashboard</span>
-        <span className="text-muted shrink-0 hidden sm:inline">/</span>
-        <span className="text-text-primary font-medium truncate">{breadcrumb}</span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <span className="text-muted shrink-0 hidden sm:inline">Dashboard</span>
+          <span className="text-muted shrink-0 hidden sm:inline">/</span>
+          <span className="text-text-primary font-medium truncate">{breadcrumb}</span>
+        </div>
+        {subtitle ? <p className="mt-1 text-xs text-muted truncate">{subtitle}</p> : null}
       </div>
 
       <button

@@ -22,7 +22,7 @@ export default function ComplianceChart({ data }: { data: Array<Record<string, s
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">Compliance Trend</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Average score over the selected period</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Daily store performance and overall compliance for the selected period</p>
         </div>
       </div>
       <ResponsiveContainer width="100%" height="100%">

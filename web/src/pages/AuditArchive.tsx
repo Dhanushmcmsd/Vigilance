@@ -1,10 +1,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Camera, ChevronDown, Download, FileDown, X } from 'lucide-react';
+import { ArrowLeft, Camera, ChevronDown, Download, X } from 'lucide-react';
 import { useManagementInspections } from '../hooks/useManagementInspections';
 import type { ManagementInspection } from '../lib/inspectionQueries';
-import { fetchInspectionForPdf } from '../lib/auditExport';
-import type { InspectionPdfData } from '../components/InspectionPdfReport';
+import { isViolationResponse } from '../lib/checklistScoring';
 import RiskBadge from '../components/RiskBadge';
 
 interface AuditArchiveProps {
@@ -21,8 +20,6 @@ const staffBehaviourColor = (val: string) => {
 
 export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps) {
   const { data = [], isLoading } = useManagementInspections();
-  const [exportingId, setExportingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [officerFilter, setOfficerFilter] = useState('');
@@ -65,21 +62,250 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
     }).replace(',', ' ·');
   };
 
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const riskBand = (score: number) => {
+    if (score >= 85) return 'LOW';
+    if (score >= 70) return 'MEDIUM';
+    return 'HIGH';
+  };
+
   const downloadCsv = () => {
-    const headers = ['Submitted At', 'Edited At', 'Store', 'Officer', 'Score', 'Risk', 'Status', 'Photos'];
-    const csv = [
-      headers.join(','),
-      ...filteredRows.map((row) => [
+    const totalSubmissions = filteredRows.length;
+    const uniqueStores = new Set(filteredRows.map((row) => row.branch_name)).size;
+    const uniqueOfficers = new Set(filteredRows.map((row) => row.officer_name)).size;
+    const totalPhotos = filteredRows.reduce((sum, row) => sum + row.photos.length, 0);
+    const editedSubmissions = filteredRows.filter((row) => row.is_edited).length;
+    const avgScore = totalSubmissions
+      ? filteredRows.reduce((sum, row) => sum + row.compliance_score, 0) / totalSubmissions
+      : 0;
+    const lowRiskCount = filteredRows.filter((row) => riskBand(row.compliance_score) === 'LOW').length;
+    const mediumRiskCount = filteredRows.filter((row) => riskBand(row.compliance_score) === 'MEDIUM').length;
+    const highRiskCount = filteredRows.filter((row) => riskBand(row.compliance_score) === 'HIGH').length;
+    const nonCompliantCount = filteredRows.reduce(
+      (sum, row) =>
+        sum +
+        row.responses.filter((response) =>
+          isViolationResponse(response.response, response.trigger_on_no),
+        ).length,
+      0,
+    );
+
+    const officerStats = new Map<
+      string,
+      { submissions: number; scoreSum: number; edited: number; photos: number; nonCompliant: number }
+    >();
+    const storeStats = new Map<
+      string,
+      { submissions: number; scoreSum: number; edited: number; photos: number; nonCompliant: number }
+    >();
+    const sectionStats = new Map<string, { answers: number; compliant: number; nonCompliant: number }>();
+    const dailyStats = new Map<string, { submissions: number; scoreSum: number; nonCompliant: number }>();
+
+    filteredRows.forEach((row) => {
+      const rowNonCompliant = row.responses.filter((response) =>
+        isViolationResponse(response.response, response.trigger_on_no),
+      ).length;
+
+      const officer = officerStats.get(row.officer_name) ?? {
+        submissions: 0,
+        scoreSum: 0,
+        edited: 0,
+        photos: 0,
+        nonCompliant: 0,
+      };
+      officer.submissions += 1;
+      officer.scoreSum += row.compliance_score;
+      officer.edited += row.is_edited ? 1 : 0;
+      officer.photos += row.photos.length;
+      officer.nonCompliant += rowNonCompliant;
+      officerStats.set(row.officer_name, officer);
+
+      const store = storeStats.get(row.branch_name) ?? {
+        submissions: 0,
+        scoreSum: 0,
+        edited: 0,
+        photos: 0,
+        nonCompliant: 0,
+      };
+      store.submissions += 1;
+      store.scoreSum += row.compliance_score;
+      store.edited += row.is_edited ? 1 : 0;
+      store.photos += row.photos.length;
+      store.nonCompliant += rowNonCompliant;
+      storeStats.set(row.branch_name, store);
+
+      const day = new Date(row.submitted_at).toISOString().slice(0, 10);
+      const dayEntry = dailyStats.get(day) ?? { submissions: 0, scoreSum: 0, nonCompliant: 0 };
+      dayEntry.submissions += 1;
+      dayEntry.scoreSum += row.compliance_score;
+      dayEntry.nonCompliant += rowNonCompliant;
+      dailyStats.set(day, dayEntry);
+
+      row.responses.forEach((response) => {
+        const key = response.section || 'General';
+        const section = sectionStats.get(key) ?? { answers: 0, compliant: 0, nonCompliant: 0 };
+        section.answers += 1;
+        if (isViolationResponse(response.response, response.trigger_on_no)) {
+          section.nonCompliant += 1;
+        } else if (response.response && response.response !== 'N/A') {
+          section.compliant += 1;
+        }
+        sectionStats.set(key, section);
+      });
+    });
+
+    const csvLines: string[] = [];
+    const addRow = (values: unknown[]) => {
+      csvLines.push(values.map(csvEscape).join(','));
+    };
+    const addBlank = () => csvLines.push('');
+
+    addRow(['Vigilance Compliance Report Export']);
+    addRow(['Generated At', new Date().toLocaleString('en-IN')]);
+    addRow(['Date Filter From', fromDate || 'All']);
+    addRow(['Date Filter To', toDate || 'All']);
+    addRow(['Officer Filter', officerFilter || 'All']);
+    addRow(['Store Filter', storeFilter || 'All']);
+    addRow(['Status Filter', statusFilter]);
+    addRow(['Sort', sortKey]);
+    addBlank();
+
+    addRow(['EXECUTIVE SUMMARY']);
+    addRow(['Metric', 'Value']);
+    addRow(['Total Submissions', totalSubmissions]);
+    addRow(['Unique Stores', uniqueStores]);
+    addRow(['Unique Officers', uniqueOfficers]);
+    addRow(['Average Compliance Score', avgScore.toFixed(2)]);
+    addRow(['Edited Submissions', editedSubmissions]);
+    addRow(['Total Evidence Photos', totalPhotos]);
+    addRow(['Average Photos per Submission', totalSubmissions ? (totalPhotos / totalSubmissions).toFixed(2) : '0.00']);
+    addRow(['Total Non-Compliant Answers', nonCompliantCount]);
+    addBlank();
+
+    addRow(['RISK DISTRIBUTION (CHART READY)']);
+    addRow(['Risk Band', 'Submissions', 'Percentage']);
+    addRow(['LOW (>=85)', lowRiskCount, totalSubmissions ? `${((lowRiskCount / totalSubmissions) * 100).toFixed(2)}%` : '0.00%']);
+    addRow(['MEDIUM (70-84)', mediumRiskCount, totalSubmissions ? `${((mediumRiskCount / totalSubmissions) * 100).toFixed(2)}%` : '0.00%']);
+    addRow(['HIGH (<70)', highRiskCount, totalSubmissions ? `${((highRiskCount / totalSubmissions) * 100).toFixed(2)}%` : '0.00%']);
+    addBlank();
+
+    addRow(['DAILY COMPLIANCE TREND (CHART READY)']);
+    addRow(['Date', 'Submissions', 'Average Score', 'Non-Compliant Answers']);
+    Array.from(dailyStats.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([date, stats]) => {
+        addRow([date, stats.submissions, (stats.scoreSum / stats.submissions).toFixed(2), stats.nonCompliant]);
+      });
+    addBlank();
+
+    addRow(['OFFICER PERFORMANCE SUMMARY']);
+    addRow(['Officer', 'Submissions', 'Average Score', 'Edited Submissions', 'Photos Added', 'Non-Compliant Answers']);
+    Array.from(officerStats.entries())
+      .sort((a, b) => b[1].submissions - a[1].submissions || a[0].localeCompare(b[0]))
+      .forEach(([officer, stats]) => {
+        addRow([
+          officer,
+          stats.submissions,
+          (stats.scoreSum / stats.submissions).toFixed(2),
+          stats.edited,
+          stats.photos,
+          stats.nonCompliant,
+        ]);
+      });
+    addBlank();
+
+    addRow(['STORE PERFORMANCE SUMMARY']);
+    addRow(['Store', 'Submissions', 'Average Score', 'Edited Submissions', 'Photos Added', 'Non-Compliant Answers']);
+    Array.from(storeStats.entries())
+      .sort((a, b) => b[1].submissions - a[1].submissions || a[0].localeCompare(b[0]))
+      .forEach(([store, stats]) => {
+        addRow([
+          store,
+          stats.submissions,
+          (stats.scoreSum / stats.submissions).toFixed(2),
+          stats.edited,
+          stats.photos,
+          stats.nonCompliant,
+        ]);
+      });
+    addBlank();
+
+    addRow(['CHECKLIST SECTION SUMMARY']);
+    addRow(['Section', 'Total Answers', 'Compliant', 'Non-Compliant', 'Compliance %']);
+    Array.from(sectionStats.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([section, stats]) => {
+        const denominator = stats.compliant + stats.nonCompliant;
+        const compliancePct = denominator > 0 ? ((stats.compliant / denominator) * 100).toFixed(2) : '0.00';
+        addRow([section, stats.answers, stats.compliant, stats.nonCompliant, `${compliancePct}%`]);
+      });
+    addBlank();
+
+    addRow(['SUBMISSION DETAIL']);
+    addRow([
+      'Submitted At',
+      'Edited At',
+      'Store',
+      'Officer',
+      'Score',
+      'Risk',
+      'Status',
+      'Is Edited',
+      'Photo Count',
+      'Responses Count',
+      'Non-Compliant Answers',
+    ]);
+    filteredRows.forEach((row) => {
+      const rowNonCompliant = row.responses.filter((response) =>
+        isViolationResponse(response.response, response.trigger_on_no),
+      ).length;
+      addRow([
         row.submitted_at,
         row.edited_at ?? '',
         row.branch_name,
         row.officer_name,
-        row.compliance_score.toFixed(1),
+        row.compliance_score.toFixed(2),
         row.risk_level,
         row.status,
-        String(row.photos.length),
-      ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n');
+        row.is_edited ? 'Yes' : 'No',
+        row.photos.length,
+        row.responses.length,
+        rowNonCompliant,
+      ]);
+    });
+    addBlank();
+
+    addRow(['CHECKLIST RESPONSE DETAIL']);
+    addRow([
+      'Submission ID',
+      'Inspection Date',
+      'Store',
+      'Officer',
+      'Section',
+      'Checklist Item',
+      'Response',
+      'Compliant',
+      'Remark',
+    ]);
+    filteredRows.forEach((row) => {
+      row.responses.forEach((response) => {
+        const nonCompliant = isViolationResponse(response.response, response.trigger_on_no);
+        addRow([
+          row.id,
+          row.inspection_date,
+          row.branch_name,
+          row.officer_name,
+          response.section,
+          response.item_text,
+          response.response,
+          nonCompliant ? 'No' : 'Yes',
+          response.remarks ?? '',
+        ]);
+      });
+    });
+
+    const csv = csvLines.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -89,37 +315,8 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
     URL.revokeObjectURL(url);
   };
 
-  const exportPdf = async (inspectionId: string) => {
-    setExportingId(inspectionId);
-    setToast('Generating audit PDF…');
-    try {
-      const row = data.find((entry) => entry.id === inspectionId) ?? null;
-      let pdfData = await fetchInspectionForPdf(inspectionId);
-      // Guaranteed fallback: build from already-loaded archive row.
-      if (!pdfData && row) {
-        pdfData = mapRowToPdfData(row);
-      }
-      if (!pdfData) throw new Error('Inspection not found.');
-      const { generateInspectionPdf } = await import('../components/InspectionPdfReport');
-      const filename = await generateInspectionPdf(pdfData);
-      setToast(`Downloaded ${filename}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'PDF export failed.';
-      setToast(message);
-    } finally {
-      setExportingId(null);
-      setTimeout(() => setToast(null), 3000);
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link to={backPath} className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-brand-600">
@@ -264,22 +461,8 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
                           <span className="text-slate-400">0</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            disabled={exportingId === row.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void exportPdf(row.id);
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
-                          >
-                            <FileDown className="h-3.5 w-3.5" />
-                            {exportingId === row.id ? '…' : 'PDF'}
-                          </button>
-                          <ChevronDown className={`h-4 w-4 text-slate-400 transition ${expanded ? 'rotate-180' : ''}`} />
-                        </div>
+                      <td className="px-4 py-3 text-right text-slate-400">
+                        <ChevronDown className={`ml-auto h-4 w-4 transition ${expanded ? 'rotate-180' : ''}`} />
                       </td>
                     </tr>
                     {expanded && (
@@ -356,51 +539,4 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
       )}
     </div>
   );
-}
-
-function mapRowToPdfData(row: ManagementInspection): InspectionPdfData {
-  const safeHttpUrl = (value: string | null | undefined): string | null => {
-    const raw = String(value ?? '').trim();
-    if (!raw) return null;
-    try {
-      const url = new URL(raw);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-      return url.toString();
-    } catch {
-      return null;
-    }
-  };
-
-  return {
-    id: row.id,
-    branchName: row.branch_name,
-    branchType: row.branch_type,
-    officerName: row.officer_name,
-    city: row.city,
-    inspectionDate: row.inspection_date,
-    submittedAt: row.submitted_at,
-    timeIn: null,
-    timeOut: null,
-    complianceScore: row.compliance_score,
-    riskLevel: row.risk_level,
-    status: row.status,
-    headComment: null,
-    generalRemark: null,
-    responses: row.responses.map((response) => ({
-      section: response.section,
-      item_text: response.item_text,
-      response: response.response,
-      remarks: response.remarks,
-      risk_level:
-        response.risk_level === 'RED' || response.risk_level === 'YELLOW' || response.risk_level === 'GREEN'
-          ? response.risk_level
-          : null,
-      trigger_on_no: response.trigger_on_no,
-      attachments: [],
-    })),
-    photos: row.photos
-      .map((photo) => safeHttpUrl(photo.url))
-      .filter((url): url is string => Boolean(url))
-      .map((url) => ({ url })),
-  };
 }

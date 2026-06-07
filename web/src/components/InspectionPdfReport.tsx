@@ -319,23 +319,48 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
   );
 }
 
+function withoutImageEvidence(data: InspectionPdfData): InspectionPdfData {
+  return {
+    ...data,
+    responses: data.responses.map((response) => ({
+      ...response,
+      attachments: (response.attachments ?? []).filter((item) => item.type === 'document'),
+    })),
+    photos: [],
+  };
+}
+
+async function renderPdfBlob(data: InspectionPdfData): Promise<Blob> {
+  return pdf(<InspectionReportDoc data={data} />).toBlob();
+}
+
+function downloadBlob(blob: Blob, data: InspectionPdfData): string {
+  const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  const filename = `audit-report-${safeBranch}-${data.inspectionDate}.pdf`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return filename;
+}
+
 export async function generateInspectionPdf(data: InspectionPdfData): Promise<string> {
   try {
-    const blob = await pdf(<InspectionReportDoc data={data} />).toBlob();
-    const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const filename = `audit-report-${safeBranch}-${data.inspectionDate}.pdf`;
-    // Bulletproof download — no third-party shim dependency
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    return filename;
-  } catch (err) {
-    console.error('[PDF] Generation failed:', err);
-    throw new Error('Failed to generate PDF. Please try again.');
+    const blob = await renderPdfBlob(data);
+    return downloadBlob(blob, data);
+  } catch (primaryError) {
+    console.error('[PDF] Primary generation failed, retrying without image evidence:', primaryError);
+    try {
+      const fallbackData = withoutImageEvidence(data);
+      const fallbackBlob = await renderPdfBlob(fallbackData);
+      return downloadBlob(fallbackBlob, data);
+    } catch (fallbackError) {
+      console.error('[PDF] Fallback generation failed:', fallbackError);
+      throw new Error('Failed to generate PDF. Please try again.');
+    }
   }
 }

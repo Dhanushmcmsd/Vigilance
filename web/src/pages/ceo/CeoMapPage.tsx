@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -33,6 +33,23 @@ interface Inspection {
   officer_name?: string;
 }
 
+interface BranchHeatStat {
+  count: number;
+  scoreSum: number;
+}
+
+interface BranchHeatPoint {
+  branchId: string;
+  branchName: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  visits: number;
+  avgScore: number;
+  colour: string;
+  label: string;
+}
+
 type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 const RISK_COLOURS: Record<RiskLevel | 'unknown', string> = {
@@ -47,13 +64,50 @@ function riskColour(level: string | null | undefined): string {
   return RISK_COLOURS[(level?.toLowerCase() as RiskLevel) ?? 'unknown'] ?? RISK_COLOURS.unknown;
 }
 
-function makeCircleIcon(color: string) {
+function makeCircleIcon(color: string, size = 12) {
+  const dot = Math.max(8, size);
+  const anchor = Math.floor(dot / 2);
   return L.divIcon({
     className: '',
-    html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    html: `<div style="width:${dot}px;height:${dot}px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px ${color}88,0 2px 8px rgba(0,0,0,.55)"></div>`,
+    iconSize: [dot, dot],
+    iconAnchor: [anchor, anchor],
   });
+}
+
+function scoreHeatColour(avgScore: number): string {
+  if (avgScore >= 85) return '#16a34a';
+  if (avgScore >= 70) return '#eab308';
+  return '#dc2626';
+}
+
+function scoreHeatLabel(avgScore: number): string {
+  if (avgScore >= 85) return 'Healthy';
+  if (avgScore >= 70) return 'Watch';
+  return 'Critical';
+}
+
+function scoreHeatRadius(avgScore: number, visits: number): number {
+  return 280 + visits * 65 + Math.max(0, 82 - avgScore) * 16;
+}
+
+function scoreHeatOpacity(avgScore: number): number {
+  if (avgScore >= 85) return 0.28;
+  if (avgScore >= 70) return 0.36;
+  return 0.48;
+}
+
+function toScoreFromRisk(level: string | null | undefined): number {
+  const key = String(level ?? '').toLowerCase();
+  if (key === 'critical' || key === 'red') return 48;
+  if (key === 'high') return 62;
+  if (key === 'medium' || key === 'yellow') return 76;
+  if (key === 'low' || key === 'green') return 90;
+  return 72;
+}
+
+function normalizeKey(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase();
 }
 
 const BLUE_BRANCH_ICON = L.divIcon({
@@ -76,9 +130,6 @@ async function fetchBranches(): Promise<Branch[]> {
 }
 
 async function fetchInspections(): Promise<Inspection[]> {
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
-
   const { data, error } = await supabase
     .from('inspections')
     .select(
@@ -87,7 +138,9 @@ async function fetchInspections(): Promise<Inspection[]> {
       branches ( branch_name ),
       user_roles ( name )`,
     )
-    .gte('inspection_date', since.toISOString().split('T')[0]);
+    .eq('status', 'submitted')
+    .order('inspection_date', { ascending: false })
+    .limit(1200);
   if (error) throw error;
 
   return ((data ?? []) as any[]).map((row) => ({
@@ -109,19 +162,85 @@ export default function CeoMapPage() {
   });
 
   const { data: inspections, isLoading: inspectionsLoading } = useQuery({
-    queryKey: ['inspections', 'recent'],
+    queryKey: ['inspections', 'map-history'],
     queryFn: fetchInspections,
   });
+
+  const heatPoints = useMemo<BranchHeatPoint[]>(() => {
+    if (!branches || !inspections) return [];
+
+    const branchIdByName = new Map<string, string>();
+    branches.forEach((branch) => {
+      branchIdByName.set(normalizeKey(branch.branch_name), branch.id);
+    });
+
+    const branchStats = new Map<string, BranchHeatStat>();
+    inspections.forEach((insp) => {
+      const resolvedBranchId = insp.branch_id || branchIdByName.get(normalizeKey(insp.branch_name)) || null;
+      if (!resolvedBranchId) return;
+      const existing = branchStats.get(resolvedBranchId) ?? { count: 0, scoreSum: 0 };
+      existing.count += 1;
+      const score = insp.compliance_score ?? toScoreFromRisk(insp.risk_level);
+      existing.scoreSum += Number.isFinite(score) ? score : toScoreFromRisk(insp.risk_level);
+      branchStats.set(resolvedBranchId, existing);
+    });
+
+    return branches
+      .filter((branch): branch is Branch & { latitude: number; longitude: number } => (
+        branch.latitude !== null && branch.longitude !== null
+      ))
+      .map((branch) => {
+        const stats = branchStats.get(branch.id);
+        const visits = stats?.count ?? 0;
+        const avgScore = visits > 0 ? stats!.scoreSum / visits : 0;
+        return {
+          branchId: branch.id,
+          branchName: branch.branch_name,
+          city: branch.city,
+          latitude: branch.latitude,
+          longitude: branch.longitude,
+          visits,
+          avgScore,
+          colour: scoreHeatColour(avgScore),
+          label: scoreHeatLabel(avgScore),
+        };
+      })
+      .filter((point) => point.visits > 0);
+  }, [branches, inspections]);
+
+  const mapSummary = useMemo(() => {
+    const inspectedStores = heatPoints.length;
+    const critical = heatPoints.filter((point) => point.avgScore < 70).length;
+    const watch = heatPoints.filter((point) => point.avgScore >= 70 && point.avgScore < 85).length;
+    const healthy = heatPoints.filter((point) => point.avgScore >= 85).length;
+    const totalVisits = heatPoints.reduce((sum, point) => sum + point.visits, 0);
+    const weightedAvg =
+      totalVisits > 0
+        ? heatPoints.reduce((sum, point) => sum + point.avgScore * point.visits, 0) / totalVisits
+        : 0;
+    const worstStores = [...heatPoints]
+      .sort((a, b) => a.avgScore - b.avgScore || b.visits - a.visits)
+      .slice(0, 4);
+
+    return { inspectedStores, critical, watch, healthy, totalVisits, weightedAvg, worstStores };
+  }, [heatPoints]);
 
   useEffect(() => {
     if (!mapRef.current) return;
     if (mapInstanceRef.current) return; // Already initialized
 
-    mapInstanceRef.current = L.map(mapRef.current).setView(KERALA_CENTER, DEFAULT_ZOOM);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
+    mapInstanceRef.current = L.map(mapRef.current, {
+      zoomControl: false,
+      preferCanvas: true,
+    }).setView(KERALA_CENTER, DEFAULT_ZOOM);
+    L.control.zoom({ position: 'bottomright' }).addTo(mapInstanceRef.current);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO',
       maxZoom: 19,
     }).addTo(mapInstanceRef.current);
+    // Ensure proper render when container size is controlled by dashboard layout.
+    setTimeout(() => mapInstanceRef.current?.invalidateSize(), 60);
+    setTimeout(() => mapInstanceRef.current?.invalidateSize(), 260);
   }, []);
 
   useEffect(() => {
@@ -135,7 +254,7 @@ export default function CeoMapPage() {
     if (branches) {
       branches.forEach((b) => {
         if (b.latitude !== null && b.longitude !== null) {
-          const marker = L.marker([b.latitude, b.longitude], { icon: BLUE_BRANCH_ICON });
+          const marker = L.marker([b.latitude, b.longitude], { icon: BLUE_BRANCH_ICON, zIndexOffset: 250 });
           marker.bindPopup(`<strong>${b.branch_name}</strong><br/>${b.city}`);
           marker.addTo(mapInstanceRef.current!);
           markersRef.current.push(marker);
@@ -147,34 +266,37 @@ export default function CeoMapPage() {
     heatCirclesRef.current.forEach((circle) => circle.remove());
     heatCirclesRef.current = [];
 
-    if (branches && inspections) {
-      const branchStats = new Map<string, { count: number; avg: number }>();
-      inspections.forEach((insp) => {
-        if (!insp.branch_id) return;
-        const existing = branchStats.get(insp.branch_id) ?? { count: 0, avg: 0 };
-        existing.count += 1;
-        existing.avg += insp.compliance_score ?? 0;
-        branchStats.set(insp.branch_id, existing);
-      });
-
-      branchStats.forEach((value) => {
-        value.avg = value.count ? value.avg / value.count : 0;
-      });
-
-      branches.forEach((b) => {
-        if (b.latitude === null || b.longitude === null) return;
-        const stats = branchStats.get(b.id);
-        if (!stats) return;
-
-        const circleColor = stats.avg >= 80 ? '#22c55e' : stats.avg >= 60 ? '#eab308' : '#ef4444';
-        const circle = L.circle([b.latitude, b.longitude], {
-          radius: 220 + stats.count * 80,
-          color: circleColor,
-          fillColor: circleColor,
-          fillOpacity: 0.12,
-          weight: 1,
+    if (heatPoints.length > 0) {
+      heatPoints.forEach((point) => {
+        const radius = scoreHeatRadius(point.avgScore, point.visits);
+        const outerHalo = L.circle([point.latitude, point.longitude], {
+          radius: radius * 1.35,
+          color: point.colour,
+          fillColor: point.colour,
+          fillOpacity: 0.18,
+          weight: 0,
           interactive: false,
         });
+        outerHalo.addTo(mapInstanceRef.current!);
+        heatCirclesRef.current.push(outerHalo);
+
+        const circle = L.circle([point.latitude, point.longitude], {
+          radius,
+          color: point.colour,
+          fillColor: point.colour,
+          fillOpacity: scoreHeatOpacity(point.avgScore),
+          weight: 1,
+          interactive: true,
+        });
+        circle.bindPopup(`
+          <div>
+            <strong>${point.branchName}</strong><br/>
+            ${point.city}<br/>
+            Avg compliance: <strong>${point.avgScore.toFixed(1)}%</strong><br/>
+            Heat level: <span style="color:${point.colour};font-weight:700;">${point.label}</span><br/>
+            Visits in range: ${point.visits}
+          </div>
+        `);
 
         circle.addTo(mapInstanceRef.current!);
         heatCirclesRef.current.push(circle);
@@ -186,8 +308,10 @@ export default function CeoMapPage() {
       inspections.forEach((insp) => {
         if (insp.officer_latitude !== null && insp.officer_longitude !== null) {
           const color = riskColour(insp.risk_level);
+          const dotSize = insp.risk_level?.toLowerCase() === 'critical' || insp.risk_level?.toLowerCase() === 'red' ? 14 : 10;
           const marker = L.marker([insp.officer_latitude, insp.officer_longitude], {
-            icon: makeCircleIcon(color),
+            icon: makeCircleIcon(color, dotSize),
+            zIndexOffset: 120,
           });
           const popupText = `
             <div>
@@ -203,57 +327,139 @@ export default function CeoMapPage() {
         }
       });
     }
-  }, [branches, inspections]);
+    const boundsPoints: L.LatLngTuple[] = [];
+    if (branches) {
+      branches.forEach((b) => {
+        if (b.latitude !== null && b.longitude !== null) {
+          boundsPoints.push([b.latitude, b.longitude]);
+        }
+      });
+    }
+    if (boundsPoints.length >= 2) {
+      mapInstanceRef.current.fitBounds(L.latLngBounds(boundsPoints), { padding: [40, 40], maxZoom: 11 });
+    }
+  }, [branches, inspections, heatPoints]);
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="px-6 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-        <h1 className="text-2xl font-bold text-gray-50 mb-2">Store Map</h1>
-        <p className="text-sm text-gray-400">Dashboard / Store Map</p>
+    <div className="space-y-4">
+      <div
+        className="rounded-2xl border p-4 sm:p-5"
+        style={{
+          borderColor: 'rgba(34,211,238,0.25)',
+          background:
+            'radial-gradient(circle at 20% 0%, rgba(56,189,248,0.18), rgba(10,10,15,0.9) 42%), linear-gradient(180deg, rgba(10,10,15,0.88), rgba(10,10,15,0.96))',
+          boxShadow: '0 0 0 1px rgba(6,182,212,0.1), 0 20px 60px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-cyan-500/20 pb-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-wide text-cyan-100">Store Intelligence Map</h1>
+            <p className="mt-1 text-xs text-cyan-200/80">
+              Live geo-visualization of compliance pressure zones and field activity.
+            </p>
+          </div>
+          <div className="flex gap-2 text-[11px]">
+            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+              Stores {mapSummary.inspectedStores}
+            </span>
+            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+              Visits {mapSummary.totalVisits}
+            </span>
+            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+              Avg {mapSummary.weightedAvg.toFixed(1)}%
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden">
+      <div className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-black/40 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
         {(branchesLoading || inspectionsLoading) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
             <div className="text-white text-sm">Loading map data...</div>
           </div>
         )}
+        <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-xl border border-cyan-400/30 bg-black/55 p-3 backdrop-blur-sm">
+          <p className="text-[11px] uppercase tracking-wider text-cyan-200">Heat Summary</p>
+          <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1 text-xs text-gray-200">
+            <span>Inspected stores</span>
+            <span className="text-right font-semibold">{mapSummary.inspectedStores}</span>
+            <span>Total visits</span>
+            <span className="text-right font-semibold">{mapSummary.totalVisits}</span>
+            <span>Weighted avg score</span>
+            <span className="text-right font-semibold">{mapSummary.weightedAvg.toFixed(1)}%</span>
+          </div>
+          <div className="mt-2 flex gap-2 text-[11px]">
+            <span className="rounded bg-green-500/25 px-2 py-0.5 text-green-300">{mapSummary.healthy} Healthy</span>
+            <span className="rounded bg-yellow-500/25 px-2 py-0.5 text-yellow-300">{mapSummary.watch} Watch</span>
+            <span className="rounded bg-red-500/25 px-2 py-0.5 text-red-300">{mapSummary.critical} Critical</span>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute right-4 top-4 z-[500] w-64 rounded-xl border border-cyan-400/30 bg-black/55 p-3 backdrop-blur-sm">
+          <p className="text-[11px] uppercase tracking-wider text-cyan-200">Attention stores</p>
+          <div className="mt-2 space-y-1.5 text-xs text-gray-100">
+            {mapSummary.worstStores.length === 0 ? (
+              <p className="text-gray-400">No inspections in selected range.</p>
+            ) : (
+              mapSummary.worstStores.map((store) => (
+                <div key={store.branchId} className="flex items-center justify-between rounded bg-white/5 px-2 py-1">
+                  <span className="truncate pr-2">{store.branchName}</span>
+                  <span style={{ color: store.colour }} className="font-semibold">
+                    {store.avgScore.toFixed(1)}%
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
         <div
           ref={mapRef}
           style={{
             width: '100%',
-            height: '100%',
+            height: 'calc(100vh - 280px)',
+            minHeight: 520,
             backgroundColor: '#0A0A0F',
           }}
         />
+        <div className="absolute bottom-0 left-0 right-0 border-t border-cyan-500/20 bg-black/60 px-4 py-3 backdrop-blur-sm">
+          <div className="flex flex-wrap gap-5 text-xs">
+            <div className="flex items-center gap-2">
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#2563eb' }} />
+              <span className="text-gray-300">Store anchors</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#16a34a' }} />
+              <span className="text-gray-300">Green: Healthy score (85+)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#eab308' }} />
+              <span className="text-gray-300">Yellow: Watch score (70-84)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#dc2626' }} />
+              <span className="text-gray-300">Red: Critical score (&lt;70)</span>
+            </div>
+            <div className="ml-auto min-w-[220px]">
+              <div className="h-2 w-full rounded-full bg-gradient-to-r from-green-600 via-yellow-500 to-red-600" />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Heat amplifies when scores drop or visit volume rises.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="px-6 py-4 border-t bg-gray-900/50" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-        <div className="flex gap-6 text-xs">
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#2563eb' }} />
-            <span className="text-gray-300">Store Location</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ffffff', opacity: 0.28, border: '1px solid rgba(255,255,255,0.4)' }} />
-            <span className="text-gray-300">Inspection heat</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-            <span className="text-gray-300">Low Risk</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#eab308' }} />
-            <span className="text-gray-300">Medium Risk</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#f97316' }} />
-            <span className="text-gray-300">High Risk</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }} />
-            <span className="text-gray-300">Critical Risk</span>
-          </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-200">
+          <p className="font-semibold uppercase tracking-wide">Critical Stores</p>
+          <p className="mt-1 text-2xl font-bold text-red-300">{mapSummary.critical}</p>
+        </div>
+        <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-xs text-yellow-100">
+          <p className="font-semibold uppercase tracking-wide">Watch Stores</p>
+          <p className="mt-1 text-2xl font-bold text-yellow-300">{mapSummary.watch}</p>
+        </div>
+        <div className="rounded-xl border border-green-500/30 bg-green-950/20 p-3 text-xs text-green-100">
+          <p className="font-semibold uppercase tracking-wide">Healthy Stores</p>
+          <p className="mt-1 text-2xl font-bold text-green-300">{mapSummary.healthy}</p>
         </div>
       </div>
     </div>

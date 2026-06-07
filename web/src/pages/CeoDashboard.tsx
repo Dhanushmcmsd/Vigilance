@@ -5,7 +5,6 @@ import CeoOverviewPage from './ceo/CeoOverviewPage';
 import CeoAnalyticsPage from './ceo/CeoAnalyticsPage';
 import CeoAlertsPage from './ceo/CeoAlertsPage';
 import CeoMapPage from './ceo/CeoMapPage';
-import CeoEscalationsPage from './ceo/CeoEscalationsPage';
 import CeoReportsPage from './ceo/CeoReportsPage';
 import CeoSettingsPage from './ceo/CeoSettingsPage';
 
@@ -21,7 +20,6 @@ export default function CeoDashboard() {
         <Route path="analytics" element={<CeoAnalyticsPage />} />
         <Route path="alerts" element={<CeoAlertsPage />} />
         <Route path="map" element={<CeoMapPage />} />
-        <Route path="escalations" element={<CeoEscalationsPage />} />
         <Route path="reports" element={<CeoReportsPage />} />
         <Route path="archive" element={<ManagementArchive />} />
         <Route path="audit-archive" element={<AuditArchive backPath="/dashboard" backLabel="Back to dashboard" />} />

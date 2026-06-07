@@ -97,8 +97,9 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
       const { generateInspectionPdf } = await import('../components/InspectionPdfReport');
       const filename = await generateInspectionPdf(pdfData);
       setToast(`Downloaded ${filename}`);
-    } catch {
-      setToast('PDF export failed.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'PDF export failed.';
+      setToast(message);
     } finally {
       setExportingId(null);
       setTimeout(() => setToast(null), 3000);

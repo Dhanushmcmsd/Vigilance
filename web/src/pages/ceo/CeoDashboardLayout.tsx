@@ -12,7 +12,6 @@ const BREADCRUMBS: Record<string, string> = {
   '/dashboard/analytics': 'Analytics',
   '/dashboard/alerts': 'Live Alerts',
   '/dashboard/map': 'Store Map',
-  '/dashboard/escalations': 'Escalations',
   '/dashboard/reports': 'Reports',
   '/dashboard/settings': 'Settings',
 };
@@ -23,7 +22,6 @@ const HEADER_SUBTITLES: Record<string, string> = {
   '/dashboard/map': 'Geographic view of store compliance and risk density.',
   '/dashboard/reports': 'Monthly and custom exports for management reporting.',
   '/dashboard/alerts': 'Real-time critical and warning alert activity feed.',
-  '/dashboard/escalations': 'Action tracker for open critical issues.',
   '/dashboard/settings': 'Configure dashboard preferences and workspace behavior.',
 };
 

@@ -55,7 +55,7 @@ export default function CeoOverviewPage() {
           onViewTicket={(ticket) => {
             const match = alerts.find((a) => a.id === ticket.id);
             if (match) setSelectedAlert(match);
-            else navigate('/dashboard/escalations');
+            else navigate('/dashboard/alerts');
           }}
         />
       </motion.div>

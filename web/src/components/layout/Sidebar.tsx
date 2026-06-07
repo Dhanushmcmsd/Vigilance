@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Archive,
   FileText,
-  Zap,
   ChevronLeft,
   LogOut,
   Menu,
@@ -34,7 +33,6 @@ const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
     { label: 'Monthly Archive', path: '/dashboard/archive', icon: Archive },
     { label: 'Vigilance Report', path: '/dashboard/audit-archive', icon: FileText },
     { label: 'Live Alerts', path: '/dashboard/alerts', icon: AlertTriangle },
-    { label: 'Escalations', path: '/dashboard/escalations', icon: Zap },
   ],
   head: [
     { label: 'Dashboard', path: '/head', icon: Home },

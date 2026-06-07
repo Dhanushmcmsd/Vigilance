@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import L from 'leaflet';
+import 'leaflet.heat';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../../lib/supabase';
 
@@ -97,6 +98,12 @@ function scoreHeatOpacity(avgScore: number): number {
   return 0.48;
 }
 
+function heatIntensityForScore(avgScore: number, visitWeight = 1): number {
+  const severity = Math.max(0, (100 - avgScore) / 100);
+  const weighted = severity * (0.65 + Math.min(visitWeight, 2.2) * 0.25);
+  return Math.min(1, Math.max(0.08, weighted));
+}
+
 function toScoreFromRisk(level: string | null | undefined): number {
   const key = String(level ?? '').toLowerCase();
   if (key === 'critical' || key === 'red') return 48;
@@ -155,6 +162,7 @@ export default function CeoMapPage() {
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const heatCirclesRef = useRef<L.Circle[]>([]);
+  const heatLayerRef = useRef<L.Layer | null>(null);
 
   const { data: branches, isLoading: branchesLoading } = useQuery({
     queryKey: ['branches'],
@@ -225,6 +233,26 @@ export default function CeoMapPage() {
     return { inspectedStores, critical, watch, healthy, totalVisits, weightedAvg, worstStores };
   }, [heatPoints]);
 
+  const textureHeatPoints = useMemo<Array<[number, number, number]>>(() => {
+    if (!inspections) return [];
+
+    const points: Array<[number, number, number]> = [];
+    inspections.forEach((insp) => {
+      const score = insp.compliance_score ?? toScoreFromRisk(insp.risk_level);
+      const intensity = heatIntensityForScore(score);
+      if (insp.officer_latitude !== null && insp.officer_longitude !== null) {
+        points.push([insp.officer_latitude, insp.officer_longitude, intensity]);
+      }
+    });
+
+    heatPoints.forEach((point) => {
+      const visitWeight = Math.log10(point.visits + 1) + 0.9;
+      points.push([point.latitude, point.longitude, heatIntensityForScore(point.avgScore, visitWeight)]);
+    });
+
+    return points;
+  }, [inspections, heatPoints]);
+
   useEffect(() => {
     if (!mapRef.current) return;
     if (mapInstanceRef.current) return; // Already initialized
@@ -263,6 +291,30 @@ export default function CeoMapPage() {
     }
 
     // Store risk heat layer
+    if (heatLayerRef.current) {
+      heatLayerRef.current.remove();
+      heatLayerRef.current = null;
+    }
+
+    if (textureHeatPoints.length > 0) {
+      const heatFactory = (L as typeof L & {
+        heatLayer: (latlngs: Array<[number, number, number]>, options?: Record<string, unknown>) => L.Layer;
+      }).heatLayer;
+      heatLayerRef.current = heatFactory(textureHeatPoints, {
+        radius: 34,
+        blur: 26,
+        maxZoom: 12,
+        minOpacity: 0.2,
+        gradient: {
+          0.15: '#22c55e',
+          0.45: '#eab308',
+          0.7: '#f97316',
+          1.0: '#dc2626',
+        },
+      });
+      heatLayerRef.current.addTo(mapInstanceRef.current);
+    }
+
     heatCirclesRef.current.forEach((circle) => circle.remove());
     heatCirclesRef.current = [];
 
@@ -273,8 +325,8 @@ export default function CeoMapPage() {
           radius: radius * 1.35,
           color: point.colour,
           fillColor: point.colour,
-          fillOpacity: 0.18,
-          weight: 0,
+          fillOpacity: 0.12,
+          weight: 1,
           interactive: false,
         });
         outerHalo.addTo(mapInstanceRef.current!);
@@ -284,7 +336,7 @@ export default function CeoMapPage() {
           radius,
           color: point.colour,
           fillColor: point.colour,
-          fillOpacity: scoreHeatOpacity(point.avgScore),
+          fillOpacity: scoreHeatOpacity(point.avgScore) * 0.5,
           weight: 1,
           interactive: true,
         });
@@ -338,40 +390,10 @@ export default function CeoMapPage() {
     if (boundsPoints.length >= 2) {
       mapInstanceRef.current.fitBounds(L.latLngBounds(boundsPoints), { padding: [40, 40], maxZoom: 11 });
     }
-  }, [branches, inspections, heatPoints]);
+  }, [branches, inspections, heatPoints, textureHeatPoints]);
 
   return (
     <div className="space-y-4">
-      <div
-        className="rounded-2xl border p-4 sm:p-5"
-        style={{
-          borderColor: 'rgba(34,211,238,0.25)',
-          background:
-            'radial-gradient(circle at 20% 0%, rgba(56,189,248,0.18), rgba(10,10,15,0.9) 42%), linear-gradient(180deg, rgba(10,10,15,0.88), rgba(10,10,15,0.96))',
-          boxShadow: '0 0 0 1px rgba(6,182,212,0.1), 0 20px 60px rgba(0,0,0,0.45)',
-        }}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-cyan-500/20 pb-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-wide text-cyan-100">Store Intelligence Map</h1>
-            <p className="mt-1 text-xs text-cyan-200/80">
-              Live geo-visualization of compliance pressure zones and field activity.
-            </p>
-          </div>
-          <div className="flex gap-2 text-[11px]">
-            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
-              Stores {mapSummary.inspectedStores}
-            </span>
-            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
-              Visits {mapSummary.totalVisits}
-            </span>
-            <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-cyan-200">
-              Avg {mapSummary.weightedAvg.toFixed(1)}%
-            </span>
-          </div>
-        </div>
-      </div>
-
       <div className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-black/40 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
         {(branchesLoading || inspectionsLoading) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">

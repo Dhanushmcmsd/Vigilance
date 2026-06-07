@@ -371,18 +371,6 @@ function mapRowToPdfData(row: ManagementInspection): InspectionPdfData {
     }
   };
 
-  const itemAttachmentsByChecklist = new Map<string, { url: string; type: 'image' }[]>();
-  row.photos.forEach((photo) => {
-    const url = safeHttpUrl(photo.url);
-    if (!url) return;
-    // We do not have checklist-level mapping in archive row photos; attach globally per item.
-    row.responses.forEach((response) => {
-      const list = itemAttachmentsByChecklist.get(response.checklist_item_id) ?? [];
-      if (!list.some((item) => item.url === url)) list.push({ url, type: 'image' });
-      itemAttachmentsByChecklist.set(response.checklist_item_id, list);
-    });
-  });
-
   return {
     id: row.id,
     branchName: row.branch_name,
@@ -408,7 +396,7 @@ function mapRowToPdfData(row: ManagementInspection): InspectionPdfData {
           ? response.risk_level
           : null,
       trigger_on_no: response.trigger_on_no,
-      attachments: itemAttachmentsByChecklist.get(response.checklist_item_id) ?? [],
+      attachments: [],
     })),
     photos: row.photos
       .map((photo) => safeHttpUrl(photo.url))

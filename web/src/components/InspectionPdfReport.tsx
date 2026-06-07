@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   executiveTitle: { fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
-  kpiRow: { flexDirection: 'row', gap: 10 },
+  kpiRow: { flexDirection: 'row' },
   kpi: { flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: 8, backgroundColor: '#ffffff' },
   kpiLabel: { fontSize: 7, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8 },
   kpiValue: { fontSize: 14, fontWeight: 700, marginTop: 4, color: BRAND },
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   pillNa: { backgroundColor: '#f1f5f9', color: '#475569' },
   remark: { fontSize: 8, color: MUTED, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 },
   evidenceLabel: { fontSize: 7, color: MUTED, marginTop: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 },
-  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap' },
   photo: { width: 120, height: 86, objectFit: 'cover', borderRadius: 3, borderWidth: 1, borderColor: BORDER },
   docChip: { fontSize: 7, color: '#334155', backgroundColor: '#f1f5f9', padding: 4, borderRadius: 3, marginTop: 4 },
   footer: {
@@ -187,15 +187,15 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
         <View style={styles.executiveBox}>
           <Text style={styles.executiveTitle}>Executive summary</Text>
           <View style={styles.kpiRow}>
-            <View style={styles.kpi}>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
               <Text style={styles.kpiLabel}>Compliance score</Text>
               <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
             </View>
-            <View style={styles.kpi}>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
               <Text style={styles.kpiLabel}>Overall risk</Text>
               <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
             </View>
-            <View style={styles.kpi}>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
               <Text style={styles.kpiLabel}>Findings</Text>
               <Text style={styles.kpiValue}>
                 {failCount} NC · {passCount} OK
@@ -276,7 +276,7 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
                       <Text style={styles.evidenceLabel}>Photographic evidence</Text>
                       <View style={styles.photoRow}>
                         {images.map((p, pi) => (
-                          <Image key={pi} src={p.url} style={styles.photo} />
+                          <Image key={pi} src={p.url} style={[styles.photo, { marginRight: 6, marginBottom: 6 }]} />
                         ))}
                       </View>
                     </View>
@@ -302,7 +302,7 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
             <Text style={styles.sectionTitle}>Unassigned attachments</Text>
             <View style={styles.photoRow}>
               {data.photos.slice(0, 12).map((p, i) => (
-                <Image key={i} src={p.url} style={styles.photo} />
+                <Image key={i} src={p.url} style={[styles.photo, { marginRight: 6, marginBottom: 6 }]} />
               ))}
             </View>
           </View>
@@ -314,6 +314,42 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
             render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
           />
         </View>
+      </Page>
+    </Document>
+  );
+}
+
+function MinimalInspectionReportDoc({ data }: { data: InspectionPdfData }) {
+  return (
+    <Document title={`Audit Report - ${data.branchName}`}>
+      <Page size="A4" style={{ padding: 24, fontSize: 10, fontFamily: 'Helvetica', color: '#0f172a' }}>
+        <Text style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Store Compliance Audit Report</Text>
+        <Text>Store: {data.branchName}</Text>
+        <Text>Branch Type: {data.branchType}</Text>
+        <Text>Officer: {data.officerName}</Text>
+        <Text>Inspection Date: {data.inspectionDate}</Text>
+        <Text>Submitted At: {data.submittedAt ?? '-'}</Text>
+        <Text>Compliance Score: {data.complianceScore.toFixed(1)}%</Text>
+        <Text>Overall Risk: {data.riskLevel}</Text>
+        <Text>Status: {data.status}</Text>
+
+        <View style={{ marginTop: 14 }}>
+          <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Checklist Summary</Text>
+          {data.responses.slice(0, 120).map((response, index) => (
+            <View key={`${response.section}-${index}`} style={{ marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+              <Text>{response.section || 'General'} - {response.item_text || 'Checklist item'}</Text>
+              <Text>Response: {response.response || '-'}</Text>
+              {response.remarks ? <Text>Remark: {response.remarks}</Text> : null}
+            </View>
+          ))}
+        </View>
+
+        {data.generalRemark ? (
+          <View style={{ marginTop: 10 }}>
+            <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>General Remark</Text>
+            <Text>{data.generalRemark}</Text>
+          </View>
+        ) : null}
       </Page>
     </Document>
   );
@@ -359,8 +395,14 @@ export async function generateInspectionPdf(data: InspectionPdfData): Promise<st
       const fallbackBlob = await renderPdfBlob(fallbackData);
       return downloadBlob(fallbackBlob, data);
     } catch (fallbackError) {
-      console.error('[PDF] Fallback generation failed:', fallbackError);
-      throw new Error('Failed to generate PDF. Please try again.');
+      console.error('[PDF] Fallback generation failed, trying minimal report:', fallbackError);
+      try {
+        const minimalBlob = await pdf(<MinimalInspectionReportDoc data={withoutImageEvidence(data)} />).toBlob();
+        return downloadBlob(minimalBlob, data);
+      } catch (minimalError) {
+        console.error('[PDF] Minimal generation failed:', minimalError);
+        throw new Error('Failed to generate PDF. Please try again.');
+      }
     }
   }
 }

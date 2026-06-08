@@ -17,10 +17,8 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <div
-      className="fixed top-0 right-0 h-20 flex items-center justify-between px-4 sm:px-6 border-b z-30 transition-[left] duration-300"
+      className="vms-topbar fixed top-0 right-0 z-30 flex h-20 items-center justify-between border-b px-4 transition-[left] duration-300 sm:px-6"
       style={{
-        backgroundColor: '#111118',
-        borderColor: 'rgba(255,255,255,0.07)',
         left: window.innerWidth < 768 ? '0' : sidebarWidth,
       }}
     >

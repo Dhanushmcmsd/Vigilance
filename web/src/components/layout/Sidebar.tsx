@@ -107,11 +107,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
         initial={false}
         animate={{ width }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="fixed left-0 top-0 h-screen border-r flex flex-col z-40"
-        style={{
-          backgroundColor: '#0F172A',
-          borderColor: 'rgba(255,255,255,0.07)',
-        }}
+        className="vms-sidebar fixed left-0 top-0 z-40 flex h-screen flex-col border-r"
       >
         {/* Header */}
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
@@ -134,11 +130,13 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
                 key={item.path}
                 to={item.path}
                 data-cursor="pointer"
-                className="relative flex items-center px-4 h-11 mx-2 rounded-md transition-all group"
+                className={`relative mx-2 flex h-11 items-center rounded-md px-4 transition-all group ${
+                  active ? 'vms-sidebar-nav-active' : ''
+                }`}
                 style={{
-                  color: active ? '#F5F5F0' : 'rgba(245,245,240,0.6)',
-                  backgroundColor: active ? 'rgba(37,99,235,0.08)' : 'transparent',
-                  borderLeft: active ? '3px solid #2563EB' : '3px solid transparent',
+                  color: active ? '#F5F5F0' : 'rgba(245,245,240,0.58)',
+                  backgroundColor: active ? undefined : 'transparent',
+                  borderLeft: active ? '3px solid rgba(148,163,184,0.55)' : '3px solid transparent',
                   paddingLeft: active ? 'calc(16px - 3px)' : '16px',
                 }}
               >
@@ -257,11 +255,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-              className="fixed left-0 top-0 h-screen w-64 border-r flex flex-col z-40"
-              style={{
-                backgroundColor: '#0F172A',
-                borderColor: 'rgba(255,255,255,0.07)',
-              }}
+              className="vms-sidebar fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r"
             >
               {/* Header */}
               <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
@@ -280,11 +274,13 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
                       to={item.path}
                       data-cursor="pointer"
                       onClick={handleNavClick}
-                      className="relative flex items-center px-4 h-11 rounded-md transition-all group mb-2"
+                      className={`relative mb-2 flex h-11 items-center rounded-md px-4 transition-all group ${
+                        active ? 'vms-sidebar-nav-active' : ''
+                      }`}
                       style={{
-                        color: active ? '#F5F5F0' : 'rgba(245,245,240,0.6)',
-                        backgroundColor: active ? 'rgba(37,99,235,0.08)' : 'transparent',
-                        borderLeft: active ? '3px solid #2563EB' : '3px solid transparent',
+                        color: active ? '#F5F5F0' : 'rgba(245,245,240,0.58)',
+                        backgroundColor: active ? undefined : 'transparent',
+                        borderLeft: active ? '3px solid rgba(148,163,184,0.55)' : '3px solid transparent',
                         paddingLeft: active ? 'calc(16px - 3px)' : '16px',
                       }}
                     >

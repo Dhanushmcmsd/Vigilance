@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ChevronRight,
+  Download,
   FileText,
   Folder,
   Search,
@@ -10,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchInspectionForPdf } from '../../lib/auditExport';
 import { isViolationResponse } from '../../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../../lib/alertDescriptions';
 import {
@@ -84,10 +86,10 @@ function ReportCard({ report, onOpen }: { report: AuditReportRow; onOpen: () => 
       className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
     >
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#D174D2]">{weekday}</p>
-        <p className="mt-0.5 text-base font-bold text-white">{dateLine}</p>
-        <p className="mt-1.5 text-sm text-white/65">Officer: {report.officer?.name ?? 'Unknown'}</p>
-        <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#D174D2]">
+        <p className="text-xs font-semibold uppercase tracking-wider text-white/45">{weekday}</p>
+        <p className="mt-0.5 text-base font-semibold text-white">{dateLine}</p>
+        <p className="mt-1.5 text-sm text-white/55">Officer: {report.officer?.name ?? 'Unknown'}</p>
+        <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-white/70">
           <FileText className="h-3.5 w-3.5" />
           View checklist report
         </div>
@@ -111,6 +113,33 @@ function ReportDetailModal({
   branchName: string;
   onClose: () => void;
 }) {
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const handleDownloadPdf = async () => {
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      const pdfData = await fetchInspectionForPdf(inspectionId);
+      if (!pdfData) throw new Error('Could not load report data for PDF export.');
+      const { generateInspectionPdf } = await import('../InspectionPdfReport');
+      await generateInspectionPdf(pdfData);
+    } catch (err) {
+      console.error('[ManagementReport PDF]', err);
+      setPdfError(err instanceof Error ? err.message : 'PDF download failed. Please try again.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const { data, isLoading } = useQuery<ReportDetail | null>({
     queryKey: ['management-report-detail', inspectionId],
     queryFn: async () => {
@@ -155,29 +184,37 @@ function ReportDetailModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-      <BloomGradientPanel className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden p-0" noPadding>
-        <div className="bloom-panel-content flex flex-col max-h-[92vh]">
-        <div className="flex items-start justify-between gap-3 border-b border-white/12 px-5 py-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-[#D174D2]">{branchName}</p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Inspection report"
+      onClick={onClose}
+    >
+      <div
+        className="bloom-panel bloom-panel-modal flex w-full max-w-2xl flex-col overflow-hidden"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">{branchName}</p>
             {data && (
               <>
-                <h3 className="mt-1 text-lg font-bold text-white">
+                <h3 className="mt-1 truncate text-lg font-semibold text-white">
                   {new Date(data.inspection_date).toLocaleDateString('en-IN', {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
                   })}
                 </h3>
-                <p className="text-sm text-white/65">Officer: {data.officer?.name ?? '—'}</p>
+                <p className="text-sm text-white/55">Officer: {data.officer?.name ?? '—'}</p>
               </>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             {data?.compliance_score !== null && data?.compliance_score !== undefined && (
               <span
-                className="text-3xl font-black tabular-nums"
+                className="mr-1 text-2xl font-bold tabular-nums"
                 style={{ color: auditScoreColor(data.compliance_score) }}
               >
                 {data.compliance_score.toFixed(0)}%
@@ -185,16 +222,32 @@ function ReportDetailModal({
             )}
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-full p-2 text-white/80 hover:bg-white/10"
-              aria-label="Close"
+              onClick={() => void handleDownloadPdf()}
+              disabled={pdfLoading || isLoading || !data}
+              className="bloom-btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-50"
             >
-              <X className="h-5 w-5" />
+              <Download className="h-3.5 w-3.5" />
+              {pdfLoading ? 'Generating…' : 'Download PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="bloom-btn-ghost inline-flex items-center gap-1 px-2.5 py-2 text-xs"
+              aria-label="Close report"
+            >
+              <X className="h-4 w-4" />
+              Close
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        {pdfError && (
+          <div className="mx-5 mt-3 rounded-lg border border-red-400/30 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+            {pdfError}
+          </div>
+        )}
+
+        <div className="max-h-[min(68vh,640px)] flex-1 overflow-y-auto px-5 py-4">
           {isLoading && <p className="py-8 text-center text-white/65">Loading report…</p>}
           {!isLoading && !data && <p className="py-8 text-center text-white/65">Report not found.</p>}
           {data && (
@@ -225,7 +278,7 @@ function ReportDetailModal({
               {Object.entries(sections).map(([section, items]) => (
                 <div key={section} className="bloom-panel-nested overflow-hidden p-0">
                   <div className="border-b border-white/10 bg-black/20 px-4 py-2.5">
-                    <p className="text-xs font-bold uppercase tracking-wide text-[#D174D2]">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
                       {section}
                     </p>
                   </div>
@@ -296,8 +349,7 @@ function ReportDetailModal({
             </div>
           )}
         </div>
-        </div>
-      </BloomGradientPanel>
+      </div>
     </div>
   );
 }
@@ -390,14 +442,11 @@ export default function ManagementReport() {
   return (
     <BloomGradientPanel className="overflow-hidden p-0" noPadding>
       <div className="bloom-panel-content">
-      <div className="border-b border-white/12 px-5 py-4">
+      <div className="border-b border-white/10 px-5 py-3.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-white">Management Report</h2>
-            <p className="mt-0.5 text-sm text-white/65">
-              Browse field officer checklists by store — same view as the mobile audit app.
-            </p>
-          </div>
+          <p className="text-sm text-white/55">
+            Browse field officer checklists by store — same view as the mobile audit app.
+          </p>
           {view.kind !== 'stores' && (
             <button
               type="button"
@@ -448,12 +497,12 @@ export default function ManagementReport() {
                       className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
                     >
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
-                        <Store className="h-5 w-5 text-[#D174D2]" />
+                        <Store className="h-5 w-5 text-white/70" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-white">{branch.branch_name}</p>
                         {location && <p className="text-sm text-white/65">{location}</p>}
-                        <p className="mt-1.5 text-xs font-semibold text-[#D174D2]">
+                        <p className="mt-1.5 text-xs font-medium text-white/50">
                           {branch.reportCount} {branch.reportCount === 1 ? 'report' : 'reports'}
                         </p>
                       </div>
@@ -484,7 +533,7 @@ export default function ManagementReport() {
               <div className="space-y-6">
                 {groups.currentMonthDays.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-[#D174D2]">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
                       {groups.currentMonthLabel}
                     </p>
                     <p className="mb-3 mt-1 text-xs text-white/55">
@@ -505,7 +554,7 @@ export default function ManagementReport() {
                 )}
                 {groups.monthFolders.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-[#D174D2]">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
                       Earlier months
                     </p>
                     <p className="mb-3 mt-1 text-xs text-white/55">
@@ -527,7 +576,7 @@ export default function ManagementReport() {
                           className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
                         >
                           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-                            <Folder className="h-5 w-5 text-[#D174D2]" />
+                            <Folder className="h-5 w-5 text-white/70" />
                           </div>
                           <div className="flex-1">
                             <p className="font-bold text-white">{folder.label}</p>

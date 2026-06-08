@@ -5,14 +5,14 @@ import { useManagementInspections } from '../hooks/useManagementInspections';
 import { isViolationResponse } from '../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../lib/alertDescriptions';
 import ManagementReport from '../components/management/ManagementReport';
-import { BloomGradientPanel, BloomPageHeader } from '../components/ui/BloomGradientPanel';
+import { BloomGradientPanel } from '../components/ui/BloomGradientPanel';
 
 interface AuditArchiveProps {
-  backPath: string;
-  backLabel: string;
+  backPath?: string;
+  backLabel?: string;
 }
 
-export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps) {
+export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps = {}) {
   const { data = [] } = useManagementInspections();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -238,25 +238,22 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Link to={backPath} className="bloom-link mb-3">
-            <ArrowLeft className="h-4 w-4" />
-            {backLabel}
-          </Link>
-          <BloomPageHeader
-            title="Audit report archive"
-            description="Field inspection history with management reports and meeting-ready exports."
-          />
-        </div>
-        <button type="button" onClick={downloadReport} className="bloom-btn">
-          <Download className="h-4 w-4" />
-          Export Report
-        </button>
-      </div>
+    <div className="space-y-5">
+      {backPath && backLabel ? (
+        <Link to={backPath} className="bloom-link inline-flex">
+          <ArrowLeft className="h-4 w-4" />
+          {backLabel}
+        </Link>
+      ) : null}
 
       <BloomGradientPanel className="p-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-white/60">Filter submissions and export a compliance summary.</p>
+          <button type="button" onClick={downloadReport} className="bloom-btn shrink-0">
+            <Download className="h-4 w-4" />
+            Export Report
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <label className="bloom-label">
             From

@@ -20,7 +20,7 @@ export default function CeoDashboard() {
         <Route path="map" element={<CeoMapPage />} />
         <Route path="reports" element={<CeoReportsPage />} />
         <Route path="archive" element={<ManagementArchive />} />
-        <Route path="audit-archive" element={<AuditArchive backPath="/dashboard" backLabel="Back to dashboard" />} />
+        <Route path="audit-archive" element={<AuditArchive />} />
         <Route path="settings" element={<CeoSettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

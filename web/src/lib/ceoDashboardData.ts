@@ -1,5 +1,6 @@
 import type { ManagementInspection } from './inspectionQueries';
 import { isViolationResponse } from './checklistScoring';
+import { formatNonComplianceAlert } from './alertDescriptions';
 
 interface CeoMetrics {
   openRedFlags: number;
@@ -122,7 +123,11 @@ export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem
             id: `${inspection.id}-${response.id}`,
             storeName: inspection.branch_name,
             section: response.section,
-            itemTitle: response.item_text,
+            itemTitle: formatNonComplianceAlert(
+              response.item_text,
+              response.response,
+              response.trigger_on_no,
+            ),
             risk: response.risk_level as 'RED' | 'YELLOW',
             timeAgo: hoursSince < 1 ? 'Just now' : `${hoursSince}h ago`,
             verifierName: inspection.officer_name,
@@ -196,7 +201,11 @@ export function computeSlaTickets(inspections: ManagementInspection[]): SlaTicke
             ticketId: `T${inspection.id.slice(0, 6).toUpperCase()}`,
             storeName: inspection.branch_name,
             section: response.section,
-            issue: response.item_text,
+            issue: formatNonComplianceAlert(
+              response.item_text,
+              response.response,
+              response.trigger_on_no,
+            ),
             flaggedAt: flaggedTime.toLocaleString('en-IN', {
               day: '2-digit',
               month: 'short',

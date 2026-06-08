@@ -10,8 +10,9 @@ import { CeoDashboardProvider, useCeoDashboard } from '../../context/CeoDashboar
 const BREADCRUMBS: Record<string, string> = {
   '/dashboard': 'Overview',
   '/dashboard/analytics': 'Analytics',
-  '/dashboard/alerts': 'Live Alerts',
   '/dashboard/map': 'Store Map',
+  '/dashboard/audit-archive': 'Vigilance Report',
+  '/dashboard/archive': 'Monthly Archive',
   '/dashboard/reports': 'Reports',
   '/dashboard/settings': 'Settings',
 };
@@ -21,7 +22,8 @@ const HEADER_SUBTITLES: Record<string, string> = {
   '/dashboard/analytics': 'Performance trends and risk distribution across stores.',
   '/dashboard/map': 'Geographic view of store compliance and risk density.',
   '/dashboard/reports': 'Monthly and custom exports for management reporting.',
-  '/dashboard/alerts': 'Real-time critical and warning alert activity feed.',
+  '/dashboard/audit-archive': 'Audit archive and management reports from field inspections.',
+  '/dashboard/archive': 'Historical monthly compliance records.',
   '/dashboard/settings': 'Configure dashboard preferences and workspace behavior.',
 };
 

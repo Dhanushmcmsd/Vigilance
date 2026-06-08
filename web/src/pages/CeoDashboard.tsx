@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import CeoDashboardLayout from './ceo/CeoDashboardLayout';
 import CeoOverviewPage from './ceo/CeoOverviewPage';
 import CeoAnalyticsPage from './ceo/CeoAnalyticsPage';
-import CeoAlertsPage from './ceo/CeoAlertsPage';
 import CeoMapPage from './ceo/CeoMapPage';
 import CeoReportsPage from './ceo/CeoReportsPage';
 import CeoSettingsPage from './ceo/CeoSettingsPage';
@@ -18,7 +17,6 @@ export default function CeoDashboard() {
       <Route element={<CeoDashboardLayout />}>
         <Route index element={<CeoOverviewPage />} />
         <Route path="analytics" element={<CeoAnalyticsPage />} />
-        <Route path="alerts" element={<CeoAlertsPage />} />
         <Route path="map" element={<CeoMapPage />} />
         <Route path="reports" element={<CeoReportsPage />} />
         <Route path="archive" element={<ManagementArchive />} />

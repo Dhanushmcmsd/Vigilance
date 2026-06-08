@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
-  AlertTriangle,
   Map,
   TrendingUp,
   Archive,
@@ -32,7 +31,6 @@ const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
     { label: 'Store Map', path: '/dashboard/map', icon: Map },
     { label: 'Monthly Archive', path: '/dashboard/archive', icon: Archive },
     { label: 'Vigilance Report', path: '/dashboard/audit-archive', icon: FileText },
-    { label: 'Live Alerts', path: '/dashboard/alerts', icon: AlertTriangle },
   ],
   head: [
     { label: 'Dashboard', path: '/head', icon: Home },

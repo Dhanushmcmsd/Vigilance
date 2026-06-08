@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import L from 'leaflet';
 import 'leaflet.heat';
@@ -84,7 +84,7 @@ function scoreHeatColour(avgScore: number): string {
 
 function scoreHeatLabel(avgScore: number): string {
   if (avgScore >= 85) return 'Healthy';
-  if (avgScore >= 70) return 'Watch';
+  if (avgScore >= 70) return 'Normal';
   return 'Critical';
 }
 
@@ -163,6 +163,7 @@ export default function CeoMapPage() {
   const markersRef = useRef<L.Marker[]>([]);
   const heatCirclesRef = useRef<L.Circle[]>([]);
   const heatLayerRef = useRef<L.Layer | null>(null);
+  const branchCoordsRef = useRef<Map<string, L.LatLngTuple>>(new Map());
 
   const { data: branches, isLoading: branchesLoading } = useQuery({
     queryKey: ['branches'],
@@ -233,6 +234,13 @@ export default function CeoMapPage() {
     return { inspectedStores, critical, watch, healthy, totalVisits, weightedAvg, worstStores };
   }, [heatPoints]);
 
+  const zoomToStore = useCallback((branchId: string) => {
+    const map = mapInstanceRef.current;
+    const coords = branchCoordsRef.current.get(branchId);
+    if (!map || !coords) return;
+    map.flyTo(coords, 14, { duration: 1.2 });
+  }, []);
+
   const textureHeatPoints = useMemo<Array<[number, number, number]>>(() => {
     if (!inspections) return [];
 
@@ -280,8 +288,10 @@ export default function CeoMapPage() {
 
     // Branch markers (blue)
     if (branches) {
+      branchCoordsRef.current.clear();
       branches.forEach((b) => {
         if (b.latitude !== null && b.longitude !== null) {
+          branchCoordsRef.current.set(b.id, [b.latitude, b.longitude]);
           const marker = L.marker([b.latitude, b.longitude], { icon: BLUE_BRANCH_ICON, zIndexOffset: 250 });
           marker.bindPopup(`<strong>${b.branch_name}</strong><br/>${b.city}`);
           marker.addTo(mapInstanceRef.current!);
@@ -412,23 +422,28 @@ export default function CeoMapPage() {
           </div>
           <div className="mt-2 flex gap-2 text-[11px]">
             <span className="rounded bg-green-500/25 px-2 py-0.5 text-green-300">{mapSummary.healthy} Healthy</span>
-            <span className="rounded bg-yellow-500/25 px-2 py-0.5 text-yellow-300">{mapSummary.watch} Watch</span>
+            <span className="rounded bg-yellow-500/25 px-2 py-0.5 text-yellow-300">{mapSummary.watch} Normal</span>
             <span className="rounded bg-red-500/25 px-2 py-0.5 text-red-300">{mapSummary.critical} Critical</span>
           </div>
         </div>
-        <div className="pointer-events-none absolute right-4 top-4 z-[500] w-64 rounded-xl border border-cyan-400/30 bg-black/55 p-3 backdrop-blur-sm">
+        <div className="pointer-events-auto absolute right-4 top-4 z-[500] w-64 rounded-xl border border-cyan-400/30 bg-black/55 p-3 backdrop-blur-sm">
           <p className="text-[11px] uppercase tracking-wider text-cyan-200">Attention stores</p>
           <div className="mt-2 space-y-1.5 text-xs text-gray-100">
             {mapSummary.worstStores.length === 0 ? (
               <p className="text-gray-400">No inspections in selected range.</p>
             ) : (
               mapSummary.worstStores.map((store) => (
-                <div key={store.branchId} className="flex items-center justify-between rounded bg-white/5 px-2 py-1">
-                  <span className="truncate pr-2">{store.branchName}</span>
+                <button
+                  key={store.branchId}
+                  type="button"
+                  onClick={() => zoomToStore(store.branchId)}
+                  className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1 text-left transition hover:bg-white/10"
+                >
+                  <span className="truncate pr-2 underline-offset-2 hover:underline">{store.branchName}</span>
                   <span style={{ color: store.colour }} className="font-semibold">
                     {store.avgScore.toFixed(1)}%
                   </span>
-                </div>
+                </button>
               ))
             )}
           </div>
@@ -454,7 +469,7 @@ export default function CeoMapPage() {
             </div>
             <div className="flex items-center gap-2">
               <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#eab308' }} />
-              <span className="text-gray-300">Yellow: Watch score (70-84)</span>
+              <span className="text-gray-300">Yellow: Normal score (70-84)</span>
             </div>
             <div className="flex items-center gap-2">
               <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#dc2626' }} />
@@ -476,7 +491,7 @@ export default function CeoMapPage() {
           <p className="mt-1 text-2xl font-bold text-red-300">{mapSummary.critical}</p>
         </div>
         <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-xs text-yellow-100">
-          <p className="font-semibold uppercase tracking-wide">Watch Stores</p>
+          <p className="font-semibold uppercase tracking-wide">Normal Stores</p>
           <p className="mt-1 text-2xl font-bold text-yellow-300">{mapSummary.watch}</p>
         </div>
         <div className="rounded-xl border border-green-500/30 bg-green-950/20 p-3 text-xs text-green-100">

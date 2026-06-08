@@ -3,7 +3,6 @@ import { useOutletContext } from 'react-router-dom';
 import { StatCard } from '../../components/dashboard/StatCard';
 import { AlertFeed } from '../../components/dashboard/AlertFeed';
 import { SectionRiskChart } from '../../components/dashboard/SectionRiskChart';
-import { SlaTable } from '../../components/dashboard/SlaTable';
 import { StoreGrid } from '../../components/dashboard/StoreGrid';
 import { useCeoDashboard } from '../../context/CeoDashboardContext';
 import { staggerContainer, fadeUp } from '../../lib/animations';
@@ -11,7 +10,7 @@ import type { CeoOutletContext } from './CeoDashboardLayout';
 
 export default function CeoOverviewPage() {
   const { setSelectedAlert, navigate } = useOutletContext<CeoOutletContext>();
-  const { metrics, redAlerts, sectionData, slaTickets, storeCards, alerts, isLoading } = useCeoDashboard();
+  const { metrics, redAlerts, sectionData, storeCards, isLoading } = useCeoDashboard();
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-8 max-w-[1600px]">
@@ -46,18 +45,6 @@ export default function CeoOverviewPage() {
         <div className="lg:col-span-1">
           <SectionRiskChart data={sectionData} />
         </div>
-      </motion.div>
-
-      {/* SLA Table - Full width with scroll on mobile */}
-      <motion.div variants={fadeUp}>
-        <SlaTable
-          tickets={slaTickets}
-          onViewTicket={(ticket) => {
-            const match = alerts.find((a) => a.id === ticket.id);
-            if (match) setSelectedAlert(match);
-            else navigate('/dashboard/alerts');
-          }}
-        />
       </motion.div>
 
       {/* Store Grid - Responsive 3/2/1 column */}

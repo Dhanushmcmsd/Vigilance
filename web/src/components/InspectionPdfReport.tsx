@@ -140,6 +140,11 @@ export interface InspectionPdfData {
   photos?: { url: string; name?: string }[];
 }
 
+export interface GenerateInspectionPdfOptions {
+  filenamePrefix?: string;
+  documentTitle?: string;
+}
+
 function statusForItem(r: InspectionPdfResponse): 'pass' | 'fail' | 'na' {
   if (!r.response || r.response === 'N/A') return 'na';
   const trigger = r.trigger_on_no ?? true;
@@ -346,7 +351,13 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
   );
 }
 
-function BrowserInspectionReportDoc({ data }: { data: InspectionPdfData }) {
+function BrowserInspectionReportDoc({
+  data,
+  documentTitle = 'STORE COMPLIANCE AUDIT REPORT',
+}: {
+  data: InspectionPdfData;
+  documentTitle?: string;
+}) {
   const grouped = new Map<string, InspectionPdfResponse[]>();
   for (const r of data.responses) {
     const section = r.section || 'General';
@@ -356,15 +367,16 @@ function BrowserInspectionReportDoc({ data }: { data: InspectionPdfData }) {
 
   const failCount = data.responses.filter((r) => statusForItem(r) === 'fail').length;
   const passCount = data.responses.filter((r) => statusForItem(r) === 'pass').length;
+  const photoEvidence = data.photos ?? [];
 
   return (
     <Document
-      title={`Store Audit — ${data.branchName} — ${data.inspectionDate}`}
+      title={`${documentTitle} — ${data.branchName} — ${data.inspectionDate}`}
       author="Vigilance Management System"
     >
       <Page size="A4" style={styles.page}>
         <View style={styles.coverBand}>
-          <Text style={styles.coverTitle}>STORE COMPLIANCE AUDIT REPORT</Text>
+          <Text style={styles.coverTitle}>{documentTitle}</Text>
           <Text style={styles.coverSubtitle}>Vigilance Management System · Confidential</Text>
           <Text style={styles.coverMeta}>
             {data.branchName}
@@ -453,6 +465,25 @@ function BrowserInspectionReportDoc({ data }: { data: InspectionPdfData }) {
           </View>
         </Page>
       ))}
+
+      {photoEvidence.length > 0 ? (
+        <Page size="A4" style={styles.page}>
+          <Text style={styles.sectionTitle}>Photo evidence</Text>
+          <View style={styles.photoRow}>
+            {photoEvidence.map((photo, index) => (
+              <Image
+                key={`${photo.url.slice(0, 48)}-${index}`}
+                src={photo.url}
+                style={[styles.photo, { marginRight: 6, marginBottom: 6 }]}
+              />
+            ))}
+          </View>
+          <View style={styles.footer} fixed>
+            <Text>Vigilance Management System · CONFIDENTIAL</Text>
+            <Text>Photo evidence</Text>
+          </View>
+        </Page>
+      ) : null}
     </Document>
   );
 }
@@ -504,21 +535,80 @@ function withoutImageEvidence(data: InspectionPdfData): InspectionPdfData {
   };
 }
 
-async function renderPdfBlob(data: InspectionPdfData): Promise<Blob> {
-  return pdf(<BrowserInspectionReportDoc data={data} />).toBlob();
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  if (url.startsWith('data:')) return url;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) return null;
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () =>
+        resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function embedImagesForPdf(data: InspectionPdfData): Promise<InspectionPdfData> {
+  const embeddedPhotos: NonNullable<InspectionPdfData['photos']> = [];
+  const seenPhotoUrls = new Set<string>();
+
+  for (const photo of data.photos ?? []) {
+    const embedded = await fetchImageAsDataUrl(photo.url);
+    if (!embedded || seenPhotoUrls.has(embedded)) continue;
+    seenPhotoUrls.add(embedded);
+    embeddedPhotos.push({ ...photo, url: embedded });
+  }
+
+  const responses = await Promise.all(
+    data.responses.map(async (response) => {
+      const attachments: InspectionPdfAttachment[] = [];
+      for (const attachment of response.attachments ?? []) {
+        if (attachment.type === 'document') {
+          attachments.push(attachment);
+          continue;
+        }
+        const embedded = await fetchImageAsDataUrl(attachment.url);
+        if (embedded) attachments.push({ ...attachment, url: embedded });
+      }
+      return { ...response, attachments };
+    }),
+  );
+
+  return { ...data, photos: embeddedPhotos, responses };
+}
+
+function dataUrlImageFormat(dataUrl: string): 'PNG' | 'JPEG' {
+  return dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+}
+
+async function renderPdfBlob(
+  data: InspectionPdfData,
+  options?: GenerateInspectionPdfOptions,
+): Promise<Blob> {
+  return pdf(<BrowserInspectionReportDoc data={data} documentTitle={options?.documentTitle} />).toBlob();
 }
 
 async function renderMinimalPdfBlob(data: InspectionPdfData): Promise<Blob> {
   return pdf(<MinimalInspectionReportDoc data={data} />).toBlob();
 }
 
-async function renderJsPdfBlob(data: InspectionPdfData): Promise<Blob> {
+async function renderJsPdfBlob(
+  data: InspectionPdfData,
+  options?: GenerateInspectionPdfOptions,
+): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const margin = 40;
   const maxWidth = 515;
   let y = 48;
   const pageHeight = doc.internal.pageSize.getHeight();
+  const title = options?.documentTitle ?? 'STORE COMPLIANCE AUDIT REPORT';
 
   const ensureSpace = (height = 16) => {
     if (y + height > pageHeight - margin) {
@@ -540,7 +630,7 @@ async function renderJsPdfBlob(data: InspectionPdfData): Promise<Blob> {
     }
   };
 
-  writeLine('STORE COMPLIANCE AUDIT REPORT', { bold: true, size: 16, gap: 20 });
+  writeLine(title, { bold: true, size: 16, gap: 20 });
   writeLine(`${data.branchName} · ${data.inspectionDate}`, { bold: true, size: 12, gap: 16 });
   writeLine(`Officer: ${data.officerName} · Status: ${data.status}`);
   writeLine(`Compliance: ${data.complianceScore.toFixed(1)}% · Risk: ${data.riskLevel.toUpperCase()}`);
@@ -572,12 +662,34 @@ async function renderJsPdfBlob(data: InspectionPdfData): Promise<Blob> {
     }
   }
 
+  const photos = data.photos ?? [];
+  if (photos.length > 0) {
+    doc.addPage();
+    y = margin;
+    writeLine('PHOTO EVIDENCE', { bold: true, size: 11, gap: 16 });
+    for (const photo of photos) {
+      if (!photo.url.startsWith('data:')) continue;
+      ensureSpace(130);
+      try {
+        doc.addImage(photo.url, dataUrlImageFormat(photo.url), margin, y, 170, 120);
+        y += 130;
+        if (photo.name) writeLine(photo.name, { gap: 10 });
+      } catch {
+        writeLine(photo.name ? `Photo: ${photo.name}` : 'Photo attachment', { gap: 12 });
+      }
+    }
+  }
+
   return doc.output('blob');
 }
 
-function downloadBlob(blob: Blob, data: InspectionPdfData): string {
+function downloadBlob(
+  blob: Blob,
+  data: InspectionPdfData,
+  filenamePrefix = 'audit-report',
+): string {
   const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  const filename = `audit-report-${safeBranch}-${data.inspectionDate}.pdf`;
+  const filename = `${filenamePrefix}-${safeBranch}-${data.inspectionDate}.pdf`;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -592,12 +704,25 @@ function downloadBlob(blob: Blob, data: InspectionPdfData): string {
   return filename;
 }
 
-export async function generateInspectionPdf(data: InspectionPdfData): Promise<string> {
-  const sanitized = sanitizePdfData(withoutImageEvidence(data));
+export async function generateInspectionPdf(
+  data: InspectionPdfData,
+  options?: GenerateInspectionPdfOptions,
+): Promise<string> {
+  const sanitized = sanitizePdfData(data);
+  let withImages = sanitized;
+
+  try {
+    withImages = await embedImagesForPdf(sanitized);
+  } catch (error) {
+    console.warn('[PDF] Could not embed images, continuing with text-only export:', error);
+  }
+
   const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
-    { label: 'browser-layout', run: () => renderPdfBlob(sanitized) },
-    { label: 'minimal-layout', run: () => renderMinimalPdfBlob(sanitized) },
-    { label: 'jspdf-fallback', run: () => renderJsPdfBlob(sanitized) },
+    { label: 'browser-layout-with-images', run: () => renderPdfBlob(withImages, options) },
+    { label: 'browser-layout-text-only', run: () => renderPdfBlob(withoutImageEvidence(sanitized), options) },
+    { label: 'minimal-layout-text-only', run: () => renderMinimalPdfBlob(withoutImageEvidence(sanitized)) },
+    { label: 'jspdf-with-images', run: () => renderJsPdfBlob(withImages, options) },
+    { label: 'jspdf-text-only', run: () => renderJsPdfBlob(withoutImageEvidence(sanitized), options) },
   ];
 
   let lastError: unknown;
@@ -607,7 +732,7 @@ export async function generateInspectionPdf(data: InspectionPdfData): Promise<st
       if (!blob || blob.size === 0) {
         throw new Error(`PDF engine "${attempt.label}" returned an empty file.`);
       }
-      return downloadBlob(blob, sanitized);
+      return downloadBlob(blob, sanitized, options?.filenamePrefix);
     } catch (error) {
       lastError = error;
       console.error(`[PDF] ${attempt.label} failed:`, error);

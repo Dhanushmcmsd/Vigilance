@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { InspectionPdfData } from '../components/InspectionPdfReport';
 import type { InspectionPdfAttachment } from '../components/InspectionPdfReport';
+import { dedupeInspectionImageFiles, normalizeInspectionImageUrl, type InspectionImageFile } from './inspectionImages';
 
 const INSPECTION_PDF_SELECT_FULL = `
   id,
@@ -132,6 +133,14 @@ export async function fetchInspectionForPdf(inspectionId: string): Promise<Inspe
         },
         [],
       );
+      const mergedAttachments = [...itemFileAttachments, ...itemAnswerPhotos];
+      const seenAttachmentUrls = new Set<string>();
+      const attachments = mergedAttachments.filter((attachment) => {
+        const key = normalizeInspectionImageUrl(attachment.url);
+        if (seenAttachmentUrls.has(key)) return false;
+        seenAttachmentUrls.add(key);
+        return true;
+      });
       return {
         section: String(ct?.section ?? ''),
         item_text: String(ct?.item_text ?? ''),
@@ -139,14 +148,11 @@ export async function fetchInspectionForPdf(inspectionId: string): Promise<Inspe
         remarks: (r.remarks as string | null) ?? null,
         risk_level: (ct?.risk_level as 'RED' | 'YELLOW' | 'GREEN' | null) ?? null,
         trigger_on_no: Boolean(ct?.trigger_on_no ?? true),
-        attachments: [
-          ...itemFileAttachments,
-          ...itemAnswerPhotos,
-        ],
+        attachments,
       };
     }),
-    photos: files
-      .filter((f) => !f.checklist_item_id && /\.(jpe?g|png|webp)$/i.test(String(f.file_url)))
+    photos: dedupeInspectionImageFiles(files as unknown as InspectionImageFile[])
+      .filter((f) => !f.checklist_item_id)
       .map((f) => safeHttpUrl(f.file_url))
       .filter((url): url is string => Boolean(url))
       .map((url) => ({ url })),
@@ -176,10 +182,17 @@ export function buildInspectionPdfDataFromReportDetail(
       } | null;
     }[];
     general_remarks: { remark_text: string }[];
+    inspection_files?: InspectionImageFile[];
   },
   branchName: string,
   branchType = '—',
 ): InspectionPdfData {
+  const uniqueImages = dedupeInspectionImageFiles(detail.inspection_files ?? []);
+  const photos = uniqueImages.map((file) => ({
+    url: file.file_url,
+    name: file.file_name,
+  }));
+
   return {
     id: detail.id,
     branchName,
@@ -204,6 +217,6 @@ export function buildInspectionPdfDataFromReportDetail(
       risk_level: null,
       attachments: [],
     })),
-    photos: [],
+    photos,
   };
 }

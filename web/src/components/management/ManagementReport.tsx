@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { buildInspectionPdfDataFromReportDetail } from '../../lib/auditExport';
+import { dedupeInspectionImageFiles } from '../../lib/inspectionImages';
 import { isViolationResponse } from '../../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../../lib/alertDescriptions';
 import {
@@ -140,7 +141,10 @@ function ReportDetailModal({
     try {
       const pdfData = buildInspectionPdfDataFromReportDetail(data, branchName);
       const { generateInspectionPdf } = await import('../InspectionPdfReport');
-      await generateInspectionPdf(pdfData);
+      await generateInspectionPdf(pdfData, {
+        filenamePrefix: 'management-report',
+        documentTitle: 'MANAGEMENT REPORT',
+      });
     } catch (err) {
       console.error('[ManagementReport PDF]', err);
       setPdfError(err instanceof Error ? err.message : 'PDF download failed. Please try again.');
@@ -186,10 +190,9 @@ function ReportDetailModal({
     return grouped;
   }, [data?.inspection_responses]);
 
-  const imageFiles = (data?.inspection_files ?? []).filter(
-    (f) =>
-      f.file_type === 'image' ||
-      /\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(f.file_url),
+  const imageFiles = useMemo(
+    () => dedupeInspectionImageFiles(data?.inspection_files ?? []),
+    [data?.inspection_files],
   );
 
   return createPortal(

@@ -117,6 +117,148 @@ body {
     color: rgba(148, 163, 184, 0.58);
     text-shadow: 0 0 16px rgba(148, 163, 184, 0.22);
   }
+
+  /* ── Daily Bloom animated gradient surfaces (Monthly Archive + Vigilance Report) ── */
+  @keyframes bloom-flow {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bloom-panel::before {
+      animation: none;
+      background-position: 50% 50%;
+    }
+  }
+
+  .bloom-panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow:
+      0 4px 24px rgba(65, 38, 83, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    isolation: isolate;
+  }
+
+  .bloom-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(
+      135deg,
+      #412653 0%,
+      #3f567f 22%,
+      #412653 42%,
+      #2d3558 58%,
+      #412653 72%,
+      #d174d2 86%,
+      #e0563f 94%,
+      #3f567f 100%
+    );
+    background-size: 320% 320%;
+    animation: bloom-flow 22s ease-in-out infinite;
+  }
+
+  .bloom-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(
+      165deg,
+      rgba(65, 38, 83, 0.72) 0%,
+      rgba(63, 86, 127, 0.58) 45%,
+      rgba(65, 38, 83, 0.68) 100%
+    );
+    pointer-events: none;
+  }
+
+  .bloom-panel-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .bloom-panel-nested {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(65, 38, 83, 0.38);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .bloom-panel-nested:hover {
+    border-color: rgba(209, 116, 210, 0.45);
+    background: rgba(65, 38, 83, 0.52);
+  }
+
+  .bloom-input {
+    @apply w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/45;
+    @apply focus:border-[#D174D2]/60 focus:outline-none focus:ring-2 focus:ring-[#D174D2]/25;
+  }
+
+  .bloom-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-white/65;
+  }
+
+  .bloom-btn {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition;
+    background: linear-gradient(135deg, rgba(209, 116, 210, 0.85), rgba(224, 86, 63, 0.85));
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 12px rgba(65, 38, 83, 0.4);
+  }
+
+  .bloom-btn:hover {
+    filter: brightness(1.08);
+  }
+
+  .bloom-btn-ghost {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-1.5 text-sm font-medium text-white/90 transition;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .bloom-btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(209, 116, 210, 0.4);
+  }
+
+  .bloom-link {
+    @apply inline-flex items-center gap-2 text-sm font-medium transition-colors;
+    color: #d174d2;
+  }
+
+  .bloom-link:hover {
+    color: #ffffff;
+  }
+
+  .bloom-text-primary {
+    color: #ffffff;
+  }
+
+  .bloom-text-muted {
+    color: rgba(255, 255, 255, 0.68);
+  }
+
+  .bloom-text-accent {
+    color: #d174d2;
+  }
+
+  .bloom-divider {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
 }
 
 /* Premium golden cursor enhancement (desktop pointer only) */

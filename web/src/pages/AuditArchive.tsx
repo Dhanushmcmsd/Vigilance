@@ -5,6 +5,7 @@ import { useManagementInspections } from '../hooks/useManagementInspections';
 import { isViolationResponse } from '../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../lib/alertDescriptions';
 import ManagementReport from '../components/management/ManagementReport';
+import { BloomGradientPanel, BloomPageHeader } from '../components/ui/BloomGradientPanel';
 
 interface AuditArchiveProps {
   backPath: string;
@@ -240,59 +241,57 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps)
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Link to={backPath} className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-brand-600">
+          <Link to={backPath} className="bloom-link mb-3">
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Audit report archive</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Field inspection history with management reports and meeting-ready exports.
-          </p>
+          <BloomPageHeader
+            title="Audit report archive"
+            description="Field inspection history with management reports and meeting-ready exports."
+          />
         </div>
-        <button
-          type="button"
-          onClick={downloadReport}
-          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
-        >
+        <button type="button" onClick={downloadReport} className="bloom-btn">
           <Download className="h-4 w-4" />
           Export Report
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-3 xl:grid-cols-6">
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          From
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950" />
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          To
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950" />
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Officer
-          <input value={officerFilter} onChange={(e) => setOfficerFilter(e.target.value)} placeholder="Search officer" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950" />
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Store
-          <input value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} placeholder="Search store" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950" />
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Status
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950">
-            <option value="all">All</option>
-            <option value="normal">Normal</option>
-            <option value="edited">Edited</option>
-          </select>
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Sort
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm normal-case dark:border-slate-700 dark:bg-slate-950">
-            <option value="submitted_at">Submitted time</option>
-            <option value="store">Store name</option>
-            <option value="officer">Officer name</option>
-          </select>
-        </label>
-      </div>
+      <BloomGradientPanel className="p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <label className="bloom-label">
+            From
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bloom-input mt-1 normal-case" />
+          </label>
+          <label className="bloom-label">
+            To
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bloom-input mt-1 normal-case" />
+          </label>
+          <label className="bloom-label">
+            Officer
+            <input value={officerFilter} onChange={(e) => setOfficerFilter(e.target.value)} placeholder="Search officer" className="bloom-input mt-1 normal-case" />
+          </label>
+          <label className="bloom-label">
+            Store
+            <input value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} placeholder="Search store" className="bloom-input mt-1 normal-case" />
+          </label>
+          <label className="bloom-label">
+            Status
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="bloom-input mt-1 normal-case">
+              <option value="all" className="bg-[#412653]">All</option>
+              <option value="normal" className="bg-[#412653]">Normal</option>
+              <option value="edited" className="bg-[#412653]">Edited</option>
+            </select>
+          </label>
+          <label className="bloom-label">
+            Sort
+            <select value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)} className="bloom-input mt-1 normal-case">
+              <option value="submitted_at" className="bg-[#412653]">Submitted time</option>
+              <option value="store" className="bg-[#412653]">Store name</option>
+              <option value="officer" className="bg-[#412653]">Officer name</option>
+            </select>
+          </label>
+        </div>
+      </BloomGradientPanel>
 
       <ManagementReport />
     </div>

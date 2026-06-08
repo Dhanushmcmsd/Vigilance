@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -91,7 +92,7 @@ function ReportCard({ report, onOpen }: { report: AuditReportRow; onOpen: () => 
         <p className="mt-1.5 text-sm text-white/55">Officer: {report.officer?.name ?? 'Unknown'}</p>
         <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-white/70">
           <FileText className="h-3.5 w-3.5" />
-          View checklist report
+          Open report
         </div>
       </div>
       {report.compliance_score !== null && (
@@ -115,6 +116,14 @@ function ReportDetailModal({
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -183,21 +192,18 @@ function ReportDetailModal({
       /\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(f.file_url),
   );
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm sm:p-6"
+      className="vms-modal-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Inspection report"
       onClick={onClose}
     >
-      <div
-        className="bloom-panel bloom-panel-modal flex w-full max-w-2xl flex-col overflow-hidden"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+      <div className="vms-report-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="vms-report-modal-header">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">{branchName}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{branchName}</p>
             {data && (
               <>
                 <h3 className="mt-1 truncate text-lg font-semibold text-white">
@@ -207,11 +213,11 @@ function ReportDetailModal({
                     year: 'numeric',
                   })}
                 </h3>
-                <p className="text-sm text-white/55">Officer: {data.officer?.name ?? '—'}</p>
+                <p className="text-sm text-slate-400">Officer: {data.officer?.name ?? '—'}</p>
               </>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {data?.compliance_score !== null && data?.compliance_score !== undefined && (
               <span
                 className="mr-1 text-2xl font-bold tabular-nums"
@@ -224,17 +230,12 @@ function ReportDetailModal({
               type="button"
               onClick={() => void handleDownloadPdf()}
               disabled={pdfLoading || isLoading || !data}
-              className="bloom-btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-50"
+              className="vms-modal-btn-primary"
             >
               <Download className="h-3.5 w-3.5" />
               {pdfLoading ? 'Generating…' : 'Download PDF'}
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="bloom-btn-ghost inline-flex items-center gap-1 px-2.5 py-2 text-xs"
-              aria-label="Close report"
-            >
+            <button type="button" onClick={onClose} className="vms-modal-btn-ghost" aria-label="Close report">
               <X className="h-4 w-4" />
               Close
             </button>
@@ -242,18 +243,18 @@ function ReportDetailModal({
         </div>
 
         {pdfError && (
-          <div className="mx-5 mt-3 rounded-lg border border-red-400/30 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+          <div className="mx-5 mt-3 rounded-lg border border-red-400/35 bg-red-950/40 px-3 py-2 text-xs text-red-100">
             {pdfError}
           </div>
         )}
 
-        <div className="max-h-[min(68vh,640px)] flex-1 overflow-y-auto px-5 py-4">
-          {isLoading && <p className="py-8 text-center text-white/65">Loading report…</p>}
-          {!isLoading && !data && <p className="py-8 text-center text-white/65">Report not found.</p>}
+        <div className="vms-report-modal-body">
+          {isLoading && <p className="py-10 text-center text-slate-400">Loading report…</p>}
+          {!isLoading && !data && <p className="py-10 text-center text-slate-400">Report not found.</p>}
           {data && (
             <div className="space-y-4">
-              <div className="bloom-panel-nested p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-white/60">Inspection Summary</p>
+              <div className="vms-report-section p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Inspection Summary</p>
                 <div className="mt-3 flex flex-wrap gap-6 text-sm">
                   <div>
                     <p className="text-xs text-white/55">Time In</p>
@@ -276,11 +277,9 @@ function ReportDetailModal({
               </div>
 
               {Object.entries(sections).map(([section, items]) => (
-                <div key={section} className="bloom-panel-nested overflow-hidden p-0">
-                  <div className="border-b border-white/10 bg-black/20 px-4 py-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
-                      {section}
-                    </p>
+                <div key={section} className="vms-report-section overflow-hidden p-0">
+                  <div className="border-b border-white/10 bg-white/[0.03] px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{section}</p>
                   </div>
                   {items.map((r) => {
                     const triggerOnNo = r.checklist_item?.trigger_on_no ?? true;
@@ -318,8 +317,8 @@ function ReportDetailModal({
               ))}
 
               {(data.general_remarks ?? []).length > 0 && (
-                <div className="bloom-panel-nested p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-white/60">General Remarks</p>
+                <div className="vms-report-section p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">General Remarks</p>
                   {data.general_remarks.map((r, i) => (
                     <p key={i} className="mt-2 text-sm text-white/85">
                       {r.remark_text}
@@ -329,8 +328,8 @@ function ReportDetailModal({
               )}
 
               {imageFiles.length > 0 && (
-                <div className="bloom-panel-nested p-4">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-white/60">Photo Evidence</p>
+                <div className="vms-report-section p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Photo Evidence</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {imageFiles.map((f) => (
                       <a
@@ -350,7 +349,8 @@ function ReportDetailModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -441,30 +441,24 @@ export default function ManagementReport() {
 
   return (
     <BloomGradientPanel className="overflow-hidden p-0" noPadding>
-      <div className="bloom-panel-content">
-      <div className="border-b border-white/10 px-5 py-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-white/55">
-            Browse field officer checklists by store — same view as the mobile audit app.
-          </p>
-          {view.kind !== 'stores' && (
-            <button
-              type="button"
-              onClick={() => {
-                if (view.kind === 'month') {
-                  setView({ kind: 'store', branchId: view.branchId, branchName: view.branchName });
-                } else {
-                  setView({ kind: 'stores' });
-                }
-              }}
-              className="bloom-btn-ghost"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </button>
-          )}
+      {view.kind !== 'stores' && (
+        <div className="flex items-center justify-end border-b border-white/10 px-5 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (view.kind === 'month') {
+                setView({ kind: 'store', branchId: view.branchId, branchName: view.branchName });
+              } else {
+                setView({ kind: 'stores' });
+              }
+            }}
+            className="bloom-btn-ghost"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
         </div>
-      </div>
+      )}
 
       <div className="p-5">
         {view.kind === 'stores' && (
@@ -536,10 +530,7 @@ export default function ManagementReport() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
                       {groups.currentMonthLabel}
                     </p>
-                    <p className="mb-3 mt-1 text-xs text-white/55">
-                      Tap a day to open the field officer checklist
-                    </p>
-                    <div className="space-y-3">
+                    <div className="mt-3 space-y-3">
                       {groups.currentMonthDays.map((report) => (
                         <ReportCard
                           key={report.id}
@@ -620,7 +611,6 @@ export default function ManagementReport() {
           onClose={() => setSelectedReport(null)}
         />
       )}
-      </div>
     </BloomGradientPanel>
   );
 }

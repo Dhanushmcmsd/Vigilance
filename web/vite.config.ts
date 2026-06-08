@@ -1,9 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  resolve: {
+    alias: {
+      // Ensure Vite uses the browser build (pdf().toBlob() fails with the Node entry).
+      '@react-pdf/renderer': path.resolve(
+        rootDir,
+        'node_modules/@react-pdf/renderer/lib/react-pdf.browser.js',
+      ),
+    },
+  },
+  optimizeDeps: {
+    include: ['@react-pdf/renderer', 'jspdf'],
+  },
   build: {
     outDir: 'dist',
     rollupOptions: {

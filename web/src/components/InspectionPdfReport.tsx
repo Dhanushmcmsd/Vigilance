@@ -150,6 +150,35 @@ function formatRef(id: string, date: string) {
   return `VMS-AUD-${date.replace(/-/g, '')}-${id.slice(0, 8).toUpperCase()}`;
 }
 
+function sanitizePdfText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sanitizePdfData(data: InspectionPdfData): InspectionPdfData {
+  return {
+    ...data,
+    branchName: sanitizePdfText(data.branchName) || 'Unknown',
+    branchType: sanitizePdfText(data.branchType) || '—',
+    officerName: sanitizePdfText(data.officerName) || '—',
+    city: data.city ? sanitizePdfText(data.city) : data.city,
+    inspectionDate: sanitizePdfText(data.inspectionDate),
+    riskLevel: sanitizePdfText(data.riskLevel) || 'low',
+    status: sanitizePdfText(data.status) || 'submitted',
+    headComment: data.headComment ? sanitizePdfText(data.headComment) : null,
+    generalRemark: data.generalRemark ? sanitizePdfText(data.generalRemark) : null,
+    responses: data.responses.map((response) => ({
+      ...response,
+      section: sanitizePdfText(response.section) || 'General',
+      item_text: sanitizePdfText(response.item_text) || 'Checklist item',
+      response: sanitizePdfText(response.response) || '—',
+      remarks: response.remarks ? sanitizePdfText(response.remarks) : null,
+    })),
+  };
+}
+
 export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
   const grouped = new Map<string, InspectionPdfResponse[]>();
   for (const r of data.responses) {
@@ -208,7 +237,7 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
           </View>
           <Text style={[styles.body, { marginTop: 8 }]}>
             This report documents a structured field audit of retail operations, statutory controls,
-            and store security. Non-conformances (NC) are derived from each question&apos;s expected
+            and store security. Non-conformances (NC) are derived from each question's expected
             compliant answer. Photographic evidence is shown inline where provided by the inspecting officer.
           </Text>
         </View>
@@ -310,11 +339,120 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
 
         <View style={styles.footer} fixed>
           <Text>Vigilance Management System · CONFIDENTIAL · For internal audit use only</Text>
-          <Text
-            render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
-          />
+          <Text>Page 1</Text>
         </View>
       </Page>
+    </Document>
+  );
+}
+
+function BrowserInspectionReportDoc({ data }: { data: InspectionPdfData }) {
+  const grouped = new Map<string, InspectionPdfResponse[]>();
+  for (const r of data.responses) {
+    const section = r.section || 'General';
+    if (!grouped.has(section)) grouped.set(section, []);
+    grouped.get(section)!.push(r);
+  }
+
+  const failCount = data.responses.filter((r) => statusForItem(r) === 'fail').length;
+  const passCount = data.responses.filter((r) => statusForItem(r) === 'pass').length;
+
+  return (
+    <Document
+      title={`Store Audit — ${data.branchName} — ${data.inspectionDate}`}
+      author="Vigilance Management System"
+    >
+      <Page size="A4" style={styles.page}>
+        <View style={styles.coverBand}>
+          <Text style={styles.coverTitle}>STORE COMPLIANCE AUDIT REPORT</Text>
+          <Text style={styles.coverSubtitle}>Vigilance Management System · Confidential</Text>
+          <Text style={styles.coverMeta}>
+            {data.branchName}
+            {data.city ? ` · ${data.city}` : ''}
+            {'\n'}
+            {data.branchType} · Officer: {data.officerName}
+            {'\n'}
+            Inspection date: {data.inspectionDate}
+            {data.timeIn || data.timeOut ? ` · ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}` : ''}
+            {data.submittedAt ? `\nSubmitted: ${new Date(data.submittedAt).toLocaleString('en-IN')}` : ''}
+          </Text>
+        </View>
+
+        <Text style={styles.docRef}>{formatRef(data.id, data.inspectionDate)}</Text>
+
+        <View style={styles.executiveBox}>
+          <Text style={styles.executiveTitle}>Executive summary</Text>
+          <View style={styles.kpiRow}>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
+              <Text style={styles.kpiLabel}>Compliance score</Text>
+              <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
+            </View>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
+              <Text style={styles.kpiLabel}>Overall risk</Text>
+              <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
+            </View>
+            <View style={[styles.kpi, { marginRight: 8 }]}>
+              <Text style={styles.kpiLabel}>Findings</Text>
+              <Text style={styles.kpiValue}>
+                {failCount} NC · {passCount} OK
+              </Text>
+            </View>
+            <View style={styles.kpi}>
+              <Text style={styles.kpiLabel}>Status</Text>
+              <Text style={styles.kpiValue}>{data.status.toUpperCase()}</Text>
+            </View>
+          </View>
+        </View>
+
+        {data.headComment ? (
+          <View>
+            <Text style={styles.h2}>Supervisor review</Text>
+            <Text style={styles.body}>{data.headComment}</Text>
+          </View>
+        ) : null}
+
+        {data.generalRemark ? (
+          <View>
+            <Text style={styles.h2}>General observations</Text>
+            <Text style={styles.body}>{data.generalRemark}</Text>
+          </View>
+        ) : null}
+      </Page>
+
+      {Array.from(grouped.entries()).map(([section, items]) => (
+        <Page key={section} size="A4" style={styles.page}>
+          <Text style={styles.sectionTitle}>{section}</Text>
+          {items.map((r, index) => {
+            const status = statusForItem(r);
+            return (
+              <View
+                key={`${section}-${index}`}
+                style={[
+                  styles.itemCard,
+                  status === 'fail' ? styles.itemCardFail : status === 'pass' ? styles.itemCardPass : {},
+                ]}
+              >
+                <View style={styles.itemHeader}>
+                  <Text style={styles.itemText}>{r.item_text}</Text>
+                  <Text
+                    style={[
+                      styles.statusPill,
+                      status === 'pass' ? styles.pillPass : status === 'fail' ? styles.pillFail : styles.pillNa,
+                    ]}
+                  >
+                    {r.response}
+                  </Text>
+                </View>
+                {r.remarks ? <Text style={styles.remark}>Officer remark: {r.remarks}</Text> : null}
+              </View>
+            );
+          })}
+          <View style={styles.footer} fixed>
+            <Text>Vigilance Management System · CONFIDENTIAL</Text>
+            <Text>{section}</Text>
+          </View>
+        </Page>
+      ))}
     </Document>
   );
 }
@@ -367,42 +505,116 @@ function withoutImageEvidence(data: InspectionPdfData): InspectionPdfData {
 }
 
 async function renderPdfBlob(data: InspectionPdfData): Promise<Blob> {
-  return pdf(<InspectionReportDoc data={data} />).toBlob();
+  return pdf(<BrowserInspectionReportDoc data={data} />).toBlob();
+}
+
+async function renderMinimalPdfBlob(data: InspectionPdfData): Promise<Blob> {
+  return pdf(<MinimalInspectionReportDoc data={data} />).toBlob();
+}
+
+async function renderJsPdfBlob(data: InspectionPdfData): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margin = 40;
+  const maxWidth = 515;
+  let y = 48;
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const ensureSpace = (height = 16) => {
+    if (y + height > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  };
+
+  const writeLine = (text: string, options?: { bold?: boolean; size?: number; gap?: number }) => {
+    const size = options?.size ?? 10;
+    const gap = options?.gap ?? size + 4;
+    doc.setFont('helvetica', options?.bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    const lines = doc.splitTextToSize(text, maxWidth) as string[];
+    for (const line of lines) {
+      ensureSpace(gap);
+      doc.text(line, margin, y);
+      y += gap;
+    }
+  };
+
+  writeLine('STORE COMPLIANCE AUDIT REPORT', { bold: true, size: 16, gap: 20 });
+  writeLine(`${data.branchName} · ${data.inspectionDate}`, { bold: true, size: 12, gap: 16 });
+  writeLine(`Officer: ${data.officerName} · Status: ${data.status}`);
+  writeLine(`Compliance: ${data.complianceScore.toFixed(1)}% · Risk: ${data.riskLevel.toUpperCase()}`);
+  if (data.timeIn || data.timeOut) writeLine(`Time: ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}`);
+  if (data.headComment) {
+    y += 6;
+    writeLine('Supervisor review', { bold: true, size: 11, gap: 14 });
+    writeLine(data.headComment);
+  }
+  if (data.generalRemark) {
+    y += 6;
+    writeLine('General observations', { bold: true, size: 11, gap: 14 });
+    writeLine(data.generalRemark);
+  }
+
+  const grouped = new Map<string, InspectionPdfResponse[]>();
+  for (const r of data.responses) {
+    const section = r.section || 'General';
+    if (!grouped.has(section)) grouped.set(section, []);
+    grouped.get(section)!.push(r);
+  }
+
+  for (const [section, items] of grouped.entries()) {
+    y += 8;
+    writeLine(section.toUpperCase(), { bold: true, size: 11, gap: 14 });
+    for (const item of items) {
+      const remark = item.remarks ? ` — ${item.remarks}` : '';
+      writeLine(`• ${item.item_text}: ${item.response}${remark}`, { gap: 12 });
+    }
+  }
+
+  return doc.output('blob');
 }
 
 function downloadBlob(blob: Blob, data: InspectionPdfData): string {
   const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const filename = `audit-report-${safeBranch}-${data.inspectionDate}.pdf`;
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  window.setTimeout(() => {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
   return filename;
 }
 
 export async function generateInspectionPdf(data: InspectionPdfData): Promise<string> {
-  try {
-    const blob = await renderPdfBlob(data);
-    return downloadBlob(blob, data);
-  } catch (primaryError) {
-    console.error('[PDF] Primary generation failed, retrying without image evidence:', primaryError);
+  const sanitized = sanitizePdfData(withoutImageEvidence(data));
+  const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
+    { label: 'browser-layout', run: () => renderPdfBlob(sanitized) },
+    { label: 'minimal-layout', run: () => renderMinimalPdfBlob(sanitized) },
+    { label: 'jspdf-fallback', run: () => renderJsPdfBlob(sanitized) },
+  ];
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
     try {
-      const fallbackData = withoutImageEvidence(data);
-      const fallbackBlob = await renderPdfBlob(fallbackData);
-      return downloadBlob(fallbackBlob, data);
-    } catch (fallbackError) {
-      console.error('[PDF] Fallback generation failed, trying minimal report:', fallbackError);
-      try {
-        const minimalBlob = await pdf(<MinimalInspectionReportDoc data={withoutImageEvidence(data)} />).toBlob();
-        return downloadBlob(minimalBlob, data);
-      } catch (minimalError) {
-        console.error('[PDF] Minimal generation failed:', minimalError);
-        throw new Error('Failed to generate PDF. Please try again.');
+      const blob = await attempt.run();
+      if (!blob || blob.size === 0) {
+        throw new Error(`PDF engine "${attempt.label}" returned an empty file.`);
       }
+      return downloadBlob(blob, sanitized);
+    } catch (error) {
+      lastError = error;
+      console.error(`[PDF] ${attempt.label} failed:`, error);
     }
   }
+
+  const message =
+    lastError instanceof Error ? lastError.message : 'Failed to generate PDF. Please try again.';
+  throw new Error(message);
 }

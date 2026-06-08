@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { fetchInspectionForPdf } from '../../lib/auditExport';
+import { buildInspectionPdfDataFromReportDetail } from '../../lib/auditExport';
 import { isViolationResponse } from '../../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../../lib/alertDescriptions';
 import {
@@ -134,11 +134,11 @@ function ReportDetailModal({
   }, [onClose]);
 
   const handleDownloadPdf = async () => {
+    if (!data) return;
     setPdfLoading(true);
     setPdfError(null);
     try {
-      const pdfData = await fetchInspectionForPdf(inspectionId);
-      if (!pdfData) throw new Error('Could not load report data for PDF export.');
+      const pdfData = buildInspectionPdfDataFromReportDetail(data, branchName);
       const { generateInspectionPdf } = await import('../InspectionPdfReport');
       await generateInspectionPdf(pdfData);
     } catch (err) {

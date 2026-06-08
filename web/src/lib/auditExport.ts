@@ -152,3 +152,58 @@ export async function fetchInspectionForPdf(inspectionId: string): Promise<Inspe
       .map((url) => ({ url })),
   };
 }
+
+/** Build PDF payload from data already shown in the management report modal (no extra fetch). */
+export function buildInspectionPdfDataFromReportDetail(
+  detail: {
+    id: string;
+    inspection_date: string;
+    status: string;
+    compliance_score: number | null;
+    risk_level: string | null;
+    head_comment: string | null;
+    submitted_at: string | null;
+    time_in: string | null;
+    time_out: string | null;
+    officer: { name: string } | null;
+    inspection_responses: {
+      response: string;
+      remarks: string | null;
+      checklist_item: {
+        item_text: string;
+        section: string;
+        trigger_on_no: boolean;
+      } | null;
+    }[];
+    general_remarks: { remark_text: string }[];
+  },
+  branchName: string,
+  branchType = '—',
+): InspectionPdfData {
+  return {
+    id: detail.id,
+    branchName,
+    branchType,
+    officerName: detail.officer?.name ?? '—',
+    inspectionDate: detail.inspection_date,
+    submittedAt: detail.submitted_at,
+    timeIn: detail.time_in,
+    timeOut: detail.time_out,
+    complianceScore: Number(detail.compliance_score ?? 0),
+    riskLevel: String(detail.risk_level ?? 'low'),
+    status: detail.status,
+    headComment: detail.head_comment,
+    generalRemark:
+      detail.general_remarks.map((r) => r.remark_text).filter(Boolean).join('\n') || null,
+    responses: detail.inspection_responses.map((r) => ({
+      section: r.checklist_item?.section ?? 'General',
+      item_text: r.checklist_item?.item_text ?? '—',
+      response: r.response,
+      remarks: r.remarks,
+      trigger_on_no: r.checklist_item?.trigger_on_no ?? true,
+      risk_level: null,
+      attachments: [],
+    })),
+    photos: [],
+  };
+}

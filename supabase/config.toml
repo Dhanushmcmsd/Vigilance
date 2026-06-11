@@ -80,10 +80,10 @@ file_size_limit = "50MiB"
 
 # ── Edge function dirs that should be deployed ────────────────────────────
 [functions.on-inspection-submit]
-verify_jwt = false   # invoked via DB webhook; auth via service-role payload
+verify_jwt = true
 
 [functions.weekly-report]
-verify_jwt = false   # cron-triggered, no caller JWT
+verify_jwt = true
 
 [functions.red-alert]
 verify_jwt = true

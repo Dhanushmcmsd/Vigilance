@@ -19,6 +19,18 @@ interface HeadInspection {
   branch_name: string;
 }
 
+interface HeadInspectionQueryRow {
+  id: string;
+  inspection_date: string;
+  submitted_at?: string | null;
+  status: string;
+  compliance_score?: number | null;
+  risk_level?: string | null;
+  head_comment?: string | null;
+  user_roles?: { name?: string } | { name?: string }[] | null;
+  branches?: { branch_name?: string } | { branch_name?: string }[] | null;
+}
+
 interface EscalationRow {
   id: string;
   inspection_id: string;
@@ -34,6 +46,28 @@ interface EscalationRow {
   branch_name: string;
   officer_name: string;
   item_text: string | null;
+}
+
+interface EscalationQueryRow {
+  id: string;
+  inspection_id: string;
+  checklist_item_id: string;
+  risk_level: EscalationRow['risk_level'];
+  status: EscalationRow['status'];
+  assigned_to: string | null;
+  sla_deadline: string | null;
+  reinspection_deadline: string | null;
+  resolved_at: string | null;
+  resolution_notes: string | null;
+  created_at: string;
+  inspections?: {
+    branches?: { branch_name?: string } | { branch_name?: string }[] | null;
+    user_roles?: { name?: string } | { name?: string }[] | null;
+  } | {
+    branches?: { branch_name?: string } | { branch_name?: string }[] | null;
+    user_roles?: { name?: string } | { name?: string }[] | null;
+  }[] | null;
+  checklist_templates?: { item_text?: string } | { item_text?: string }[] | null;
 }
 
 const riskPriority = { critical: 0, high: 1, medium: 2, low: 3 } as const;
@@ -102,16 +136,16 @@ function OverviewTab() {
 
       if (error) throw error;
 
-      return (data ?? []).map((item: any) => ({
+      return ((data ?? []) as HeadInspectionQueryRow[]).map((item) => ({
         id: item.id,
         inspection_date: item.inspection_date,
         submitted_at: item.submitted_at ?? item.inspection_date,
         status: item.status,
         compliance_score: Number(item.compliance_score ?? 0),
         risk_level: item.risk_level ?? 'low',
-        head_comment: item.head_comment,
-        officer_name: item.user_roles?.name ?? 'Unknown Officer',
-        branch_name: item.branches?.branch_name ?? 'Unknown Branch',
+        head_comment: item.head_comment ?? null,
+        officer_name: (Array.isArray(item.user_roles) ? item.user_roles[0]?.name : item.user_roles?.name) ?? 'Unknown Officer',
+        branch_name: (Array.isArray(item.branches) ? item.branches[0]?.branch_name : item.branches?.branch_name) ?? 'Unknown Branch',
       }));
     },
   });
@@ -279,7 +313,7 @@ function EscalationsTab() {
 
       if (error) throw error;
 
-      return (data ?? []).map((row: any) => ({
+      return ((data ?? []) as EscalationQueryRow[]).map((row) => ({
         id: row.id,
         inspection_id: row.inspection_id,
         checklist_item_id: row.checklist_item_id,
@@ -291,9 +325,20 @@ function EscalationsTab() {
         resolved_at: row.resolved_at,
         resolution_notes: row.resolution_notes,
         created_at: row.created_at,
-        branch_name: row.inspections?.branches?.branch_name ?? 'Unknown Branch',
-        officer_name: row.inspections?.user_roles?.name ?? 'Unknown Officer',
-        item_text: row.checklist_templates?.item_text ?? null,
+        branch_name: (() => {
+          const insp = Array.isArray(row.inspections) ? row.inspections[0] : row.inspections;
+          const branch = Array.isArray(insp?.branches) ? insp?.branches[0] : insp?.branches;
+          return branch?.branch_name ?? 'Unknown Branch';
+        })(),
+        officer_name: (() => {
+          const insp = Array.isArray(row.inspections) ? row.inspections[0] : row.inspections;
+          const officer = Array.isArray(insp?.user_roles) ? insp?.user_roles[0] : insp?.user_roles;
+          return officer?.name ?? 'Unknown Officer';
+        })(),
+        item_text: (() => {
+          const ct = Array.isArray(row.checklist_templates) ? row.checklist_templates[0] : row.checklist_templates;
+          return ct?.item_text ?? null;
+        })(),
       }));
     },
   });

@@ -16,7 +16,7 @@ export class RouteErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[RouteErrorBoundary]', error, info);
+    if (import.meta.env.DEV) console.error('[RouteErrorBoundary]', error, info);
   }
 
   render() {

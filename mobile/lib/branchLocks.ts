@@ -72,7 +72,7 @@ export async function fetchTodayBranchLocks(
     p_branch_type_id: branchTypeId,
   });
   if (error) {
-    console.warn('[branchLocks] fetch failed', error.message);
+    if (__DEV__) console.warn('[branchLocks] fetch failed', error.message);
     return {};
   }
   return mapLocks((data as []) ?? [], currentOfficerRolesId);

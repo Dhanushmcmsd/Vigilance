@@ -122,7 +122,7 @@ export async function uploadInspectionFiles(
               { onConflict: 'inspection_id,checklist_item_id' },
             );
           if (upsertErr) {
-            console.warn(`Warning: could not record photo metadata for ${file.name}`, upsertErr);
+            if (__DEV__) console.warn(`Warning: could not record photo metadata for ${file.name}`, upsertErr);
           }
         }
         successCount++;

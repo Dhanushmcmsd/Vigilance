@@ -84,32 +84,39 @@ export default function ConfirmScreen() {
   const insets = useSafeAreaInsets();
   const { userRolesId } = useAuth();
 
-  const [inspection, setInspection] = useState<any>(null);
+  const [inspection, setInspection] = useState<{ compliance_score: number | null; risk_level: string | null; id: string } | null>(null);
   const [pastInspections, setPastInspections] = useState<PastInspection[]>([]);
   const [loadingPast, setLoadingPast] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch current inspection details
-    supabase
-      .from('inspections')
-      .select('compliance_score, risk_level, id')
-      .eq('id', params.inspectionId)
-      .single()
-      .then(({ data }) => setInspection(data));
+    void (async () => {
+      const { data, error } = await supabase
+        .from('inspections')
+        .select('compliance_score, risk_level, id')
+        .eq('id', params.inspectionId)
+        .single();
+      if (error) {
+        setLoadError(error.message);
+      } else {
+        setInspection(data);
+      }
 
-    // Fetch past inspections
-    supabase
-      .from('inspections')
-      .select('id, inspection_date, status, compliance_score, branches(branch_name)')
-      .eq('officer_id', userRolesId)
-      .eq('status', 'submitted')
-      .order('inspection_date', { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        setPastInspections((data as unknown as PastInspection[]) || []);
-        setLoadingPast(false);
-      });
-  }, []);
+      const { data: pastData, error: pastError } = await supabase
+        .from('inspections')
+        .select('id, inspection_date, status, compliance_score, branches(branch_name)')
+        .eq('officer_id', userRolesId)
+        .eq('status', 'submitted')
+        .order('inspection_date', { ascending: false })
+        .limit(10);
+      if (pastError) {
+        setLoadError((prev) => prev ?? pastError.message);
+      } else {
+        setPastInspections((pastData as unknown as PastInspection[]) || []);
+      }
+      setLoadingPast(false);
+    })();
+  }, [params.inspectionId, userRolesId]);
 
   const shortId = params.inspectionId?.slice(0, 8).toUpperCase() || 'N/A';
   const score = inspection?.compliance_score;
@@ -169,7 +176,9 @@ export default function ConfirmScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 14, alignItems: 'center' }}>
             <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>Compliance Score</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {score !== null && score !== undefined ? (
+              {loadError ? (
+                <Text style={{ fontSize: 13, color: '#dc2626' }}>{loadError}</Text>
+              ) : score !== null && score !== undefined ? (
                 <Text style={{ fontSize: 22, fontWeight: '900', color: riskColor }}>
                   {score.toFixed(1)}%
                 </Text>

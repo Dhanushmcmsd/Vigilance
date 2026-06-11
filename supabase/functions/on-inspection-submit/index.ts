@@ -15,6 +15,11 @@ function isFailedResponse(response: string | null | undefined) {
 }
 
 serve(async (req: Request) => {
+  const secret = Deno.env.get('WEBHOOK_SECRET');
+  const incoming = req.headers.get('x-webhook-secret');
+  if (secret && incoming !== secret) {
+    return new Response('Unauthorized', { status: 401 });
+  }
   try {
     // Rate limit BEFORE parsing the body. Two buckets:
     //   1. Per-caller (JWT sub if signed-in, else IP) — generous limit since

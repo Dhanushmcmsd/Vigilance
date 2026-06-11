@@ -106,9 +106,6 @@ export default function LoginScreen() {
           <Text style={{ fontSize: FONT.body, color: COLOR.textOnPrimaryMuted, marginTop: 6, fontWeight: '600' }}>
             Field officer & audit (mobile)
           </Text>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 8, textAlign: 'center' }}>
-            officer@example.com · audit@example.com
-          </Text>
         </View>
 
         {/* Form Card */}

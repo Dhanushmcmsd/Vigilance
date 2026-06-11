@@ -68,7 +68,7 @@ const config = {
 
     ios: {
       supportsTablet: false,
-      bundleIdentifier: 'com.yourcompany.vigilance',
+      bundleIdentifier: 'com.vigilance.kerala',
       buildNumber: String(buildNumber),
       infoPlist: {
         NSCameraUsageDescription:
@@ -81,7 +81,7 @@ const config = {
     },
 
     android: {
-      package: 'com.yourcompany.vigilance',
+      package: 'com.vigilance.kerala',
       versionCode: buildNumber,
       edgeToEdgeEnabled: false,
       adaptiveIcon: {

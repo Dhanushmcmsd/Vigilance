@@ -146,7 +146,7 @@ function ReportDetailModal({
         documentTitle: 'MANAGEMENT REPORT',
       });
     } catch (err) {
-      console.error('[ManagementReport PDF]', err);
+      if (import.meta.env.DEV) console.error('[ManagementReport PDF]', err);
       setPdfError(err instanceof Error ? err.message : 'PDF download failed. Please try again.');
     } finally {
       setPdfLoading(false);

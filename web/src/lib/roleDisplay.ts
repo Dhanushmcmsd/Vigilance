@@ -1,10 +1,11 @@
-type Role = 'head' | 'management' | 'admin' | 'officer';
+type Role = 'head' | 'management' | 'admin' | 'officer' | 'audit';
 
 const ROLE_LABELS: Record<Role, string> = {
   head: 'Head of Operations',
   management: 'Management',
   admin: 'Administrator',
   officer: 'Field Officer',
+  audit: 'Audit (read-only)',
 };
 
 const ROLE_SUBLABELS: Record<Role, string> = {
@@ -12,6 +13,7 @@ const ROLE_SUBLABELS: Record<Role, string> = {
   management: 'Executive command',
   admin: 'System administration',
   officer: 'Mobile inspections',
+  audit: 'Read-only reports',
 };
 
 export function roleDisplayLabel(role: Role | null | undefined): string {

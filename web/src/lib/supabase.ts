@@ -24,10 +24,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   const missing: string[] = [];
   if (!supabaseUrl) missing.push('VITE_SUPABASE_URL');
   if (!supabaseAnonKey) missing.push('VITE_SUPABASE_ANON_KEY');
-  console.error(
-    `[supabase] Missing environment variables: ${missing.join(', ')}. ` +
-      'See web/.env.example for setup instructions.',
-  );
+  if (import.meta.env.DEV) {
+    console.error(
+      `[supabase] Missing environment variables: ${missing.join(', ')}. ` +
+        'See web/.env.example for setup instructions.',
+    );
+  }
   renderStartupError(missing);
   throw new Error(
     `Missing Supabase environment variables: ${missing.join(', ')}. ` +

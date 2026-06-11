@@ -26,6 +26,55 @@ interface ReviewResponse {
   attachments: ReviewAttachment[];
 }
 
+interface HeadReviewFileRow {
+  file_url?: string;
+  file_name?: string | null;
+  file_type?: string | null;
+  checklist_item_id?: string | null;
+}
+
+interface HeadReviewResponseRow {
+  id: string;
+  response: string;
+  remarks?: string | null;
+  checklist_item_id?: string;
+  checklist_templates?: {
+    section?: string;
+    item_text?: string;
+    trigger_on_no?: boolean;
+    risk_level?: string | null;
+  } | {
+    section?: string;
+    item_text?: string;
+    trigger_on_no?: boolean;
+    risk_level?: string | null;
+  }[] | null;
+}
+
+interface HeadReviewQueryRow {
+  id: string;
+  status: string;
+  inspection_date: string;
+  submitted_at?: string | null;
+  time_in?: string | null;
+  time_out?: string | null;
+  compliance_score?: number | null;
+  risk_level?: string | null;
+  general_remarks?: { remark_text?: string }[] | null;
+  branches?: {
+    branch_name?: string;
+    city?: string;
+    branch_types?: { type_name?: string } | { type_name?: string }[] | null;
+  } | {
+    branch_name?: string;
+    city?: string;
+    branch_types?: { type_name?: string } | { type_name?: string }[] | null;
+  }[] | null;
+  user_roles?: { name?: string } | { name?: string }[] | null;
+  inspection_files?: HeadReviewFileRow[] | null;
+  inspection_responses?: HeadReviewResponseRow[] | null;
+}
+
 interface ReviewInspection {
   id: string;
   status: string;
@@ -111,33 +160,43 @@ export default function HeadReview() {
 
       if (error) throw error;
 
-      return (data ?? []).map((item: any) => ({
+      return ((data ?? []) as HeadReviewQueryRow[]).map((item) => ({
         id: item.id,
         status: item.status,
         inspection_date: item.inspection_date,
         submitted_at: item.submitted_at ?? item.inspection_date,
-        time_in: item.time_in,
-        time_out: item.time_out,
+        time_in: item.time_in ?? null,
+        time_out: item.time_out ?? null,
         compliance_score: Number(item.compliance_score ?? 0),
         risk_level: item.risk_level ?? 'low',
         general_remarks: (item.general_remarks as { remark_text?: string }[] | null)?.[0]?.remark_text ?? null,
-        branch_name: item.branches?.branch_name ?? 'Unknown Branch',
-        branch_type: item.branches?.branch_types?.type_name ?? 'Unknown Type',
-        officer_name: item.user_roles?.name ?? 'Unknown Officer',
-        city: item.branches?.city ?? '-',
-        files: (item.inspection_files ?? []).map((f: any) => f.file_url).filter(Boolean),
+        branch_name: (Array.isArray(item.branches) ? item.branches[0]?.branch_name : item.branches?.branch_name) ?? 'Unknown Branch',
+        branch_type: (() => {
+          const bt = Array.isArray(item.branches) ? item.branches[0]?.branch_types : item.branches?.branch_types;
+          const rel = Array.isArray(bt) ? bt[0] : bt;
+          return rel?.type_name ?? 'Unknown Type';
+        })(),
+        officer_name: (Array.isArray(item.user_roles) ? item.user_roles[0]?.name : item.user_roles?.name) ?? 'Unknown Officer',
+        city: (Array.isArray(item.branches) ? item.branches[0]?.city : item.branches?.city) ?? '-',
+        files: (item.inspection_files ?? [])
+          .map((f) => f.file_url)
+          .filter((url): url is string => typeof url === 'string' && url.length > 0),
         imageFiles: (item.inspection_files ?? [])
-          .filter((f: any) => f.file_type === 'image')
-          .map((f: any) => ({
+          .filter(
+            (f): f is HeadReviewFileRow & { file_url: string } =>
+              f.file_type === 'image' && typeof f.file_url === 'string' && f.file_url.length > 0,
+          )
+          .map((f) => ({
             url: f.file_url,
             name: f.file_name ?? undefined,
             type: 'image' as const,
           })),
-        responses: (item.inspection_responses ?? []).map((r: any) => {
-          const ct = r.checklist_templates;
+        responses: (item.inspection_responses ?? []).map((r) => {
+          const ctRaw = r.checklist_templates;
+          const ct = Array.isArray(ctRaw) ? ctRaw[0] : ctRaw;
           const triggerOnNo = ct?.trigger_on_no ?? true;
           const itemFiles = (item.inspection_files ?? []).filter(
-            (f: any) => f.checklist_item_id === r.checklist_item_id,
+            (f) => f.checklist_item_id === r.checklist_item_id,
           );
           return {
             id: r.id,
@@ -147,14 +206,16 @@ export default function HeadReview() {
             remarks: r.remarks ?? null,
             trigger_on_no: !!triggerOnNo,
             risk_level: (ct?.risk_level as string | null) ?? null,
-            attachments: itemFiles.map((f: any) => ({
-              url: f.file_url,
-              name: f.file_name ?? undefined,
-              type: (f.file_type === 'image' ? 'image' : 'document') as 'image' | 'document',
-            })),
+            attachments: itemFiles
+              .filter((f): f is HeadReviewFileRow & { file_url: string } => Boolean(f.file_url))
+              .map((f) => ({
+                url: f.file_url,
+                name: f.file_name ?? undefined,
+                type: (f.file_type === 'image' ? 'image' : 'document') as 'image' | 'document',
+              })),
           };
         }),
-      }));
+      } satisfies ReviewInspection));
     },
   });
 
@@ -225,7 +286,7 @@ export default function HeadReview() {
       const filename = await generateInspectionPdf(data);
       setToast(`Downloaded ${filename}`);
     } catch (err) {
-      console.error('[PDF Export Error]', err);
+      if (import.meta.env.DEV) console.error('[PDF Export Error]', err);
       const message = err instanceof Error ? err.message : 'Failed to generate PDF. Please try again.';
       setToast(message);
     } finally {

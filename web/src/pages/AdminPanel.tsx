@@ -593,12 +593,14 @@ function BranchesTab() {
 
   const toggleBranch = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      await supabase
+      const { error } = await supabase
         .from('branches')
         .update({ is_active, deleted_at: is_active ? null : new Date().toISOString() })
         .eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-branches'] }),
+    onError: (err: Error) => window.alert(err.message || 'Failed to update branch.'),
   });
 
   return (
@@ -932,7 +934,7 @@ function ReportsTab() {
         .select('created_at')
         .gte('created_at', since.toISOString());
       const map: Record<string, number> = {};
-      (data ?? []).forEach((r: any) => {
+      (data ?? []).forEach((r: { created_at: string }) => {
         const d = r.created_at.split('T')[0];
         map[d] = (map[d] || 0) + 1;
       });
@@ -954,7 +956,10 @@ function ReportsTab() {
       .lte('inspection_date', to);
     if (status !== 'all') q = q.eq('status', status);
     const { data: exportRows, error } = await q;
-    if (error || !exportRows) return;
+    if (error || !exportRows) {
+      window.alert(error?.message || 'Export failed.');
+      return;
+    }
 
     const rows: string[] = [
       'Inspection ID,Date,Officer,Branch,Branch Type,City,Section,Item,Response,Remarks,Compliance Score,Risk Level,Status,Files',
@@ -1035,7 +1040,10 @@ function ReportsTab() {
       .lte('inspection_date', to);
     if (status !== 'all') q = q.eq('status', status);
     const { data: exportRows, error } = await q;
-    if (error || !exportRows) return;
+    if (error || !exportRows) {
+      window.alert(error?.message || 'Export failed.');
+      return;
+    }
 
     const rows = ['ID,Date,Branch,Officer,Compliance Score,Risk Level,Status'];
     (exportRows as { id: string; inspection_date?: string; compliance_score?: number; risk_level?: string; status?: string; user_roles?: { name?: string } | null; branches?: { branch_name?: string } | null }[]).forEach((r) => {

@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase';
 import { queryClient } from '../lib/queryClient';
 import { fetchManagementInspections } from '../lib/inspectionQueries';
 
-type Role = 'head' | 'management' | 'admin' | 'officer';
+type Role = 'head' | 'management' | 'admin' | 'officer' | 'audit';
 
-const VALID_ROLES: Role[] = ['head', 'management', 'admin', 'officer'];
+const VALID_ROLES: Role[] = ['head', 'management', 'admin', 'officer', 'audit'];
 const ROLE_CACHE_KEY = 'vms_auth_profile';
 const AUTH_INIT_FALLBACK_MS = 5_000;
 /** Absolute ceiling — UI must never spin forever on auth init. */

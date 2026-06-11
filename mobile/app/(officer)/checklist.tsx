@@ -21,7 +21,7 @@ import * as FileSystem from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { saveDraft, loadDraft, deleteDraft } from '../../lib/storage';
+import { saveDraft, loadDraft, deleteDraft, type DraftForm } from '../../lib/storage';
 import { queueInspection } from '../../lib/syncQueue';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
@@ -52,6 +52,30 @@ const STAFF_BEHAVIOUR_OPTIONS = [
 
 const isStaffBehaviourItem = (itemText: string) => itemText?.trim() === STAFF_BEHAVIOUR_ITEM_TEXT;
 
+type ChecklistTemplateRow = {
+  id: string;
+  section: string;
+  item_text: string;
+  item_order: number;
+  risk_level?: string | null;
+  trigger_on_no?: boolean | null;
+  options?: string[] | null;
+  risk_classifications?:
+    | { risk_level?: string | null; trigger_on_no?: boolean | null }
+    | { risk_level?: string | null; trigger_on_no?: boolean | null }[]
+    | null;
+};
+
+type ChecklistItem = {
+  id: string;
+  section: string;
+  item_text: string;
+  item_order: number;
+  risk_level?: 'RED' | 'YELLOW' | 'GREEN';
+  trigger_on_no: boolean;
+  options: string[] | null;
+};
+
 export default function ChecklistScreen() {
   const { branchId, branchName, branchType, officerLat, officerLon, inspectionId: routeInspectionId, isEdit } =
     useLocalSearchParams<{
@@ -68,7 +92,7 @@ export default function ChecklistScreen() {
   const { userName, userRolesId } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<ChecklistItem[]>([]);
   const [responses, setResponses] = useState<Record<string, { response: string | null; remark: string }>>({});
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [date] = useState(today);
@@ -132,17 +156,17 @@ export default function ChecklistScreen() {
           .select('id, section, item_text, item_order, risk_level, trigger_on_no, options')
           .eq('is_active', true)
           .order('item_order');
-        if (fallback.data) hydrateItems(fallback.data as any);
+        if (fallback.data) hydrateItems(fallback.data as ChecklistTemplateRow[]);
         setLoading(false);
         return;
       }
 
-      hydrateItems(data as any);
+      hydrateItems(data as ChecklistTemplateRow[]);
       setLoading(false);
     })();
   }, []);
 
-  const hydrateItems = (rows: any[]) => {
+  const hydrateItems = (rows: ChecklistTemplateRow[]) => {
     const mapped = rows.map((r) => {
       const rc = Array.isArray(r.risk_classifications)
         ? r.risk_classifications[0]
@@ -175,7 +199,7 @@ export default function ChecklistScreen() {
           { text: 'Start Fresh', style: 'destructive' },
           {
             text: 'Resume', onPress: () => {
-              setResponses(draft.responses as any);
+              setResponses(draft.responses as Record<string, { response: string | null; remark: string }>);
               setGeneralRemark(draft.generalRemark);
               setTimeIn(draft.timeIn || nowTime());
               setTimeOut(draft.timeOut);
@@ -188,7 +212,7 @@ export default function ChecklistScreen() {
   }, [branchId]);
 
   const sections = useMemo(() => {
-    const map: Record<string, any[]> = {};
+    const map: Record<string, ChecklistItem[]> = {};
     items.forEach((item) => {
       if (!map[item.section]) map[item.section] = [];
       map[item.section].push(item);
@@ -221,7 +245,7 @@ export default function ChecklistScreen() {
           .eq('id', claim.inspectionId)
           .eq('status', 'draft')
           .then(({ error }) => {
-            if (error) console.warn('[checklist] Could not persist time_in:', error.message);
+            if (__DEV__ && error) console.warn('[checklist] Could not persist time_in:', error.message);
           });
       } else {
         Alert.alert('Store unavailable', claim.message, [
@@ -357,7 +381,7 @@ export default function ChecklistScreen() {
       date,
       timeIn,
       timeOut,
-      responses: responses as any,
+      responses: responses as DraftForm['responses'],
       generalRemark,
       itemFiles,
       savedAt: new Date().toISOString(),
@@ -487,7 +511,9 @@ export default function ChecklistScreen() {
             };
           }),
         );
-        const validAttachments = attachments.filter((file): file is ItemAttachment => !!file?.uri);
+        const validAttachments = attachments.filter(
+          (file): file is { uri: string; name: string; type: 'image' } => file !== null && !!file.uri,
+        );
         if (!validAttachments.length) {
           showToast('Could not attach captured photo. Please retry.', 'error');
           return;
@@ -535,7 +561,9 @@ export default function ChecklistScreen() {
               };
             }),
           )
-        ).filter((file): file is ItemAttachment => !!file?.uri);
+        ).filter(
+          (file): file is { uri: string; name: string; type: 'image' } => file !== null && !!file.uri,
+        );
         if (!attachments.length) {
           showToast('Could not process selected image(s). Please try another photo.', 'warning');
           return;
@@ -597,7 +625,7 @@ export default function ChecklistScreen() {
     [currentPageItems, responses],
   );
   const currentPageSections = useMemo(() => {
-    const map: Record<string, any[]> = {};
+    const map: Record<string, ChecklistItem[]> = {};
     currentPageItems.forEach((item) => {
       if (!map[item.section]) map[item.section] = [];
       map[item.section].push(item);
@@ -686,7 +714,7 @@ export default function ChecklistScreen() {
                 date,
                 timeIn: effectiveTimeIn,
                 timeOut: effectiveTimeOut,
-                responses: responses as any,
+                responses: responses as DraftForm['responses'],
                 generalRemark,
                 itemFiles,
                 savedAt: new Date().toISOString(),
@@ -714,7 +742,6 @@ export default function ChecklistScreen() {
 
               const uploadResult = await uploadInspectionFiles(inspectionId, itemFiles);
               if (uploadResult.errors.length > 0) {
-                console.warn('Photo upload errors:', uploadResult.errors);
                 if (uploadResult.failedCount > 0 && uploadResult.successCount === 0) {
                   throw new Error(
                     uploadResult.errors[0] ??
@@ -776,10 +803,10 @@ export default function ChecklistScreen() {
                   filesCount: String(totalAttachmentCount),
                 },
               });
-            } catch (e: any) {
+            } catch (e: unknown) {
               setInspectionActive(false);
               setSubmitting(false);
-              showToast(e.message || 'Submission failed. Please try again.', 'error');
+              showToast(e instanceof Error ? e.message : 'Submission failed. Please try again.', 'error');
             }
           },
         },

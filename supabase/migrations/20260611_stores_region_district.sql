@@ -1,5 +1,7 @@
 ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS region text;
 
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS store_code text;
+
 UPDATE public.stores SET region = CASE
   WHEN address ~* '(Thiruvananthapuram|Trivandrum)\s*(District|Dist)' THEN 'Thiruvananthapuram'
   WHEN address ~* '(Kollam|Kolam)\s*(District|Dist)' THEN 'Kollam'

@@ -26,9 +26,8 @@ export function LegalAcknowledgementModal({ onAccepted }: LegalAcknowledgementMo
       onAccepted();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save acknowledgement';
-      sessionStorage.setItem('vms_policy_accepted_version', CURRENT_POLICY_VERSION);
-      setError(`${message}. Your session will continue; please notify your administrator.`);
-      setTimeout(onAccepted, 1500);
+      setError(message);
+      return;
     } finally {
       setSubmitting(false);
     }

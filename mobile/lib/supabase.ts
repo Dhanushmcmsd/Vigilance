@@ -53,10 +53,12 @@ export const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 export const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error(
-    'Supabase environment variables are missing! ' +
-    'Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in your .env file.'
-  );
+  if (__DEV__) {
+    console.error(
+      'Supabase environment variables are missing! ' +
+      'Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in your .env file.'
+    );
+  }
 }
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {

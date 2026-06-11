@@ -192,13 +192,6 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
 
     setLoading(false);
     if (err) {
-      console.error('[select-branch] Supabase fetchBranches error:', {
-        message: err.message,
-        code: (err as { code?: string }).code,
-        details: (err as { details?: string }).details,
-        hint: (err as { hint?: string }).hint,
-        branchType: activeBranchType,
-      });
       const code = (err as { code?: string }).code ?? '';
       const msg = err.message ?? '';
       if (code === '42703' || /geofence_radius/i.test(msg)) {

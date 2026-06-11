@@ -1,3 +1,11 @@
+-- SEED ONLY: DO NOT RUN ON PRODUCTION
+-- This file seeds dev/staging accounts only.
+DO $$ BEGIN
+  IF current_database() NOT IN ('postgres') THEN
+    RAISE EXCEPTION 'Seed migration blocked on this database';
+  END IF;
+END $$;
+
 -- Canonical Vigilance accounts (web + mobile). Run once on production.
 --   admin@vigilance.app      admin       (web)     admin123
 --   management@vigilance.app management  (web CEO) mgmt123

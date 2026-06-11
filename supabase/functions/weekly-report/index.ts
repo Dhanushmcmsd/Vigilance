@@ -9,7 +9,10 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://vigilance-web.vercel.app';
 const FROM_ADDR = resolveResendFrom();
 
-serve(async (_req: Request) => {
+serve(async (req: Request) => {
+  const role = req.headers.get('x-role');
+  const jwt = req.headers.get('Authorization');
+  if (!jwt && !role) return new Response('Unauthorized', { status: 401 });
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

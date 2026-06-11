@@ -714,7 +714,7 @@ export async function generateInspectionPdf(
   try {
     withImages = await embedImagesForPdf(sanitized);
   } catch (error) {
-    console.warn('[PDF] Could not embed images, continuing with text-only export:', error);
+    if (import.meta.env.DEV) console.warn('[PDF] Could not embed images, continuing with text-only export:', error);
   }
 
   const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
@@ -735,7 +735,7 @@ export async function generateInspectionPdf(
       return downloadBlob(blob, sanitized, options?.filenamePrefix);
     } catch (error) {
       lastError = error;
-      console.error(`[PDF] ${attempt.label} failed:`, error);
+      if (import.meta.env.DEV) console.error(`[PDF] ${attempt.label} failed:`, error);
     }
   }
 

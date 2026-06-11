@@ -28,7 +28,7 @@ function PageLoader() {
   );
 }
 
-type AllowedRole = 'head' | 'management' | 'admin' | 'officer';
+type AllowedRole = 'head' | 'management' | 'admin' | 'officer' | 'audit';
 
 function RoleGuard({
   children,
@@ -117,7 +117,7 @@ function AppRoutes() {
         <Route
           path="/dashboard/*"
           element={
-            <RoleGuard allowedRoles={['management']}>
+            <RoleGuard allowedRoles={['management', 'audit']}>
               <CeoDashboard />
             </RoleGuard>
           }

@@ -51,9 +51,6 @@ export const branchSchema = z
       .trim()
       .min(2, 'Branch name must be at least 2 characters')
       .max(120, 'Branch name is too long'),
-    branch_type: z.enum(['CFC', 'Store'], {
-      required_error: 'Pick a branch type',
-    }),
     location: optionalString,
     city: optionalString,
     region: optionalString,

@@ -3,12 +3,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthGuard } from '../../components/AuthGuard';
+import { DistrictAssignmentModal } from '../../components/DistrictAssignmentModal';
 
 export default function OfficerLayout() {
   const insets = useSafeAreaInsets();
 
   return (
     <AuthGuard>
+      <DistrictAssignmentModal />
       <Tabs
         screenOptions={{
           headerShown: false,

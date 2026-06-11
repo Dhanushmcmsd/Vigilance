@@ -49,12 +49,19 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
 
+interface DistrictReassignedPayload {
+  officer_role_id: string;
+  district: string;
+  notification_id?: string;
+}
+
 interface NotifyPayload {
-  inspection_id: string;
-  status: 'approved' | 'rejected' | 'submitted';
+  inspection_id?: string;
+  status?: 'approved' | 'rejected' | 'submitted';
   head_comment?: string | null;
   /** Optional override — useful when called from a DB trigger that doesn't auth. */
   recipient_role_id?: string;
+  district_reassigned?: DistrictReassignedPayload;
 }
 
 serve(async (req) => {
@@ -72,16 +79,20 @@ serve(async (req) => {
     return jsonResponse({ error: 'invalid JSON body' }, 400);
   }
 
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false },
+  });
+
+  if (payload?.district_reassigned) {
+    return handleDistrictReassigned(supabase, payload.district_reassigned);
+  }
+
   if (!payload?.inspection_id || !payload?.status) {
     return jsonResponse(
       { error: 'inspection_id and status are required' },
       400,
     );
   }
-
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false },
-  });
 
   // 1. Resolve inspection + officer + branch.
   const { data: insp, error: inspErr } = await supabase
@@ -173,6 +184,33 @@ serve(async (req) => {
 });
 
 // ── helpers ───────────────────────────────────────────────────────────────
+
+async function handleDistrictReassigned(
+  supabase: ReturnType<typeof createClient>,
+  payload: DistrictReassignedPayload,
+) {
+  const { data: officerRow, error: officerErr } = await supabase
+    .from('user_roles')
+    .select('id, name, expo_push_token')
+    .eq('id', payload.officer_role_id)
+    .maybeSingle();
+
+  if (officerErr) return jsonResponse({ error: officerErr.message }, 500);
+  if (!officerRow) return jsonResponse({ error: 'officer not found' }, 404);
+
+  const title = '📍 New District Assigned';
+  const body =
+    `You have been assigned to cover ${payload.district} district stores. Tap to view your updated store list.`;
+
+  const pushResult = await sendExpoPush(officerRow.expo_push_token, title, body, {
+    type: 'district_reassigned',
+    district: payload.district,
+    notification_id: payload.notification_id ?? null,
+    screen: 'StoreList',
+  });
+
+  return jsonResponse({ ok: true, push: pushResult });
+}
 
 function composeMessage(
   status: 'approved' | 'rejected' | 'submitted',

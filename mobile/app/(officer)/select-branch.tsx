@@ -31,12 +31,14 @@ import {
   markInspectionAsEdit,
 } from '../../lib/branchLocks';
 import { STORES } from '../../constants/stores';
+import { useOfficerDistricts } from '../../lib/useOfficerDistricts';
 
 interface Branch {
   id: string;
   branch_name: string;
   location: string;
   city: string;
+  region?: string | null;
   latitude: number | null;
   longitude: number | null;
   geofence_radius: number;
@@ -108,6 +110,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { userRolesId } = useAuth();
+  const { data: assignedDistricts = [] } = useOfficerDistricts(userRolesId);
 
   const [branchTypeId, setBranchTypeId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -136,7 +139,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
 
   useEffect(() => {
     fetchBranches();
-  }, [activeBranchType]);
+  }, [activeBranchType, assignedDistricts.join('|')]);
 
   useEffect(() => {
     if (nearMeActive) return; // FlatList uses nearMeBranches when active
@@ -182,7 +185,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
     // Step 2: fetch branches filtered by the resolved branch_type_id
     const { data, error: err } = await supabase
       .from('branches')
-      .select('id, branch_name, location, city, latitude, longitude, geofence_radius, store_code, incharge_name, incharge_phone')
+      .select('id, branch_name, location, city, region, latitude, longitude, geofence_radius, store_code, incharge_name, incharge_phone')
       .eq('is_active', true)
       .eq('branch_type_id', typeRow.id)
       .order('branch_name');
@@ -208,10 +211,15 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
       }
       return;
     }
-    const safe = ((data as unknown as Branch[]) || []).map((b) => ({
+    let safe = ((data as unknown as Branch[]) || []).map((b) => ({
       ...b,
       geofence_radius: b.geofence_radius ?? 200,
     }));
+
+    if (assignedDistricts.length > 0) {
+      safe = safe.filter((b) => b.region && assignedDistricts.includes(b.region));
+    }
+
     setBranches(safe);
   };
 
@@ -243,29 +251,35 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
       }
 
       // Map RPC result to Branch objects
-      const mapped: Branch[] = (data as any[]).map((row) => ({
-        ...(() => {
-          const existing = branches.find(
-            (branch) => branch.id === row.id || normalizeStoreName(branch.branch_name) === normalizeStoreName(row.branch_name),
-          );
-          const storeData = existing ? findStoreData(existing) : undefined;
-          return {
-            latitude: existing?.latitude ?? storeData?.latitude ?? null,
-            longitude: existing?.longitude ?? storeData?.longitude ?? null,
-            geofence_radius: existing?.geofence_radius ?? 200,
-            store_code: existing?.store_code ?? row.store_code ?? storeData?.code ?? null,
-            incharge_name: existing?.incharge_name ?? row.incharge_name ?? storeData?.incharge ?? null,
-            incharge_phone: existing?.incharge_phone ?? row.incharge_phone ?? storeData?.phone ?? null,
-          };
-        })(),
-        id: row.id,
-        branch_name: row.branch_name,
-        location: row.location ?? '',
-        city: row.city ?? '',
-        distance_metres: row.distance_metres,
-      }));
+      const mapped: Branch[] = (data as any[]).map((row) => {
+        const existing = branches.find(
+          (branch) =>
+            branch.id === row.id ||
+            normalizeStoreName(branch.branch_name) === normalizeStoreName(row.branch_name),
+        );
+        const storeData = existing ? findStoreData(existing) : undefined;
+        return {
+          latitude: existing?.latitude ?? storeData?.latitude ?? null,
+          longitude: existing?.longitude ?? storeData?.longitude ?? null,
+          geofence_radius: existing?.geofence_radius ?? 200,
+          store_code: existing?.store_code ?? row.store_code ?? storeData?.code ?? null,
+          incharge_name: existing?.incharge_name ?? row.incharge_name ?? storeData?.incharge ?? null,
+          incharge_phone: existing?.incharge_phone ?? row.incharge_phone ?? storeData?.phone ?? null,
+          id: row.id,
+          branch_name: row.branch_name,
+          location: row.location ?? '',
+          city: row.city ?? '',
+          region: row.region ?? existing?.region ?? null,
+          distance_metres: row.distance_metres,
+        };
+      });
 
-      setNearMeBranches(mapped);
+      const districtFiltered =
+        assignedDistricts.length > 0
+          ? mapped.filter((b) => b.region && assignedDistricts.includes(b.region))
+          : mapped;
+
+      setNearMeBranches(districtFiltered);
       setNearMeActive(true);
     } catch (_err) {
       // Non-breaking fallback — PostGIS may not be active yet

@@ -76,6 +76,10 @@ body {
   .btn-xs {
     @apply rounded px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition;
   }
+  .badge-amber {
+    @apply bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300;
+  }
+
   .btn-xs-red {
     @apply bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200;
   }
@@ -508,4 +512,24 @@ html.vms-cursor-hover .vms-cursor-ring {
     pointer-events: none;
     z-index: 1000;
   }
+}
+
+@keyframes marching-ants {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.leaflet-interactive.district-connection-line {
+  animation: marching-ants 2s linear infinite;
+}
+
+.district-officer-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.connection-midpoint {
+  background: transparent !important;
+  border: none !important;
 }

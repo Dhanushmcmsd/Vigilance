@@ -205,7 +205,7 @@ function UsersTab({
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
-            placeholder="Search by name or emailâ€¦"
+            placeholder="Search by name or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="input w-64"
@@ -235,11 +235,11 @@ function UsersTab({
       </div>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        Password resets are handled by an administrator â€” set a new password when creating or editing a user, or share credentials securely.
+        Password resets are handled by an administrator - set a new password when creating or editing a user, or share credentials securely.
       </p>
 
       {isLoading ? (
-        <p className="text-gray-500">Loadingâ€¦</p>
+        <p className="text-gray-500">Loading...</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
           <table className="min-w-full text-sm">
@@ -552,7 +552,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () 
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <div className="flex gap-2 pt-2">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button type="button" onClick={() => void handleSave()} disabled={loading} className="btn-primary flex-1">{loading ? 'Savingâ€¦' : 'Save Changes'}</button>
+          <button type="button" onClick={() => void handleSave()} disabled={loading} className="btn-primary flex-1">{loading ? 'Saving...' : 'Save Changes'}</button>
         </div>
       </div>
     </div>

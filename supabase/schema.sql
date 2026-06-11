@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS public.checklist_templates (
   section          text  NOT NULL,
   item_text        text  NOT NULL,
   item_order       int   NOT NULL,
+  options          text[],
   is_active        boolean     DEFAULT true,
   created_at       timestamptz DEFAULT now()
 );

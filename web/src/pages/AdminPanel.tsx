@@ -27,6 +27,7 @@ type Tab = 'users' | 'account-requests' | 'checklists' | 'branches' | 'reports';
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface UserRow {
   id: string;
+  user_id: string | null;
   email: string;
   name: string;
   role: string;
@@ -146,7 +147,7 @@ function UsersTab({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_roles')
-        .select('id, email, name, role, phone, is_active, created_at')
+        .select('id, user_id, email, name, role, phone, is_active, created_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -244,7 +245,7 @@ function UsersTab({
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr>
-                {['Name', 'Email', 'Role', 'Phone', 'Status', 'Created', 'Actions'].map(h => (
+                {['Name', 'Email', 'Role', 'Status', 'Created', 'Actions'].map(h => (
                   <th key={h} className="th">{h}</th>
                 ))}
               </tr>
@@ -252,7 +253,7 @@ function UsersTab({
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {!isLoading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="td text-center text-gray-400 py-8">
+                  <td colSpan={6} className="td text-center text-gray-400 py-8">
                     No users match your search.
                   </td>
                 </tr>
@@ -264,7 +265,6 @@ function UsersTab({
                   <td className="td">
                     <span className="badge-role">{u.role}</span>
                   </td>
-                  <td className="td text-gray-500">{u.phone || 'â€”'}</td>
                   <td className="td">
                     <span className={`badge ${u.is_active ? 'badge-green' : 'badge-red'}`}>
                       {u.is_active ? 'Active' : 'Inactive'}
@@ -279,17 +279,6 @@ function UsersTab({
                         className={`btn-xs ${u.is_active ? 'btn-xs-red' : 'btn-xs-green'}`}
                       >
                         {u.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.alert(
-                            `To reset access for ${u.email}, set a new password via "Edit" or create a replacement account. Self-service email reset is disabled.`,
-                          );
-                        }}
-                        className="btn-xs btn-xs-blue"
-                      >
-                        Reset help
                       </button>
                     </div>
                   </td>
@@ -437,7 +426,15 @@ function AddUserModal({
         )}
         <form onSubmit={handleSubmit} className="space-y-3">
           <input className="input w-full" placeholder="Full Name" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-          <input className="input w-full" placeholder="Email" type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+          <input
+            className="input w-full"
+            placeholder="Email"
+            type="email"
+            required
+            readOnly={!!prefill}
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+          />
           <input className="input w-full" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           <select className="input w-full" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
             <option value="officer">Officer</option>
@@ -465,23 +462,58 @@ function AddUserModal({
 }
 
 function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ name: user.name, phone: user.phone || '', role: user.role });
+  const [form, setForm] = useState({
+    name: user.name,
+    email: user.email,
+    password: '',
+    phone: user.phone || '',
+    role: user.role,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const { data: pendingRequest } = useQuery({
+    queryKey: ['pending-request-for-email', user.email],
+    queryFn: async () => {
+      const { data, error: reqErr } = await supabase
+        .from('account_requests')
+        .select('id')
+        .eq('email', user.email.toLowerCase())
+        .eq('status', 'pending')
+        .maybeSingle();
+      if (reqErr) throw reqErr;
+      return data;
+    },
+  });
+
+  const emailReadonly = !!pendingRequest;
 
   const handleSave = async () => {
     setLoading(true);
     setError('');
-    const { error: updateError } = await supabase
-      .from('user_roles')
-      .update({ name: form.name, phone: form.phone, role: form.role })
-      .eq('id', user.id);
-    setLoading(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
+    try {
+      const { data, error: invokeErr } = await supabase.functions.invoke<{
+        user_id?: string;
+        error?: string;
+      }>('admin-update-user', {
+        body: {
+          user_roles_id: user.id,
+          email: form.email.trim().toLowerCase(),
+          name: form.name.trim(),
+          role: form.role,
+          phone: form.phone.trim() || undefined,
+          password: form.password.trim() || undefined,
+        },
+      });
+      if (invokeErr) throw invokeErr;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.user_id) throw new Error('User update failed.');
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update user.');
+    } finally {
+      setLoading(false);
     }
-    onSaved();
   };
 
   return (
@@ -489,6 +521,26 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () 
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full space-y-4">
         <h3 className="font-bold text-xl">Edit User</h3>
         <input className="input w-full" placeholder="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+        <input
+          className="input w-full"
+          placeholder="Email"
+          type="email"
+          readOnly={emailReadonly}
+          value={form.email}
+          onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+        />
+        {emailReadonly && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Email is locked while a pending access request exists for this address.
+          </p>
+        )}
+        <input
+          className="input w-full"
+          placeholder="Leave blank to keep current password"
+          type="password"
+          value={form.password}
+          onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+        />
         <input className="input w-full" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
         <select className="input w-full" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
           <option value="officer">Officer</option>

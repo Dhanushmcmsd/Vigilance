@@ -69,7 +69,7 @@ export default function ChecklistScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const [items, setItems] = useState<any[]>([]);
-  const [responses, setResponses] = useState<Record<string, { response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null; remark: string }>>({});
+  const [responses, setResponses] = useState<Record<string, { response: string | null; remark: string }>>({});
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [date] = useState(today);
   const [timeIn, setTimeIn] = useState(nowTime());
@@ -118,7 +118,7 @@ export default function ChecklistScreen() {
       const { data, error } = await supabase
         .from('checklist_templates')
         .select(`
-          id, section, item_text, item_order, risk_level, trigger_on_no,
+          id, section, item_text, item_order, risk_level, trigger_on_no, options,
           risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
             risk_level, trigger_on_no
           )
@@ -129,7 +129,7 @@ export default function ChecklistScreen() {
       if (error) {
         const fallback = await supabase
           .from('checklist_templates')
-          .select('id, section, item_text, item_order, risk_level, trigger_on_no')
+          .select('id, section, item_text, item_order, risk_level, trigger_on_no, options')
           .eq('is_active', true)
           .order('item_order');
         if (fallback.data) hydrateItems(fallback.data as any);
@@ -154,12 +154,13 @@ export default function ChecklistScreen() {
         item_order: r.item_order,
         risk_level: (rc?.risk_level ?? r.risk_level) as 'RED' | 'YELLOW' | 'GREEN' | undefined,
         trigger_on_no: rc?.trigger_on_no ?? r.trigger_on_no ?? false,
+        options: Array.isArray(r.options) ? (r.options as string[]) : null,
       };
     });
     setItems(mapped);
     const sections = new Set(mapped.map((i) => i.section));
     setExpandedSections(sections);
-    const init: Record<string, { response: 'Yes' | 'No' | 'N/A' | null; remark: string }> = {};
+    const init: Record<string, { response: string | null; remark: string }> = {};
     mapped.forEach((i) => {
       init[i.id] = { response: null, remark: '' };
     });
@@ -286,9 +287,9 @@ export default function ChecklistScreen() {
     [ensureInspection, triggeredRedItems, userRolesId, branchId],
   );
 
-  const lastTriggeredRedResponse = useRef<Record<string, 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null>>({});
+  const lastTriggeredRedResponse = useRef<Record<string, string | null>>({});
   const handleResponse = useCallback(
-    (itemId: string, response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null) => {
+    (itemId: string, response: string | null) => {
       setResponses((prev) => {
         const previous = prev[itemId]?.response ?? null;
         const next = { ...prev, [itemId]: { ...prev[itemId], response } };
@@ -992,17 +993,26 @@ export default function ChecklistScreen() {
                     {item.item_text}
                   </Text>
 
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                     {(
-                      isStaffBehaviourItem(item.item_text)
-                        ? STAFF_BEHAVIOUR_OPTIONS
-                        : [
-                            { label: 'YES', value: 'Yes' as const },
-                            { label: 'NO', value: 'No' as const },
-                            { label: 'N/A', value: 'N/A' as const },
-                          ]
+                      item.options?.length
+                        ? item.options.map((value: string) => ({ label: value.toUpperCase(), value }))
+                        : isStaffBehaviourItem(item.item_text)
+                          ? STAFF_BEHAVIOUR_OPTIONS
+                          : [
+                              { label: 'YES', value: 'Yes' as const },
+                              { label: 'NO', value: 'No' as const },
+                              { label: 'N/A', value: 'N/A' as const },
+                            ]
                     ).map((button) => {
                       const active = response === button.value;
+                      const knownValue =
+                        button.value === 'Yes' ||
+                        button.value === 'No' ||
+                        button.value === 'N/A' ||
+                        button.value === 'Good' ||
+                        button.value === 'Moderate' ||
+                        button.value === 'Bad';
                       const colors =
                         button.value === 'N/A'
                           ? {
@@ -1010,7 +1020,17 @@ export default function ChecklistScreen() {
                               activeBg: '#f1f5f9',
                               inactiveColor: '#6b7280',
                             }
-                          : responseButtonColors(button.value, response, triggerOnNo);
+                          : knownValue
+                            ? responseButtonColors(
+                                button.value as 'Yes' | 'No' | 'Good' | 'Moderate' | 'Bad',
+                                response as 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null,
+                                triggerOnNo,
+                              )
+                            : {
+                                activeColor: '#2563eb',
+                                activeBg: '#dbeafe',
+                                inactiveColor: '#6b7280',
+                              };
                       return (
                         <TouchableOpacity
                           key={button.value}

@@ -43,7 +43,12 @@ interface ChecklistItem {
   item_order: number;
   branch_type_id: string | null;
   is_active: boolean;
+  options: string[] | null;
   risk_classification?: RiskClassificationRow | null;
+}
+
+function normalizeOptions(raw: string[]): string[] {
+  return raw.map((o) => o.trim()).filter(Boolean);
 }
 
 const RISK_PILL: Record<RiskLevel, string> = {
@@ -151,6 +156,9 @@ function ChecklistItemModal({
     requiresPhoto: rc?.requires_photo ?? false,
     minRemarkChars: rc?.min_remark_chars ?? 0,
   });
+  const initialOptions = item?.options?.length ? [...item.options] : [''];
+  const [requireOptions, setRequireOptions] = useState(!!item?.options?.length);
+  const [optionInputs, setOptionInputs] = useState<string[]>(initialOptions);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -166,6 +174,11 @@ function ChecklistItemModal({
       setError('Section and item text are required');
       return;
     }
+    const savedOptions = requireOptions ? normalizeOptions(optionInputs) : null;
+    if (requireOptions && !savedOptions?.length) {
+      setError('Add at least one option');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -178,6 +191,7 @@ function ChecklistItemModal({
             section: finalSection,
             item_text: itemText.trim(),
             branch_type_id: branchTypeId,
+            options: savedOptions,
           })
           .eq('id', item.id);
         if (itemErr) throw itemErr;
@@ -202,6 +216,7 @@ function ChecklistItemModal({
             item_order: nextOrder,
             branch_type_id: branchTypeId,
             is_active: true,
+            options: savedOptions,
           })
           .select('id')
           .single();
@@ -323,6 +338,57 @@ function ChecklistItemModal({
           />
         </div>
 
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={requireOptions}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setRequireOptions(on);
+              if (on && optionInputs.length === 0) setOptionInputs(['']);
+              if (!on) setOptionInputs(['']);
+            }}
+          />
+          Officer must select from options
+        </label>
+
+        {requireOptions && (
+          <div className="space-y-2">
+            <label className="label">Options / Dropdown Choices</label>
+            {optionInputs.map((opt, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <input
+                  className="input w-full"
+                  placeholder={`Option ${idx + 1}`}
+                  value={opt}
+                  onChange={(e) => {
+                    const next = [...optionInputs];
+                    next[idx] = e.target.value;
+                    setOptionInputs(next);
+                  }}
+                />
+                {optionInputs.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn-xs btn-xs-red shrink-0"
+                    aria-label="Remove option"
+                    onClick={() => setOptionInputs(optionInputs.filter((_, i) => i !== idx))}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn-xs"
+              onClick={() => setOptionInputs([...optionInputs, ''])}
+            >
+              + Add Option
+            </button>
+          </div>
+        )}
+
         {error && <p className="text-red-500 text-sm">{error}</p>}
 
         <div className="flex gap-2 pt-1">
@@ -375,7 +441,7 @@ export function ChecklistAdminTab() {
       let query = supabase
         .from('checklist_templates')
         .select(
-          `id, section, item_text, item_order, branch_type_id, is_active,
+          `id, section, item_text, item_order, branch_type_id, is_active, options,
           risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
             id, risk_level, trigger_on_no, requires_photo, min_remark_chars
           )`,
@@ -404,6 +470,7 @@ export function ChecklistAdminTab() {
           item_order: i.item_order as number,
           branch_type_id: i.branch_type_id as string | null,
           is_active: i.is_active as boolean,
+          options: Array.isArray(i.options) ? (i.options as string[]) : null,
           risk_classification: rc
             ? {
                 id: (rc as RiskClassificationRow).id,
@@ -529,7 +596,14 @@ export function ChecklistAdminTab() {
                     {sectionItems.map((item) => (
                       <li key={item.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                         <span className="text-gray-400 w-6 text-right">{item.item_order}</span>
-                        <span className="flex-1">{item.item_text}</span>
+                        <span className="flex-1">
+                          {item.item_text}
+                          {item.options && item.options.length > 0 && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+                              {item.options.length} option{item.options.length === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </span>
                         <span className="w-24 text-center">
                           {item.risk_classification?.risk_level ? (
                             <span

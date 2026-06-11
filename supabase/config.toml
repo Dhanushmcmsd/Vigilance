@@ -99,3 +99,6 @@ verify_jwt = false  # uptime probe — must be callable without a session
 
 [functions.admin-create-user]
 verify_jwt = true   # caller JWT is required; function additionally enforces role = 'admin'
+
+[functions.admin-update-user]
+verify_jwt = true   # caller JWT is required; function additionally enforces role = 'admin'

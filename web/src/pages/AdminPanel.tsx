@@ -25,6 +25,15 @@ import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
 import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
+import {
+  buildHtmlBarChart,
+  buildHtmlTable,
+  buildReportHeader,
+  buildSection,
+  buildSummaryTable,
+  downloadHtmlExcel,
+  wrapHtmlDocument,
+} from '../lib/formattedExport';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface UserRow {
@@ -1055,17 +1064,20 @@ function ReportsTab() {
   const fetchLeaveCsvSection = async () => {
     const { data, error } = await supabase
       .from('officer_leave_log')
-      .select('leave_date, officer_name, leave_type')
+      .select('leave_date, officer_name, leave_type, officer_id')
       .gte('leave_date', from)
       .lte('leave_date', to)
       .order('leave_date');
-    if (error) return ['OFFICER ATTENDANCE', 'date,officer_name,district,leave_type'];
-    const lines = ['OFFICER ATTENDANCE', 'date,officer_name,district,leave_type'];
-    (data ?? []).forEach((row: { leave_date: string; officer_name: string; leave_type: string; officer_id?: string }) => {
-      const district = districtMap.get(row.officer_id ?? '') ?? '';
-      lines.push(`${row.leave_date},${row.officer_name},${district},${row.leave_type}`);
-    });
-    return lines;
+    if (error) return { headers: ['Date', 'Officer', 'District', 'Leave type'], rows: [] as string[][] };
+    const rows = (data ?? []).map(
+      (row: { leave_date: string; officer_name: string; leave_type: string; officer_id?: string }) => [
+        row.leave_date,
+        row.officer_name,
+        districtMap.get(row.officer_id ?? '') ?? '—',
+        row.leave_type,
+      ],
+    );
+    return { headers: ['Date', 'Officer', 'District', 'Leave type'], rows };
   };
 
   const addLeaveRecord = async () => {
@@ -1144,13 +1156,10 @@ function ReportsTab() {
       return;
     }
 
-    const rows: string[] = [
-      'Inspection ID,Date,Officer,Branch,Branch Type,City,Section,Item,Response,Remarks,Compliance Score,Risk Level,Status,Files',
-    ];
-
     type ExportRow = {
       id: string;
       inspection_date?: string;
+      submitted_at?: string | null;
       compliance_score?: number;
       risk_level?: string;
       status?: string;
@@ -1169,58 +1178,129 @@ function ReportsTab() {
       inspection_answers?: { photo_url?: string | null }[];
     };
 
+    const detailRows: string[][] = [];
+    let submittedCount = 0;
+    const branchCounts = new Map<string, number>();
+
     (exportRows as ExportRow[]).forEach((insp) => {
       const branch = insp.branches;
       const typeRel = branch?.branch_types;
       const typeName = Array.isArray(typeRel) ? typeRel[0]?.type_name : typeRel?.type_name;
       if (branchType !== 'all' && typeName !== branchType) return;
+      if (insp.status === 'submitted' || insp.status === 'approved') submittedCount += 1;
+      const branchLabel = branch?.branch_name ?? 'Unknown';
+      branchCounts.set(branchLabel, (branchCounts.get(branchLabel) ?? 0) + 1);
 
       const fileUrls = (insp.inspection_files ?? []).map((f) => f.file_url).filter(Boolean);
       const answerUrls = (insp.inspection_answers ?? []).map((a) => a.photo_url).filter(Boolean);
-      const files = [...new Set([...fileUrls, ...answerUrls])].join('; ');
+      const files = String([...new Set([...fileUrls, ...answerUrls])].length);
       const base = [
         insp.id,
         insp.inspection_date ?? '',
+        insp.submitted_at ? new Date(insp.submitted_at).toLocaleString('en-IN') : '',
         insp.user_roles?.name ?? '',
-        branch?.branch_name ?? '',
+        branchLabel,
         typeName ?? '',
         branch?.city ?? '',
       ];
 
       const responses = insp.inspection_responses ?? [];
       if (responses.length === 0) {
-        rows.push(
-          [...base, '', '', '', '', insp.compliance_score ?? '', insp.risk_level ?? '', insp.status ?? '', `"${files}"`].join(','),
-        );
+        detailRows.push([
+          ...base,
+          '',
+          '',
+          '',
+          '',
+          String(insp.compliance_score ?? ''),
+          insp.risk_level ?? '',
+          insp.status ?? '',
+          files,
+        ]);
       } else {
         responses.forEach((r) => {
           const ct = r.checklist_templates;
-          rows.push(
-            [
-              ...base,
-              ct?.section ?? '',
-              `"${(ct?.item_text ?? '').replace(/"/g, '""')}"`,
-              r.response ?? '',
-              `"${(r.remarks ?? '').replace(/"/g, '""')}"`,
-              insp.compliance_score ?? '',
-              insp.risk_level ?? '',
-              insp.status ?? '',
-              `"${files}"`,
-            ].join(','),
-          );
+          detailRows.push([
+            ...base,
+            ct?.section ?? '',
+            ct?.item_text ?? '',
+            r.response ?? '',
+            r.remarks ?? '',
+            String(insp.compliance_score ?? ''),
+            insp.risk_level ?? '',
+            insp.status ?? '',
+            files,
+          ]);
         });
       }
     });
-    downloadCSV('vigilance_full_export.csv', [...rows, ...(await fetchLeaveCsvSection())].join('\n'));
+
+    const leaveSection = await fetchLeaveCsvSection();
+    const filterLine = `Period ${from} to ${to} · Branch type: ${branchType} · Status: ${status}`;
+    const summary = buildSummaryTable([
+      ['Report period', `${from} to ${to}`],
+      ['Branch type filter', branchType],
+      ['Status filter', status],
+      ['Total inspection rows', String(detailRows.length)],
+      ['Submitted / approved visits', String(submittedCount)],
+      ['Unique branches', String(branchCounts.size)],
+      ['Officer leave records', String(leaveSection.rows.length)],
+    ]);
+    const branchChart = buildHtmlBarChart(
+      Array.from(branchCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([label, value]) => ({ label, value, color: '#6366f1' })),
+      'Inspections by branch',
+    );
+    const detailTable = buildHtmlTable(
+      [
+        'Inspection ID',
+        'Inspection date',
+        'Submitted at',
+        'Officer',
+        'Branch',
+        'Branch type',
+        'City',
+        'Section',
+        'Checklist item',
+        'Response',
+        'Remarks',
+        'Compliance %',
+        'Risk level',
+        'Status',
+        'Evidence files',
+      ],
+      detailRows,
+    );
+
+    const html = wrapHtmlDocument(
+      'Vigilance Inspection Detail Export',
+      [
+        buildReportHeader(
+          'Vigilance Inspection Detail Export',
+          `Generated ${new Date().toLocaleString('en-IN')} · ${filterLine}`,
+        ),
+        buildSection('Executive summary', summary),
+        buildSection('Branch activity', branchChart),
+        buildSection('Inspection checklist detail', detailTable),
+        buildSection('Officer attendance & leave', buildHtmlTable(leaveSection.headers, leaveSection.rows)),
+      ].join(''),
+    );
+
+    downloadHtmlExcel(
+      html,
+      `vigilance-inspection-detail-export-${from}-to-${to}.xls`,
+    );
   };
 
   const exportSummaryCSV = async () => {
     let q = supabase
       .from('inspections')
       .select(
-        `id, inspection_date, compliance_score, risk_level, status,
+        `id, inspection_date, submitted_at, compliance_score, risk_level, status,
         user_roles:officer_id ( name ),
-        branches:branch_id ( branch_name )`,
+        branches:branch_id ( branch_name, city, branch_types:branch_type_id ( type_name ) )`,
       )
       .gte('inspection_date', from)
       .lte('inspection_date', to);
@@ -1231,13 +1311,109 @@ function ReportsTab() {
       return;
     }
 
-    const rows = ['ID,Date,Branch,Officer,Compliance Score,Risk Level,Status'];
-    (exportRows as { id: string; inspection_date?: string; compliance_score?: number; risk_level?: string; status?: string; user_roles?: { name?: string } | null; branches?: { branch_name?: string } | null }[]).forEach((r) => {
-      rows.push(
-        `${r.id},${r.inspection_date ?? ''},${r.branches?.branch_name ?? ''},${r.user_roles?.name ?? ''},${r.compliance_score ?? ''},${r.risk_level ?? ''},${r.status ?? ''}`,
-      );
+    type SummaryRow = {
+      id: string;
+      inspection_date?: string;
+      submitted_at?: string | null;
+      compliance_score?: number;
+      risk_level?: string;
+      status?: string;
+      user_roles?: { name?: string } | null;
+      branches?: {
+        branch_name?: string;
+        city?: string;
+        branch_types?: { type_name?: string } | { type_name?: string }[] | null;
+      } | null;
+    };
+
+    const rows: string[][] = [];
+    let avgSum = 0;
+    let scoredCount = 0;
+    const riskCounts = { low: 0, medium: 0, critical: 0, other: 0 };
+
+    (exportRows as SummaryRow[]).forEach((r) => {
+      const typeRel = r.branches?.branch_types;
+      const typeName = Array.isArray(typeRel) ? typeRel[0]?.type_name : typeRel?.type_name;
+      if (branchType !== 'all' && typeName !== branchType) return;
+
+      if (typeof r.compliance_score === 'number') {
+        avgSum += r.compliance_score;
+        scoredCount += 1;
+      }
+      const risk = (r.risk_level ?? '').toLowerCase();
+      if (risk === 'low') riskCounts.low += 1;
+      else if (risk === 'medium') riskCounts.medium += 1;
+      else if (risk === 'critical') riskCounts.critical += 1;
+      else riskCounts.other += 1;
+
+      rows.push([
+        r.id,
+        r.inspection_date ?? '',
+        r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN') : '',
+        r.branches?.branch_name ?? '',
+        r.branches?.city ?? '',
+        typeName ?? '',
+        r.user_roles?.name ?? '',
+        typeof r.compliance_score === 'number' ? `${r.compliance_score.toFixed(1)}%` : '—',
+        r.risk_level ?? '',
+        r.status ?? '',
+      ]);
     });
-    downloadCSV('vigilance_summary.csv', [...rows, ...(await fetchLeaveCsvSection())].join('\n'));
+
+    const leaveSection = await fetchLeaveCsvSection();
+    const avgCompliance = scoredCount ? (avgSum / scoredCount).toFixed(1) : '—';
+    const summary = buildSummaryTable([
+      ['Report period', `${from} to ${to}`],
+      ['Branch type filter', branchType],
+      ['Status filter', status],
+      ['Total inspections', String(rows.length)],
+      ['Average compliance', scoredCount ? `${avgCompliance}%` : '—'],
+      ['Low risk visits', String(riskCounts.low)],
+      ['Medium risk visits', String(riskCounts.medium)],
+      ['Critical risk visits', String(riskCounts.critical)],
+      ['Officer leave records', String(leaveSection.rows.length)],
+    ]);
+    const riskChart = buildHtmlBarChart(
+      [
+        { label: 'Low', value: riskCounts.low, color: '#22c55e' },
+        { label: 'Medium', value: riskCounts.medium, color: '#f59e0b' },
+        { label: 'Critical', value: riskCounts.critical, color: '#ef4444' },
+        { label: 'Other', value: riskCounts.other, color: '#94a3b8' },
+      ],
+      'Risk level distribution',
+    );
+    const html = wrapHtmlDocument(
+      'Vigilance Inspection Summary',
+      [
+        buildReportHeader(
+          'Vigilance Inspection Summary',
+          `Generated ${new Date().toLocaleString('en-IN')} · Period ${from} to ${to}`,
+        ),
+        buildSection('Executive summary', summary),
+        buildSection('Risk distribution', riskChart),
+        buildSection(
+          'Inspection summary',
+          buildHtmlTable(
+            [
+              'Inspection ID',
+              'Inspection date',
+              'Submitted at',
+              'Branch',
+              'City',
+              'Branch type',
+              'Officer',
+              'Compliance',
+              'Risk level',
+              'Status',
+            ],
+            rows,
+          ),
+        ),
+        buildSection('Officer attendance & leave', buildHtmlTable(leaveSection.headers, leaveSection.rows)),
+      ].join(''),
+    );
+
+    downloadHtmlExcel(html, `vigilance-inspection-summary-${from}-to-${to}.xls`);
   };
 
   return (
@@ -1273,8 +1449,8 @@ function ReportsTab() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={exportFullCSV} className="btn-primary">Export Full CSV</button>
-          <button onClick={exportSummaryCSV} className="btn-secondary">Export Summary CSV</button>
+          <button onClick={exportFullCSV} className="btn-primary">Export Detail Report</button>
+          <button onClick={exportSummaryCSV} className="btn-secondary">Export Summary Report</button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1429,14 +1605,4 @@ function ReportsTab() {
       />
     </div>
   );
-}
-
-function downloadCSV(filename: string, content: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }

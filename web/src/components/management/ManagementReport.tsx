@@ -190,8 +190,8 @@ export function ReportDetailModal({
       const pdfData = buildInspectionPdfDataFromReportDetail(data, branchName);
       const { generateInspectionPdf } = await import('../InspectionPdfReport');
       await generateInspectionPdf(pdfData, {
-        filenamePrefix: 'management-report',
-        documentTitle: 'MANAGEMENT REPORT',
+        filenamePrefix: 'store-inspection-report',
+        documentTitle: 'STORE INSPECTION REPORT',
       });
     } catch (err) {
       if (import.meta.env.DEV) console.error('[ManagementReport PDF]', err);

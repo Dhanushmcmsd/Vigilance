@@ -1,6 +1,15 @@
 import type { ManagementInspection } from './inspectionQueries';
 import { computeCeoMetrics, computeSectionBreakdown } from './ceoDashboardData';
+import { activityDate } from './dateRanges';
 import { canonicalDistrict, KERALA_DISTRICT_NAMES } from './storeRegions';
+
+function inspectionDayKey(row: ManagementInspection): string {
+  const d = activityDate(row);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export interface StoreCard {
   id: string;
@@ -178,7 +187,7 @@ export function calcDistrictDailyTrend(
 ): Array<Record<string, string | number | null>> {
   const [y, m] = yearMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
-  const monthRows = inspections.filter((row) => row.inspection_date.startsWith(yearMonth));
+  const monthRows = inspections.filter((row) => inspectionDayKey(row).startsWith(yearMonth));
   const districts = Array.from(new Set(monthRows.map((row) => storeDistrict(row.region)))).sort();
 
   return Array.from({ length: daysInMonth }, (_, idx) => {
@@ -188,7 +197,7 @@ export function calcDistrictDailyTrend(
     const row: Record<string, string | number | null> = { label };
     districts.forEach((district) => {
       const dayRows = monthRows.filter(
-        (item) => item.inspection_date === dateKey && storeDistrict(item.region) === district,
+        (item) => inspectionDayKey(item) === dateKey && storeDistrict(item.region) === district,
       );
       row[district] = dayRows.length
         ? dayRows.reduce((sum, item) => sum + item.compliance_score, 0) / dayRows.length
@@ -206,7 +215,7 @@ export function calcStoreDailyTrend(
   const [y, m] = yearMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const monthRows = filterInspectionsByDistrict(
-    inspections.filter((row) => row.inspection_date.startsWith(yearMonth)),
+    inspections.filter((row) => inspectionDayKey(row).startsWith(yearMonth)),
     district,
   );
   const stores = Array.from(new Set(monthRows.map((row) => row.branch_name))).sort();
@@ -218,7 +227,7 @@ export function calcStoreDailyTrend(
     const row: Record<string, string | number | null> = { label };
     stores.forEach((storeName) => {
       const dayRows = monthRows.filter(
-        (item) => item.inspection_date === dateKey && item.branch_name === storeName,
+        (item) => inspectionDayKey(item) === dateKey && item.branch_name === storeName,
       );
       row[storeName] = dayRows.length
         ? dayRows.reduce((sum, item) => sum + item.compliance_score, 0) / dayRows.length

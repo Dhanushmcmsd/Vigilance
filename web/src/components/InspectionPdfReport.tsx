@@ -103,6 +103,17 @@ const styles = StyleSheet.create({
   },
   h2: { fontSize: 10, fontWeight: 700, marginTop: 10, marginBottom: 4, color: '#334155' },
   body: { fontSize: 9, lineHeight: 1.5, color: '#334155' },
+  chartRow: { marginBottom: 10 },
+  chartLabel: { fontSize: 8, fontWeight: 600, color: '#334155', marginBottom: 3 },
+  chartTrack: {
+    height: 10,
+    backgroundColor: '#fee2e2',
+    borderRadius: 5,
+    overflow: 'hidden',
+    width: 360,
+  },
+  chartFill: { height: 10, backgroundColor: '#22c55e', borderRadius: 5 },
+  chartMeta: { fontSize: 7, color: MUTED, marginTop: 2 },
 });
 
 export interface InspectionPdfAttachment {
@@ -150,6 +161,49 @@ function statusForItem(r: InspectionPdfResponse): 'pass' | 'fail' | 'na' {
   if (!r.response || r.response === 'N/A') return 'na';
   const trigger = r.trigger_on_no ?? true;
   return isCompliantResponse(r.response, trigger) ? 'pass' : 'fail';
+}
+
+function computeSectionChartData(responses: InspectionPdfResponse[]) {
+  const grouped = new Map<string, { pass: number; fail: number; na: number }>();
+  for (const response of responses) {
+    const section = response.section || 'General';
+    const bucket = grouped.get(section) ?? { pass: 0, fail: 0, na: 0 };
+    const status = statusForItem(response);
+    if (status === 'pass') bucket.pass += 1;
+    else if (status === 'fail') bucket.fail += 1;
+    else bucket.na += 1;
+    grouped.set(section, bucket);
+  }
+  return Array.from(grouped.entries()).map(([section, counts]) => {
+    const scored = counts.pass + counts.fail;
+    const compliance = scored ? Math.round((counts.pass / scored) * 100) : 0;
+    return { section, ...counts, compliance };
+  });
+}
+
+function PdfSectionChart({ responses }: { responses: InspectionPdfResponse[] }) {
+  const rows = computeSectionChartData(responses);
+  if (!rows.length) return null;
+
+  return (
+    <View style={{ marginTop: 12, marginBottom: 8 }}>
+      <Text style={styles.sectionTitle}>Section compliance overview</Text>
+      {rows.map((row) => {
+        const fillWidth = Math.max(0, Math.min(360, (row.compliance / 100) * 360));
+        return (
+          <View key={row.section} style={styles.chartRow}>
+            <Text style={styles.chartLabel}>{row.section}</Text>
+            <View style={styles.chartTrack}>
+              <View style={[styles.chartFill, { width: fillWidth }]} />
+            </View>
+            <Text style={styles.chartMeta}>
+              {row.compliance}% compliant · {row.pass} OK · {row.fail} NC · {row.na} N/A
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 function formatRef(id: string, date: string) {
@@ -247,6 +301,8 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
             compliant answer. Photographic evidence is shown inline where provided by the inspecting officer.
           </Text>
         </View>
+
+        <PdfSectionChart responses={data.responses} />
 
         {data.headComment ? (
           <View>
@@ -416,6 +472,8 @@ function BrowserInspectionReportDoc({
             </View>
           </View>
         </View>
+
+        <PdfSectionChart responses={data.responses} />
 
         {data.headComment ? (
           <View>
@@ -687,7 +745,7 @@ async function renderJsPdfBlob(
 function downloadBlob(
   blob: Blob,
   data: InspectionPdfData,
-  filenamePrefix = 'audit-report',
+  filenamePrefix = 'store-inspection-report',
 ): string {
   const safeBranch = data.branchName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const filename = `${filenamePrefix}-${safeBranch}-${data.inspectionDate}.pdf`;

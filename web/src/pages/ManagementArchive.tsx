@@ -100,10 +100,6 @@ export default function ManagementArchive() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link to="/dashboard" className="bloom-link mb-3">
-            <ArrowLeft className="h-4 w-4" />
-            Back to dashboard
-          </Link>
           {selectedDistrict ? (
             <button
               type="button"
@@ -113,7 +109,12 @@ export default function ManagementArchive() {
               <ArrowLeft className="h-4 w-4" />
               Back to Districts
             </button>
-          ) : null}
+          ) : (
+            <Link to="/dashboard" className="bloom-link mb-3">
+              <ArrowLeft className="h-4 w-4" />
+              Back to dashboard
+            </Link>
+          )}
           <BloomPageHeader
             title="Management archive"
             description="Historical compliance by calendar month with store performance trend analysis for leadership review."

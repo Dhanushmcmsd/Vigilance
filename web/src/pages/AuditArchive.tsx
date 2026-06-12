@@ -7,6 +7,16 @@ import { formatNonComplianceAlert } from '../lib/alertDescriptions';
 import { filterInspectionsByDistrict } from '../lib/districtCalculations';
 import ManagementReport from '../components/management/ManagementReport';
 import { BloomGradientPanel } from '../components/ui/BloomGradientPanel';
+import {
+  buildHtmlBarChart,
+  buildHtmlTable,
+  buildReportHeader,
+  buildSection,
+  buildSummaryTable,
+  downloadHtmlExcel,
+  slugFilename,
+  wrapHtmlDocument,
+} from '../lib/formattedExport';
 
 interface AuditArchiveProps {
   backPath?: string;
@@ -106,67 +116,11 @@ export default function AuditArchive({ backPath, backLabel, districtFilter = nul
       storeStats.set(row.branch_name, store);
     });
 
-    const tableStyle =
-      'border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif;font-size:11pt;';
-    const thStyle =
-      'border:1px solid #334155;background:#0f172a;color:#f8fafc;padding:8px 10px;text-align:left;font-weight:700;';
-    const tdStyle = 'border:1px solid #cbd5e1;padding:8px 10px;vertical-align:top;';
-    const tdAlt = 'border:1px solid #cbd5e1;padding:8px 10px;background:#f8fafc;vertical-align:top;';
-    const titleStyle = 'font-family:Calibri,Arial,sans-serif;font-size:18pt;font-weight:700;color:#0f172a;';
-    const subtitleStyle = 'font-family:Calibri,Arial,sans-serif;font-size:10pt;color:#64748b;margin:4px 0 16px;';
-    const sectionStyle =
-      'font-family:Calibri,Arial,sans-serif;font-size:12pt;font-weight:700;color:#0f766e;margin:24px 0 8px;';
-
-    const summaryRows = [
-      ['Total Submissions', String(totalSubmissions)],
-      ['Unique Stores', String(uniqueStores)],
-      ['Unique Officers', String(uniqueOfficers)],
-      ['Average Compliance Score', `${avgScore.toFixed(1)}%`],
-      ['Edited Submissions', String(editedSubmissions)],
-      ['Evidence Photos', String(totalPhotos)],
-      ['Non-Compliance Items', String(violations.length)],
-    ];
-
-    const storeRows = Array.from(storeStats.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(
-        ([store, stats], i) => `
-        <tr>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${store}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${stats.submissions}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${(stats.scoreSum / stats.submissions).toFixed(1)}%</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${stats.nonCompliant}</td>
-        </tr>`,
-      )
-      .join('');
-
-    const submissionRows = filteredRows
-      .map(
-        (row, i) => `
-        <tr>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${formatAuditDate(row.submitted_at)}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${row.branch_name}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${row.officer_name}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${row.compliance_score.toFixed(1)}%</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${riskBand(row.compliance_score)}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${row.is_edited ? 'Edited' : 'Submitted'}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${row.photos.length}</td>
-        </tr>`,
-      )
-      .join('');
-
-    const violationRows = violations
-      .map(
-        (v, i) => `
-        <tr>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${v.store}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${v.date}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${v.section}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${v.issue}</td>
-          <td style="${i % 2 ? tdAlt : tdStyle}">${v.officer}</td>
-        </tr>`,
-      )
-      .join('');
+    const riskCounts = { Low: 0, Medium: 0, High: 0 };
+    filteredRows.forEach((row) => {
+      const band = riskBand(row.compliance_score);
+      riskCounts[band] += 1;
+    });
 
     const filterLine = [
       districtFilter ? `District: ${districtFilter}` : null,
@@ -179,70 +133,96 @@ export default function AuditArchive({ backPath, backLabel, districtFilter = nul
       .filter(Boolean)
       .join(' · ') || 'All records';
 
-    const html = `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
-<head><meta charset="utf-8"><title>Vigilance Compliance Report</title></head>
-<body>
-  <p style="${titleStyle}">Vigilance Compliance Report</p>
-  <p style="${subtitleStyle}">Generated ${new Date().toLocaleString('en-IN')} · ${filterLine}</p>
+    const periodSlug =
+      fromDate && toDate ? `${fromDate}-to-${toDate}` : new Date().toISOString().slice(0, 10);
+    const districtSlug = districtFilter ? slugFilename(districtFilter) : 'all-districts';
 
-  <p style="${sectionStyle}">Executive Summary</p>
-  <table style="${tableStyle}">
-    <tr><th style="${thStyle}">Metric</th><th style="${thStyle}">Value</th></tr>
-    ${summaryRows
-      .map(
-        ([label, value], i) =>
-          `<tr><td style="${i % 2 ? tdAlt : tdStyle}">${label}</td><td style="${i % 2 ? tdAlt : tdStyle}">${value}</td></tr>`,
-      )
-      .join('')}
-  </table>
+    const html = wrapHtmlDocument(
+      'Vigilance Compliance Report',
+      [
+        buildReportHeader(
+          'Vigilance Compliance Report',
+          `Generated ${new Date().toLocaleString('en-IN')} · ${filterLine}`,
+        ),
+        buildSection(
+          'Executive summary',
+          buildSummaryTable([
+            ['Total submissions', String(totalSubmissions)],
+            ['Unique stores', String(uniqueStores)],
+            ['Unique officers', String(uniqueOfficers)],
+            ['Average compliance score', `${avgScore.toFixed(1)}%`],
+            ['Edited submissions', String(editedSubmissions)],
+            ['Evidence photos', String(totalPhotos)],
+            ['Non-compliance items', String(violations.length)],
+          ]),
+        ),
+        buildSection(
+          'Risk distribution',
+          buildHtmlBarChart(
+            [
+              { label: 'Low risk (≥85%)', value: riskCounts.Low, color: '#22c55e' },
+              { label: 'Medium risk (70–84%)', value: riskCounts.Medium, color: '#f59e0b' },
+              { label: 'High risk (<70%)', value: riskCounts.High, color: '#ef4444' },
+            ],
+          ),
+        ),
+        buildSection(
+          'Store performance',
+          buildHtmlTable(
+            ['Store', 'Submissions', 'Avg score', 'Non-compliance items'],
+            Array.from(storeStats.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([store, stats]) => [
+                store,
+                String(stats.submissions),
+                `${(stats.scoreSum / stats.submissions).toFixed(1)}%`,
+                String(stats.nonCompliant),
+              ]),
+          ),
+        ),
+        buildSection(
+          'Store compliance chart',
+          buildHtmlBarChart(
+            Array.from(storeStats.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([store, stats]) => ({
+                label: store,
+                value: Math.round(stats.scoreSum / stats.submissions),
+                color:
+                  stats.scoreSum / stats.submissions >= 85
+                    ? '#22c55e'
+                    : stats.scoreSum / stats.submissions >= 70
+                      ? '#f59e0b'
+                      : '#ef4444',
+              })),
+          ),
+        ),
+        buildSection(
+          'Inspection submissions',
+          buildHtmlTable(
+            ['Submitted at', 'Store', 'Officer', 'Score', 'Risk', 'Status', 'Photos'],
+            filteredRows.map((row) => [
+              formatAuditDate(row.submitted_at),
+              row.branch_name,
+              row.officer_name,
+              `${row.compliance_score.toFixed(1)}%`,
+              riskBand(row.compliance_score),
+              row.is_edited ? 'Edited' : 'Submitted',
+              String(row.photos.length),
+            ]),
+          ),
+        ),
+        buildSection(
+          'Non-compliance issues',
+          buildHtmlTable(
+            ['Store', 'Date', 'Section', 'Issue', 'Officer'],
+            violations.map((v) => [v.store, v.date, v.section, v.issue, v.officer]),
+          ),
+        ),
+      ].join(''),
+    );
 
-  <p style="${sectionStyle}">Store Performance</p>
-  <table style="${tableStyle}">
-    <tr>
-      <th style="${thStyle}">Store</th>
-      <th style="${thStyle}">Submissions</th>
-      <th style="${thStyle}">Avg Score</th>
-      <th style="${thStyle}">Non-Compliance Items</th>
-    </tr>
-    ${storeRows || `<tr><td colspan="4" style="${tdStyle}">No data</td></tr>`}
-  </table>
-
-  <p style="${sectionStyle}">Inspection Submissions</p>
-  <table style="${tableStyle}">
-    <tr>
-      <th style="${thStyle}">Submitted At</th>
-      <th style="${thStyle}">Store</th>
-      <th style="${thStyle}">Officer</th>
-      <th style="${thStyle}">Score</th>
-      <th style="${thStyle}">Risk</th>
-      <th style="${thStyle}">Status</th>
-      <th style="${thStyle}">Photos</th>
-    </tr>
-    ${submissionRows || `<tr><td colspan="7" style="${tdStyle}">No submissions match filters</td></tr>`}
-  </table>
-
-  <p style="${sectionStyle}">Non-Compliance Issues</p>
-  <table style="${tableStyle}">
-    <tr>
-      <th style="${thStyle}">Store</th>
-      <th style="${thStyle}">Date</th>
-      <th style="${thStyle}">Section</th>
-      <th style="${thStyle}">Issue</th>
-      <th style="${thStyle}">Officer</th>
-    </tr>
-    ${violationRows || `<tr><td colspan="5" style="${tdStyle}">No non-compliance items in selected range</td></tr>`}
-  </table>
-</body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `vigilance-report-${new Date().toISOString().slice(0, 10)}.xls`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadHtmlExcel(html, `vigilance-compliance-report-${districtSlug}-${periodSlug}.xls`);
   };
 
   return (

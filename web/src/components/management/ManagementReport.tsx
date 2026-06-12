@@ -14,8 +14,15 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { buildInspectionPdfDataFromReportDetail } from '../../lib/auditExport';
-import { dedupeInspectionImageFiles } from '../../lib/inspectionImages';
 import { isViolationResponse } from '../../lib/checklistScoring';
+import {
+  collectInspectionImageFiles,
+  collectInspectionVideoFiles,
+  downloadInspectionMediaFile,
+  resolveInspectionMediaUrls,
+  type InspectionMediaFile,
+} from '../../lib/inspectionMedia';
+import { ReportMediaViewer, type ReportMediaViewerItem } from './ReportMediaViewer';
 import { formatNonComplianceAlert } from '../../lib/alertDescriptions';
 import {
   auditScoreColor,
@@ -75,7 +82,13 @@ interface ReportDetail {
     uploaded_at?: string | null;
   }[];
   general_remarks: { remark_text: string }[];
+  inspection_answers: {
+    checklist_item_id: string | null;
+    photo_url: string | null;
+  }[];
 }
+
+type ResolvedInspectionMediaFile = InspectionMediaFile & { resolved_url: string };
 
 type View =
   | { kind: 'districts' }
@@ -146,6 +159,12 @@ export function ReportDetailModal({
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [resolvedImages, setResolvedImages] = useState<ResolvedInspectionMediaFile[]>([]);
+  const [resolvedVideos, setResolvedVideos] = useState<ResolvedInspectionMediaFile[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [activeMedia, setActiveMedia] = useState<ReportMediaViewerItem | null>(null);
+  const [downloadingMediaId, setDownloadingMediaId] = useState<string | null>(null);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -193,12 +212,13 @@ export function ReportDetailModal({
           head_comment, submitted_at, time_in, time_out,
           officer:user_roles!inspections_officer_id_fkey ( name ),
           inspection_responses (
-            id, response, remarks,
+            id, response, remarks, checklist_item_id,
             checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
               item_text, section, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type, duration_seconds, file_size_bytes, uploaded_at ),
+          inspection_files ( id, file_url, file_name, file_type, duration_seconds, file_size_bytes, uploaded_at, checklist_item_id ),
+          inspection_answers ( checklist_item_id, photo_url ),
           general_remarks ( remark_text )
         `,
         )
@@ -220,19 +240,79 @@ export function ReportDetailModal({
   }, [data?.inspection_responses]);
 
   const imageFiles = useMemo(
-    () => dedupeInspectionImageFiles(data?.inspection_files ?? []),
+    () => collectInspectionImageFiles(data?.inspection_files ?? [], data?.inspection_answers ?? []),
+    [data?.inspection_files, data?.inspection_answers],
+  );
+
+  const videoFiles = useMemo(
+    () => collectInspectionVideoFiles(data?.inspection_files ?? []),
     [data?.inspection_files],
   );
 
-  const videoFiles = useMemo(() => {
-    const seen = new Set<string>();
-    return (data?.inspection_files ?? []).filter((f) => {
-      if (f.file_type !== 'video') return false;
-      if (seen.has(f.file_url)) return false;
-      seen.add(f.file_url);
-      return true;
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!data || (imageFiles.length === 0 && videoFiles.length === 0)) {
+      setResolvedImages([]);
+      setResolvedVideos([]);
+      setMediaLoading(false);
+      setMediaError(null);
+      return;
+    }
+
+    setMediaLoading(true);
+    setMediaError(null);
+
+    void Promise.all([
+      resolveInspectionMediaUrls(imageFiles),
+      resolveInspectionMediaUrls(videoFiles),
+    ])
+      .then(([images, videos]) => {
+        if (cancelled) return;
+        setResolvedImages(images);
+        setResolvedVideos(videos);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (import.meta.env.DEV) console.error('[ManagementReport media]', err);
+        setMediaError('Some media could not be loaded. Try downloading instead.');
+        setResolvedImages(
+          imageFiles.map((file) => ({ ...file, resolved_url: file.file_url })),
+        );
+        setResolvedVideos(
+          videoFiles.map((file) => ({ ...file, resolved_url: file.file_url })),
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setMediaLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data, imageFiles, videoFiles]);
+
+  const openMediaViewer = (file: ResolvedInspectionMediaFile, kind: 'image' | 'video') => {
+    setActiveMedia({
+      kind,
+      id: file.id,
+      url: file.resolved_url,
+      fileUrl: file.file_url,
+      fileName: file.file_name,
     });
-  }, [data?.inspection_files]);
+  };
+
+  const handleMediaDownload = async (file: ResolvedInspectionMediaFile) => {
+    setDownloadingMediaId(file.id);
+    try {
+      await downloadInspectionMediaFile(file.file_url, file.file_name);
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[ManagementReport media download]', err);
+      setMediaError(err instanceof Error ? err.message : 'Download failed. Please try again.');
+    } finally {
+      setDownloadingMediaId(null);
+    }
+  };
 
   return createPortal(
     <div
@@ -369,72 +449,106 @@ export function ReportDetailModal({
                 </div>
               )}
 
+              {(imageFiles.length > 0 || videoFiles.length > 0) && mediaError && (
+                <div className="rounded-lg border border-amber-400/35 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
+                  {mediaError}
+                </div>
+              )}
+
               {imageFiles.length > 0 && (
                 <div className="vms-report-section p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Photo Evidence</p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {imageFiles.map((f) => (
-                      <a
-                        key={f.id}
-                        href={f.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block overflow-hidden rounded-lg border border-white/15"
-                      >
-                        <img src={f.file_url} alt={f.file_name} className="h-24 w-full object-cover" />
-                      </a>
-                    ))}
-                  </div>
+                  {mediaLoading ? (
+                    <p className="text-sm text-white/55">Loading photos…</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {resolvedImages.map((f) => (
+                        <div key={f.id} className="vms-report-media-card">
+                          <button
+                            type="button"
+                            onClick={() => openMediaViewer(f, 'image')}
+                            className="vms-report-media-thumb"
+                            aria-label={`View ${f.file_name}`}
+                          >
+                            <img src={f.resolved_url} alt={f.file_name} />
+                          </button>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white">{f.file_name}</p>
+                          </div>
+                          <div className="vms-report-media-actions">
+                            <button
+                              type="button"
+                              onClick={() => openMediaViewer(f, 'image')}
+                              className="vms-modal-btn-ghost"
+                            >
+                              View photo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleMediaDownload(f)}
+                              disabled={downloadingMediaId === f.id}
+                              className="vms-modal-btn-primary"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              {downloadingMediaId === f.id ? 'Downloading…' : 'Download photo'}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
               {videoFiles.length > 0 && (
                 <div className="vms-report-section p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Field Videos</p>
-                  <div className="space-y-2">
-                    {videoFiles.map((f) => (
-                      <div
-                        key={f.id}
-                        className="flex flex-col gap-3 rounded-lg border border-white/15 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white">{f.file_name}</p>
-                          <p className="mt-1 text-xs text-white/55">
-                            {formatVideoDuration(f.duration_seconds)} · {formatVideoSizeMb(f.file_size_bytes)}
-                            {f.uploaded_at
-                              ? ` · ${new Date(f.uploaded_at).toLocaleString('en-IN')}`
-                              : ''}
-                          </p>
+                  {mediaLoading ? (
+                    <p className="text-sm text-white/55">Loading videos…</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {resolvedVideos.map((f) => (
+                        <div key={f.id} className="vms-report-media-card sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-white">{f.file_name}</p>
+                            <p className="mt-1 text-xs text-white/55">
+                              {formatVideoDuration(f.duration_seconds)} · {formatVideoSizeMb(f.file_size_bytes)}
+                              {f.uploaded_at
+                                ? ` · ${new Date(f.uploaded_at).toLocaleString('en-IN')}`
+                                : ''}
+                            </p>
+                          </div>
+                          <div className="vms-report-media-actions sm:shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openMediaViewer(f, 'video')}
+                              className="vms-modal-btn-ghost"
+                            >
+                              View video
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleMediaDownload(f)}
+                              disabled={downloadingMediaId === f.id}
+                              className="vms-modal-btn-primary"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              {downloadingMediaId === f.id ? 'Downloading…' : 'Download video'}
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 gap-2">
-                          <a
-                            href={f.file_url}
-                            download={f.file_name}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="vms-modal-btn-primary"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            Download
-                          </a>
-                          <a
-                            href={f.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="vms-modal-btn-ghost"
-                          >
-                            Open
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
+      {activeMedia && (
+        <ReportMediaViewer item={activeMedia} onBack={() => setActiveMedia(null)} />
+      )}
     </div>,
     document.body,
   );

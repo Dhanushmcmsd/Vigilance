@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import type { InspectionPdfData } from '../components/InspectionPdfReport';
 import type { InspectionPdfAttachment } from '../components/InspectionPdfReport';
+import {
+  collectInspectionImageFiles,
+  collectItemImageAttachments,
+  type InspectionAnswerPhoto,
+} from './inspectionMedia';
 import { dedupeInspectionImageFiles, normalizeInspectionImageUrl, type InspectionImageFile } from './inspectionImages';
 
 const INSPECTION_PDF_SELECT_FULL = `
@@ -44,6 +49,7 @@ const INSPECTION_PDF_SELECT_MINIMAL = `
   branches:branch_id ( branch_name, city, branch_types:branch_type_id ( type_name ) ),
   user_roles:officer_id ( name ),
   inspection_files ( file_url, file_name, file_type, checklist_item_id ),
+  inspection_answers ( checklist_item_id, photo_url ),
   inspection_responses (
     response,
     remarks,
@@ -175,6 +181,7 @@ export function buildInspectionPdfDataFromReportDetail(
     inspection_responses: {
       response: string;
       remarks: string | null;
+      checklist_item_id?: string;
       checklist_item: {
         item_text: string;
         section: string;
@@ -183,12 +190,15 @@ export function buildInspectionPdfDataFromReportDetail(
     }[];
     general_remarks: { remark_text: string }[];
     inspection_files?: InspectionImageFile[];
+    inspection_answers?: InspectionAnswerPhoto[];
   },
   branchName: string,
   branchType = '—',
 ): InspectionPdfData {
-  const uniqueImages = dedupeInspectionImageFiles(detail.inspection_files ?? []);
-  const photos = uniqueImages.map((file) => ({
+  const files = (detail.inspection_files ?? []) as InspectionImageFile[];
+  const answers = detail.inspection_answers ?? [];
+  const allImages = collectInspectionImageFiles(files, answers);
+  const photos = allImages.map((file) => ({
     url: file.file_url,
     name: file.file_name,
   }));
@@ -208,15 +218,25 @@ export function buildInspectionPdfDataFromReportDetail(
     headComment: detail.head_comment,
     generalRemark:
       detail.general_remarks.map((r) => r.remark_text).filter(Boolean).join('\n') || null,
-    responses: detail.inspection_responses.map((r) => ({
-      section: r.checklist_item?.section ?? 'General',
-      item_text: r.checklist_item?.item_text ?? '—',
-      response: r.response,
-      remarks: r.remarks,
-      trigger_on_no: r.checklist_item?.trigger_on_no ?? true,
-      risk_level: null,
-      attachments: [],
-    })),
+    responses: detail.inspection_responses.map((r) => {
+      const itemId = r.checklist_item_id ?? '';
+      const itemAttachments = itemId
+        ? collectItemImageAttachments(files, answers, itemId)
+        : [];
+      return {
+        section: r.checklist_item?.section ?? 'General',
+        item_text: r.checklist_item?.item_text ?? '—',
+        response: r.response,
+        remarks: r.remarks,
+        trigger_on_no: r.checklist_item?.trigger_on_no ?? true,
+        risk_level: null,
+        attachments: itemAttachments.map((file) => ({
+          url: file.file_url,
+          name: file.file_name,
+          type: 'image' as const,
+        })),
+      };
+    }),
     photos,
   };
 }

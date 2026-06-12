@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { isViolationResponse } from './checklistScoring';
+import { isInspectionImageFile } from './inspectionImages';
 import { canonicalDistrict } from './storeRegions';
 
 export interface InspectionResponseRow {
@@ -97,7 +98,13 @@ function mapInspectionRow(item: Record<string, unknown>): ManagementInspection {
       source: 'answers' as const,
     }));
   const filePhotos = ((item.inspection_files as Record<string, unknown>[]) ?? [])
-    .filter((file) => file.file_type === 'image' || /\.(jpe?g|png|gif|webp|heic)$/i.test(String(file.file_url ?? '')))
+    .filter((file) =>
+      isInspectionImageFile({
+        file_url: String(file.file_url ?? ''),
+        file_name: String(file.file_name ?? ''),
+        file_type: String(file.file_type ?? ''),
+      }),
+    )
     .map((file) => ({
       url: String(file.file_url),
       name: String(file.file_name ?? 'Inspection evidence'),

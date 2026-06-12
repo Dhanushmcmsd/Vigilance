@@ -21,8 +21,14 @@ import * as FileSystem from 'expo-file-system';
 import { supabase } from '../../lib/supabase';
 import { RADIUS, SPACING } from '../../lib/a11y';
 import { AUDIT, auditScoreColor } from '../../lib/auditTheme';
-import { buildAuditPdfHtml } from '../../lib/auditPdf';
+import { buildAuditPdfHtml, prepareAuditPdfInspection } from '../../lib/auditPdf';
 import { isViolationResponse, type ChecklistResponse } from '../../lib/checklistScoring';
+import {
+  collectInspectionImageFiles,
+  collectInspectionVideoFiles,
+  collectItemImageAttachments,
+} from '../../lib/inspectionMedia';
+import { useResolvedMediaMap } from '../../hooks/useResolvedMediaMap';
 
 const PDF_MIME_TYPE = 'application/pdf';
 
@@ -117,13 +123,6 @@ interface ReportDetail {
   general_remarks: { remark_text: string }[];
 }
 
-const isVideoEvidence = (file: ReportDetail['inspection_files'][number]) => {
-  const type = (file.file_type ?? '').toLowerCase();
-  const name = (file.file_name ?? '').toLowerCase();
-  const url = (file.file_url ?? '').toLowerCase();
-  return type === 'video' || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(name) || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
-};
-
 const formatVideoDuration = (seconds: number | null | undefined) => {
   if (!seconds || seconds <= 0) return '0:00';
   const m = Math.floor(seconds / 60);
@@ -134,17 +133,6 @@ const formatVideoDuration = (seconds: number | null | undefined) => {
 const formatVideoSizeMb = (bytes: number | null | undefined) => {
   if (!bytes || bytes <= 0) return '—';
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const isImageEvidence = (file: ReportDetail['inspection_files'][number]) => {
-  const type = (file.file_type ?? '').toLowerCase();
-  const name = (file.file_name ?? '').toLowerCase();
-  const url = (file.file_url ?? '').toLowerCase();
-  return (
-    type === 'image' ||
-    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) ||
-    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url)
-  );
 };
 
 /**
@@ -210,59 +198,42 @@ export default function AuditReportDetailScreen() {
     return grouped;
   }, [data?.inspection_responses]);
 
-  // Map checklist_item_id -> image files so each checklist row can show its evidence
+  const imageFiles = useMemo(
+    () => collectInspectionImageFiles(data?.inspection_files ?? [], data?.inspection_answers ?? []),
+    [data?.inspection_files, data?.inspection_answers],
+  );
+
+  const videoFiles = useMemo(
+    () => collectInspectionVideoFiles(data?.inspection_files ?? []),
+    [data?.inspection_files],
+  );
+
   const itemEvidenceMap = useMemo(() => {
-    const map = new Map<string, ReportDetail['inspection_files']>();
-    (data?.inspection_files ?? []).forEach((file) => {
-      if (!isImageEvidence(file) || !file.checklist_item_id) return;
-      const list = map.get(file.checklist_item_id) ?? [];
-      list.push(file);
-      map.set(file.checklist_item_id, list);
-    });
-    (data?.inspection_answers ?? []).forEach((answer, index) => {
-      if (!answer.checklist_item_id || !answer.photo_url) return;
-      const pseudoFile = {
-        id: `answer:${answer.checklist_item_id}:${index}`,
-        file_url: answer.photo_url,
-        file_name: 'photo',
-        file_type: 'image',
-        checklist_item_id: answer.checklist_item_id,
-      };
-      const list = map.get(answer.checklist_item_id) ?? [];
-      if (!list.some((entry) => entry.file_url === pseudoFile.file_url)) {
-        list.push(pseudoFile);
+    const map = new Map<string, ReturnType<typeof collectInspectionImageFiles>>();
+    (data?.inspection_responses ?? []).forEach((response) => {
+      const attachments = collectItemImageAttachments(
+        data?.inspection_files ?? [],
+        data?.inspection_answers ?? [],
+        response.checklist_item_id,
+      );
+      if (attachments.length > 0) {
+        map.set(response.checklist_item_id, attachments);
       }
-      map.set(answer.checklist_item_id, list);
     });
     return map;
-  }, [data?.inspection_files, data?.inspection_answers]);
+  }, [data?.inspection_files, data?.inspection_answers, data?.inspection_responses]);
 
-  // All image files for the global photo evidence section (deduped by URL)
-  const imageFiles = useMemo(() => {
-    const seen = new Set<string>();
-    return (data?.inspection_files ?? []).filter((f) => {
-      if (!isImageEvidence(f)) return false;
-      if (seen.has(f.file_url)) return false;
-      seen.add(f.file_url);
-      return true;
-    });
-  }, [data?.inspection_files]);
-
-  const videoFiles = useMemo(() => {
-    const seen = new Set<string>();
-    return (data?.inspection_files ?? []).filter((f) => {
-      if (!isVideoEvidence(f)) return false;
-      if (seen.has(f.file_url)) return false;
-      seen.add(f.file_url);
-      return true;
-    });
-  }, [data?.inspection_files]);
+  const resolvedMap = useResolvedMediaMap([
+    ...imageFiles.map((file) => file.file_url),
+    ...videoFiles.map((file) => file.file_url),
+  ]);
 
   const handleDownloadPdf = async () => {
     if (!data) return;
     setPdfLoading(true);
     try {
-      const html = buildAuditPdfHtml(data, branchName ?? 'Unknown Store');
+      const prepared = await prepareAuditPdfInspection(data);
+      const html = buildAuditPdfHtml(prepared, branchName ?? 'Unknown Store');
       const { uri } = await Print.printToFileAsync({ html });
       const fileName = buildPdfFileName(inspectionId, branchName, data.inspection_date);
       const { uri: savedUri, savedToExternalStorage } = await savePdfToDeviceStorage(uri, fileName);
@@ -519,11 +490,11 @@ export default function AuditReportDetailScreen() {
                         {linkedEvidence.map((f) => (
                           <TouchableOpacity
                             key={f.id}
-                            onPress={() => Linking.openURL(f.file_url)}
+                            onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
                             style={{ marginRight: 8 }}
                           >
                             <Image
-                              source={{ uri: f.file_url }}
+                              source={{ uri: resolvedMap[f.file_url] ?? f.file_url }}
                               style={{ width: 64, height: 64, borderRadius: RADIUS.md }}
                               resizeMode="cover"
                             />
@@ -594,9 +565,12 @@ export default function AuditReportDetailScreen() {
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {imageFiles.map((f) => (
-                <TouchableOpacity key={f.id} onPress={() => Linking.openURL(f.file_url)}>
+                <TouchableOpacity
+                  key={f.id}
+                  onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
+                >
                   <Image
-                    source={{ uri: f.file_url }}
+                    source={{ uri: resolvedMap[f.file_url] ?? f.file_url }}
                     style={{ width: 100, height: 100, borderRadius: RADIUS.md }}
                     resizeMode="cover"
                   />
@@ -652,7 +626,7 @@ export default function AuditReportDetailScreen() {
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => Linking.openURL(f.file_url)}
+                    onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',

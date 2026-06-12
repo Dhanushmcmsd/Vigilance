@@ -958,7 +958,8 @@ function ReportsTab() {
         user_roles:officer_id ( name ),
         branches:branch_id ( branch_name, city, branch_types:branch_type_id ( type_name ) ),
         inspection_responses ( response, remarks, checklist_templates:checklist_item_id ( section, item_text ) ),
-        inspection_files ( file_url )`,
+        inspection_files ( file_url ),
+        inspection_answers ( photo_url )`,
       )
       .gte('inspection_date', from)
       .lte('inspection_date', to);
@@ -991,6 +992,7 @@ function ReportsTab() {
         checklist_templates?: { section?: string; item_text?: string } | null;
       }[];
       inspection_files?: { file_url?: string }[];
+      inspection_answers?: { photo_url?: string | null }[];
     };
 
     (exportRows as ExportRow[]).forEach((insp) => {
@@ -999,7 +1001,9 @@ function ReportsTab() {
       const typeName = Array.isArray(typeRel) ? typeRel[0]?.type_name : typeRel?.type_name;
       if (branchType !== 'all' && typeName !== branchType) return;
 
-      const files = (insp.inspection_files ?? []).map((f) => f.file_url).join('; ');
+      const fileUrls = (insp.inspection_files ?? []).map((f) => f.file_url).filter(Boolean);
+      const answerUrls = (insp.inspection_answers ?? []).map((a) => a.photo_url).filter(Boolean);
+      const files = [...new Set([...fileUrls, ...answerUrls])].join('; ');
       const base = [
         insp.id,
         insp.inspection_date ?? '',

@@ -6,7 +6,6 @@ export interface InspectionImageFile {
   checklist_item_id?: string | null;
 }
 
-/** Stable key for comparing the same uploaded file stored in multiple rows. */
 export function normalizeInspectionImageUrl(url: string): string {
   try {
     const parsed = new URL(url.trim());
@@ -31,7 +30,6 @@ export function isInspectionImageFile(file: {
   );
 }
 
-/** Remove duplicate image rows that share the same underlying file URL. */
 export function dedupeInspectionImageFiles<T extends InspectionImageFile>(files: T[]): T[] {
   const seen = new Set<string>();
   return files.filter((file) => {

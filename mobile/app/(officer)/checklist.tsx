@@ -28,6 +28,10 @@ import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
 import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
 import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
+import {
+  uploadInspectionDocumentFile,
+  uploadInspectionImageFile,
+} from '../../lib/inspectionStorageUpload';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 import { claimBranchInspection } from '../../lib/branchLocks';
 import VideoCapture from '../../components/VideoCapture';
@@ -499,6 +503,63 @@ export default function ChecklistScreen() {
     [],
   );
 
+  const uploadCapturedImages = useCallback(
+    async (
+      itemId: string,
+      attachments: { uri: string; name: string; type: 'image' }[],
+      successLabel: string,
+    ) => {
+      const inspId = await ensureInspection();
+      if (!inspId) {
+        showToast('Inspection not ready for photo upload', 'error');
+        return;
+      }
+
+      appendItemFiles(
+        itemId,
+        attachments.map((file) => ({ ...file, uploading: true })),
+      );
+
+      let uploadedCount = 0;
+      for (const attachment of attachments) {
+        try {
+          const uploaded = await uploadInspectionImageFile(
+            attachment.uri,
+            inspId,
+            itemId,
+            attachment.name,
+          );
+          uploadedCount += 1;
+          setItemFiles((prev) => ({
+            ...prev,
+            [itemId]: (prev[itemId] ?? []).map((file) =>
+              file.uri === attachment.uri
+                ? {
+                    ...file,
+                    uploading: false,
+                    fileUrl: uploaded.fileUrl,
+                    name: uploaded.fileName,
+                  }
+                : file,
+            ),
+          }));
+        } catch (err) {
+          removeItemFile(itemId, attachment.uri);
+          showToast(err instanceof Error ? err.message : 'Photo upload failed', 'error');
+        }
+      }
+
+      if (uploadedCount > 0) {
+        setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
+        showToast(
+          `${uploadedCount} ${successLabel}${uploadedCount === 1 ? '' : 's'} uploaded`,
+          'success',
+        );
+      }
+    },
+    [appendItemFiles, ensureInspection, removeItemFile],
+  );
+
   const pickCameraForItem = useCallback(
     async (itemId: string) => {
       try {
@@ -546,13 +607,12 @@ export default function ChecklistScreen() {
           showToast('Could not attach captured photo. Please retry.', 'error');
           return;
         }
-        appendItemFiles(itemId, validAttachments);
-        showToast(`${validAttachments.length} camera photo(s) added`, 'success');
+        await uploadCapturedImages(itemId, validAttachments, 'camera photo');
       } catch {
         showToast('Camera capture failed. Please try again.', 'error');
       }
     },
-    [appendItemFiles, normalizeImageUri],
+    [normalizeImageUri, uploadCapturedImages],
   );
 
   const pickGalleryForItem = useCallback(
@@ -596,20 +656,75 @@ export default function ChecklistScreen() {
           showToast('Could not process selected image(s). Please try another photo.', 'warning');
           return;
         }
-        appendItemFiles(itemId, attachments);
-        showToast(`${attachments.length} gallery image(s) added`, 'success');
+        await uploadCapturedImages(itemId, attachments, 'gallery photo');
       } catch {
         showToast('Gallery selection failed. Please try again.', 'error');
       }
     },
-    [appendItemFiles, normalizeImageUri],
+    [normalizeImageUri, uploadCapturedImages],
+  );
+
+  const uploadCapturedDocuments = useCallback(
+    async (
+      itemId: string,
+      attachments: { uri: string; name: string; type: 'document' }[],
+    ) => {
+      const inspId = await ensureInspection();
+      if (!inspId) {
+        showToast('Inspection not ready for document upload', 'error');
+        return;
+      }
+
+      appendItemFiles(
+        itemId,
+        attachments.map((file) => ({ ...file, uploading: true })),
+      );
+
+      let uploadedCount = 0;
+      for (const attachment of attachments) {
+        try {
+          const uploaded = await uploadInspectionDocumentFile(
+            attachment.uri,
+            inspId,
+            itemId,
+            attachment.name,
+          );
+          uploadedCount += 1;
+          setItemFiles((prev) => ({
+            ...prev,
+            [itemId]: (prev[itemId] ?? []).map((file) =>
+              file.uri === attachment.uri
+                ? {
+                    ...file,
+                    uploading: false,
+                    fileUrl: uploaded.fileUrl,
+                    name: uploaded.fileName,
+                  }
+                : file,
+            ),
+          }));
+        } catch (err) {
+          removeItemFile(itemId, attachment.uri);
+          showToast(err instanceof Error ? err.message : 'Document upload failed', 'error');
+        }
+      }
+
+      if (uploadedCount > 0) {
+        setItemRemarkToggles((prev) => ({ ...prev, [itemId]: true }));
+        showToast(
+          `${uploadedCount} document${uploadedCount === 1 ? '' : 's'} uploaded`,
+          'success',
+        );
+      }
+    },
+    [appendItemFiles, ensureInspection, removeItemFile],
   );
 
   const pickDocumentForItem = useCallback(
     async (itemId: string) => {
       const result = await DocumentPicker.getDocumentAsync({ multiple: true });
-      if (!result.canceled) {
-        appendItemFiles(
+      if (!result.canceled && result.assets.length > 0) {
+        await uploadCapturedDocuments(
           itemId,
           result.assets.map((a) => ({
             uri: a.uri,
@@ -619,7 +734,7 @@ export default function ChecklistScreen() {
         );
       }
     },
-    [appendItemFiles],
+    [uploadCapturedDocuments],
   );
 
   const totalAttachmentCount = useMemo(
@@ -707,6 +822,17 @@ export default function ChecklistScreen() {
   // Officers must manually click Next to proceed to the next page
 
   const handleSubmit = async () => {
+    const mediaUploading =
+      Object.values(itemFiles).some((files) => files.some((file) => file.uploading)) ||
+      Object.values(itemVideos).some((videos) => videos.some((video) => video.uploading));
+    if (mediaUploading) {
+      Alert.alert(
+        'Upload in progress',
+        'Please wait for camera and video uploads to finish before submitting.',
+      );
+      return;
+    }
+
     const unanswered = items.filter((i) => responses[i.id]?.response === null);
     if (unanswered.length > 0) {
       const targetPage = firstUnansweredPage ?? 1;

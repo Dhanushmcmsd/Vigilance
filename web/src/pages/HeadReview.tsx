@@ -5,6 +5,15 @@ import { supabase } from '../lib/supabase';
 import Filters from '../components/Filters';
 import RiskBadge from '../components/RiskBadge';
 import { isCompliantResponse, isViolationResponse } from '../lib/checklistScoring';
+import {
+  collectInspectionImageFiles,
+  collectInspectionVideoFiles,
+  collectItemImageAttachments,
+  downloadInspectionMediaFile,
+  type InspectionMediaFile,
+} from '../lib/inspectionMedia';
+import { useResolvedInspectionMedia } from '../hooks/useResolvedInspectionMedia';
+import { fetchInspectionForPdf } from '../lib/auditExport';
 // InspectionPdfReport is dynamically imported on demand to keep the
 // initial bundle small (@react-pdf/renderer is ~1 MB minified).
 type InspectionPdfData = import('../components/InspectionPdfReport').InspectionPdfData;
@@ -27,10 +36,13 @@ interface ReviewResponse {
 }
 
 interface HeadReviewFileRow {
+  id?: string;
   file_url?: string;
   file_name?: string | null;
   file_type?: string | null;
   checklist_item_id?: string | null;
+  duration_seconds?: number | null;
+  file_size_bytes?: number | null;
 }
 
 interface HeadReviewResponseRow {
@@ -72,6 +84,7 @@ interface HeadReviewQueryRow {
   }[] | null;
   user_roles?: { name?: string } | { name?: string }[] | null;
   inspection_files?: HeadReviewFileRow[] | null;
+  inspection_answers?: { checklist_item_id?: string | null; photo_url?: string | null }[] | null;
   inspection_responses?: HeadReviewResponseRow[] | null;
 }
 
@@ -89,8 +102,8 @@ interface ReviewInspection {
   branch_type: string;
   officer_name: string;
   city: string;
-  files: string[];
-  imageFiles: ReviewAttachment[];
+  mediaImages: InspectionMediaFile[];
+  mediaVideos: InspectionMediaFile[];
   responses: ReviewResponse[];
 }
 
@@ -141,7 +154,8 @@ export default function HeadReview() {
           branches:branch_id (branch_name, city, branch_types:branch_type_id (type_name)),
           user_roles:officer_id (name),
           general_remarks ( remark_text ),
-          inspection_files (file_url, file_name, file_type, checklist_item_id),
+          inspection_files (id, file_url, file_name, file_type, checklist_item_id, duration_seconds, file_size_bytes),
+          inspection_answers ( checklist_item_id, photo_url ),
           inspection_responses (
             id,
             response,
@@ -178,26 +192,57 @@ export default function HeadReview() {
         })(),
         officer_name: (Array.isArray(item.user_roles) ? item.user_roles[0]?.name : item.user_roles?.name) ?? 'Unknown Officer',
         city: (Array.isArray(item.branches) ? item.branches[0]?.city : item.branches?.city) ?? '-',
-        files: (item.inspection_files ?? [])
-          .map((f) => f.file_url)
-          .filter((url): url is string => typeof url === 'string' && url.length > 0),
-        imageFiles: (item.inspection_files ?? [])
-          .filter(
-            (f): f is HeadReviewFileRow & { file_url: string } =>
-              f.file_type === 'image' && typeof f.file_url === 'string' && f.file_url.length > 0,
-          )
-          .map((f) => ({
-            url: f.file_url,
-            name: f.file_name ?? undefined,
-            type: 'image' as const,
+        mediaImages: collectInspectionImageFiles(
+          ((item.inspection_files ?? []) as HeadReviewFileRow[])
+            .filter((f): f is HeadReviewFileRow & { file_url: string } => Boolean(f.file_url))
+            .map((f, index) => ({
+              id: f.id ?? `file:${index}`,
+              file_url: f.file_url!,
+              file_name: f.file_name ?? 'Inspection evidence',
+              file_type: f.file_type ?? 'image',
+              checklist_item_id: f.checklist_item_id ?? null,
+            })),
+          (item.inspection_answers ?? []).map((answer) => ({
+            checklist_item_id: answer.checklist_item_id ?? null,
+            photo_url: answer.photo_url ?? null,
           })),
+        ),
+        mediaVideos: collectInspectionVideoFiles(
+          ((item.inspection_files ?? []) as HeadReviewFileRow[])
+            .filter((f): f is HeadReviewFileRow & { file_url: string } => Boolean(f.file_url))
+            .map((f, index) => ({
+              id: f.id ?? `video:${index}`,
+              file_url: f.file_url!,
+              file_name: f.file_name ?? 'Inspection video',
+              file_type: f.file_type ?? 'video',
+              checklist_item_id: f.checklist_item_id ?? null,
+              duration_seconds: f.duration_seconds ?? null,
+              file_size_bytes: f.file_size_bytes ?? null,
+            })),
+        ),
         responses: (item.inspection_responses ?? []).map((r) => {
           const ctRaw = r.checklist_templates;
           const ct = Array.isArray(ctRaw) ? ctRaw[0] : ctRaw;
           const triggerOnNo = ct?.trigger_on_no ?? true;
-          const itemFiles = (item.inspection_files ?? []).filter(
-            (f) => f.checklist_item_id === r.checklist_item_id,
-          );
+          const itemId = r.checklist_item_id ?? '';
+          const itemAttachments = itemId
+            ? collectItemImageAttachments(
+                ((item.inspection_files ?? []) as HeadReviewFileRow[])
+                  .filter((f): f is HeadReviewFileRow & { file_url: string } => Boolean(f.file_url))
+                  .map((f, index) => ({
+                    id: f.id ?? `file:${index}`,
+                    file_url: f.file_url!,
+                    file_name: f.file_name ?? 'Inspection evidence',
+                    file_type: f.file_type ?? 'image',
+                    checklist_item_id: f.checklist_item_id ?? null,
+                  })),
+                (item.inspection_answers ?? []).map((answer) => ({
+                  checklist_item_id: answer.checklist_item_id ?? null,
+                  photo_url: answer.photo_url ?? null,
+                })),
+                itemId,
+              )
+            : [];
           return {
             id: r.id,
             section: ct?.section ?? '',
@@ -206,13 +251,11 @@ export default function HeadReview() {
             remarks: r.remarks ?? null,
             trigger_on_no: !!triggerOnNo,
             risk_level: (ct?.risk_level as string | null) ?? null,
-            attachments: itemFiles
-              .filter((f): f is HeadReviewFileRow & { file_url: string } => Boolean(f.file_url))
-              .map((f) => ({
-                url: f.file_url,
-                name: f.file_name ?? undefined,
-                type: (f.file_type === 'image' ? 'image' : 'document') as 'image' | 'document',
-              })),
+            attachments: itemAttachments.map((f) => ({
+              url: f.file_url,
+              name: f.file_name,
+              type: 'image' as const,
+            })),
           };
         }),
       } satisfies ReviewInspection));
@@ -237,6 +280,17 @@ export default function HeadReview() {
   }, [filtered, selectedId]);
 
   const selected = filtered.find((item) => item.id === selectedId) ?? null;
+  const { resolvedImages, resolvedVideos, loading: mediaLoading } = useResolvedInspectionMedia(
+    selected?.mediaImages ?? [],
+    selected?.mediaVideos ?? [],
+  );
+
+  const mediaUrlMap = useMemo(() => {
+    const map = new Map<string, string>();
+    resolvedImages.forEach((file) => map.set(file.file_url, file.resolved_url));
+    resolvedVideos.forEach((file) => map.set(file.file_url, file.resolved_url));
+    return map;
+  }, [resolvedImages, resolvedVideos]);
 
   const groupedSections = useMemo(() => {
     if (!selected) return [];
@@ -257,33 +311,9 @@ export default function HeadReview() {
     setToast('Generating PDF…');
     try {
       const { generateInspectionPdf } = await import('../components/InspectionPdfReport');
-      const data: InspectionPdfData = {
-        id: selected.id,
-        branchName: selected.branch_name,
-        branchType: selected.branch_type,
-        officerName: selected.officer_name,
-        city: selected.city,
-        inspectionDate: selected.inspection_date,
-        submittedAt: selected.submitted_at,
-        timeIn: selected.time_in,
-        timeOut: selected.time_out,
-        complianceScore: selected.compliance_score,
-        riskLevel: selected.risk_level,
-        status: selected.status,
-        headComment: null,
-        generalRemark: selected.general_remarks,
-        responses: selected.responses.map((r) => ({
-          section: r.section,
-          item_text: r.item_text,
-          response: r.response,
-          remarks: r.remarks,
-          risk_level: r.risk_level as 'RED' | 'YELLOW' | 'GREEN' | null,
-          trigger_on_no: r.trigger_on_no,
-          attachments: r.attachments,
-        })),
-        photos: selected.imageFiles.map((file) => ({ url: file.url })),
-      };
-      const filename = await generateInspectionPdf(data);
+      const pdfData = await fetchInspectionForPdf(selected.id);
+      if (!pdfData) throw new Error('Could not load inspection data for PDF export.');
+      const filename = await generateInspectionPdf(pdfData as InspectionPdfData);
       setToast(`Downloaded ${filename}`);
     } catch (err) {
       if (import.meta.env.DEV) console.error('[PDF Export Error]', err);
@@ -535,17 +565,24 @@ export default function HeadReview() {
                                     {response.remarks && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Remarks: {response.remarks}</div>}
                                     {response.attachments.length > 0 && (
                                       <div className="mt-2 flex flex-wrap gap-2">
-                                        {response.attachments.map((file) =>
-                                          file.type === 'image' || /\.(jpe?g|png|webp)$/i.test(file.url) ? (
-                                            <a key={file.url} href={file.url} target="_blank" rel="noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                                              <img src={file.url} alt={file.name ?? 'Evidence'} className="w-20 h-16 object-cover" />
+                                        {response.attachments.map((file) => {
+                                          const displayUrl = mediaUrlMap.get(file.url) ?? file.url;
+                                          return (
+                                            <a
+                                              key={file.url}
+                                              href={displayUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                                            >
+                                              <img
+                                                src={displayUrl}
+                                                alt={file.name ?? 'Evidence'}
+                                                className="w-20 h-16 object-cover"
+                                              />
                                             </a>
-                                          ) : (
-                                            <a key={file.url} href={file.url} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline">
-                                              {file.name ?? 'Document'}
-                                            </a>
-                                          ),
-                                        )}
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
@@ -560,37 +597,81 @@ export default function HeadReview() {
                   </div>
                 </div>
 
-                {selected.imageFiles.length > 0 && (
+                {selected.mediaImages.length > 0 && (
                   <section>
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Photo Evidence</h3>
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                      {selected.imageFiles.map((file) => (
-                        <a key={file.url} href={file.url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:opacity-90">
-                          <img src={file.url} alt={file.name ?? 'Inspection evidence'} className="w-full h-24 object-cover" />
-                        </a>
-                      ))}
-                    </div>
+                    {mediaLoading ? (
+                      <p className="text-sm text-gray-500">Loading photos…</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        {resolvedImages.map((file) => (
+                          <div key={file.id} className="space-y-2">
+                            <a
+                              href={file.resolved_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:opacity-90"
+                            >
+                              <img
+                                src={file.resolved_url}
+                                alt={file.file_name ?? 'Inspection evidence'}
+                                className="w-full h-24 object-cover"
+                              />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => void downloadInspectionMediaFile(file.file_url, file.file_name)}
+                              className="text-xs font-medium text-brand-600 hover:underline"
+                            >
+                              Download photo
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 )}
 
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Photos / Files</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {selected.files.map((file, index) => {
-                      const isImage = /\.(jpg|jpeg|png|webp)$/i.test(file);
-                      return isImage ? (
-                        <a key={file} href={file} target="_blank" rel="noreferrer" className="block rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:opacity-90">
-                          <img src={file} alt={`Inspection file ${index + 1}`} className="w-full h-28 object-cover" />
-                        </a>
-                      ) : (
-                        <a key={file} href={file} target="_blank" rel="noreferrer" className="block rounded-xl border border-gray-200 dark:border-gray-800 p-4 text-sm text-brand-600 bg-gray-50 dark:bg-gray-900">
-                          Open document {index + 1}
-                        </a>
-                      );
-                    })}
-                    {!selected.files.length && <div className="text-sm text-gray-500">No files uploaded.</div>}
-                  </div>
-                </div>
+                {selected.mediaVideos.length > 0 && (
+                  <section>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Field Videos</h3>
+                    {mediaLoading ? (
+                      <p className="text-sm text-gray-500">Loading videos…</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {resolvedVideos.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex flex-col gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                                {file.file_name}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <a
+                                href={file.resolved_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                              >
+                                View video
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void downloadInspectionMediaFile(file.file_url, file.file_name)}
+                                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white"
+                              >
+                                Download video
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">General Remarks</h3>

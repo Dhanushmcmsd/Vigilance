@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 export interface ItemAttachment {
   uri: string;
   name: string;
   type: 'image' | 'document';
+  uploading?: boolean;
+  fileUrl?: string;
 }
 
 interface Props {
@@ -94,10 +96,38 @@ export function ItemAttachments({
           {files.map((file) => (
             <View key={file.uri} style={{ marginRight: 10, position: 'relative' }}>
               {file.type === 'image' ? (
-                <Image
-                  source={{ uri: file.uri }}
-                  style={{ width: 72, height: 72, borderRadius: 8, backgroundColor: '#e2e8f0' }}
-                />
+                <View
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 8,
+                    backgroundColor: '#e2e8f0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Image
+                    source={{ uri: file.uri }}
+                    style={{ width: 72, height: 72, borderRadius: 8 }}
+                  />
+                  {file.uploading ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        left: 0,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                      }}
+                    >
+                      <ActivityIndicator color="#fff" size="small" />
+                    </View>
+                  ) : null}
+                </View>
               ) : (
                 <View
                   style={{

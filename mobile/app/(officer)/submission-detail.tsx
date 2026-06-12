@@ -14,6 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { isViolationResponse, type ChecklistResponse } from '../../lib/checklistScoring';
+import {
+  collectInspectionImageFiles,
+  collectInspectionVideoFiles,
+  collectItemImageAttachments,
+} from '../../lib/inspectionMedia';
+import { useResolvedMediaMap } from '../../hooks/useResolvedMediaMap';
 
 interface ChecklistItemRef {
   item_text: string;
@@ -51,15 +57,9 @@ interface SubmissionDetail {
   submitted_at: string | null;
   inspection_responses: ResponseRow[];
   inspection_files: FileRow[];
+  inspection_answers: { checklist_item_id: string | null; photo_url: string | null }[];
   general_remarks: { remark_text: string }[];
 }
-
-const isVideoFile = (f: FileRow) => {
-  const type = (f.file_type ?? '').toLowerCase();
-  const name = (f.file_name ?? '').toLowerCase();
-  const url = (f.file_url ?? '').toLowerCase();
-  return type === 'video' || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(name) || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
-};
 
 const formatDuration = (seconds: number | null | undefined) => {
   if (!seconds || seconds <= 0) return '0:00';
@@ -71,17 +71,6 @@ const formatDuration = (seconds: number | null | undefined) => {
 const formatFileSizeMb = (bytes: number | null | undefined) => {
   if (!bytes || bytes <= 0) return '—';
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const isImageFile = (f: FileRow) => {
-  const type = (f.file_type ?? '').toLowerCase();
-  const name = (f.file_name ?? '').toLowerCase();
-  const url = (f.file_url ?? '').toLowerCase();
-  return (
-    type === 'image' ||
-    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(name) ||
-    /\.(jpe?g|png|gif|webp|heic|heif)(\?|#|$)/i.test(url)
-  );
 };
 
 /**
@@ -126,6 +115,7 @@ export default function SubmissionDetailScreen() {
             )
           ),
           inspection_files ( id, file_url, file_name, file_type, checklist_item_id, duration_seconds, file_size_bytes ),
+          inspection_answers ( checklist_item_id, photo_url ),
           general_remarks ( remark_text )
         `,
         )
@@ -146,36 +136,35 @@ export default function SubmissionDetailScreen() {
     return grouped;
   }, [data?.inspection_responses]);
 
+  const allImages = useMemo(
+    () => collectInspectionImageFiles(data?.inspection_files ?? [], data?.inspection_answers ?? []),
+    [data?.inspection_files, data?.inspection_answers],
+  );
+
+  const allVideos = useMemo(
+    () => collectInspectionVideoFiles(data?.inspection_files ?? []),
+    [data?.inspection_files],
+  );
+
   const itemEvidenceMap = useMemo(() => {
-    const map = new Map<string, FileRow[]>();
-    (data?.inspection_files ?? []).forEach((f) => {
-      if (!isImageFile(f) || !f.checklist_item_id) return;
-      const list = map.get(f.checklist_item_id) ?? [];
-      list.push(f);
-      map.set(f.checklist_item_id, list);
+    const map = new Map<string, ReturnType<typeof collectInspectionImageFiles>>();
+    (data?.inspection_responses ?? []).forEach((response) => {
+      const attachments = collectItemImageAttachments(
+        data?.inspection_files ?? [],
+        data?.inspection_answers ?? [],
+        response.checklist_item_id,
+      );
+      if (attachments.length > 0) {
+        map.set(response.checklist_item_id, attachments);
+      }
     });
     return map;
-  }, [data?.inspection_files]);
+  }, [data?.inspection_files, data?.inspection_answers, data?.inspection_responses]);
 
-  const allImages = useMemo(() => {
-    const seen = new Set<string>();
-    return (data?.inspection_files ?? []).filter((f) => {
-      if (!isImageFile(f)) return false;
-      if (seen.has(f.file_url)) return false;
-      seen.add(f.file_url);
-      return true;
-    });
-  }, [data?.inspection_files]);
-
-  const allVideos = useMemo(() => {
-    const seen = new Set<string>();
-    return (data?.inspection_files ?? []).filter((f) => {
-      if (!isVideoFile(f)) return false;
-      if (seen.has(f.file_url)) return false;
-      seen.add(f.file_url);
-      return true;
-    });
-  }, [data?.inspection_files]);
+  const resolvedMap = useResolvedMediaMap([
+    ...allImages.map((file) => file.file_url),
+    ...allVideos.map((file) => file.file_url),
+  ]);
 
   if (isLoading) {
     return (
@@ -343,11 +332,11 @@ export default function SubmissionDetailScreen() {
                       {linkedEvidence.map((f) => (
                         <TouchableOpacity
                           key={f.id}
-                          onPress={() => Linking.openURL(f.file_url)}
+                          onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
                           style={{ marginRight: 8 }}
                         >
                           <Image
-                            source={{ uri: f.file_url }}
+                            source={{ uri: resolvedMap[f.file_url] ?? f.file_url }}
                             style={{ width: 64, height: 64, borderRadius: 8 }}
                             resizeMode="cover"
                           />
@@ -407,9 +396,12 @@ export default function SubmissionDetailScreen() {
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {allImages.map((f) => (
-                <TouchableOpacity key={f.id} onPress={() => Linking.openURL(f.file_url)}>
+                <TouchableOpacity
+                  key={f.id}
+                  onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
+                >
                   <Image
-                    source={{ uri: f.file_url }}
+                    source={{ uri: resolvedMap[f.file_url] ?? f.file_url }}
                     style={{ width: 100, height: 100, borderRadius: 10 }}
                     resizeMode="cover"
                   />
@@ -460,7 +452,7 @@ export default function SubmissionDetailScreen() {
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => Linking.openURL(f.file_url)}
+                    onPress={() => Linking.openURL(resolvedMap[f.file_url] ?? f.file_url)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',

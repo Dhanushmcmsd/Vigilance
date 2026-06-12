@@ -9,6 +9,7 @@ import {
   pdf,
 } from '@react-pdf/renderer';
 import { isCompliantResponse } from '../lib/checklistScoring';
+import { resolveInspectionMediaUrl } from '../lib/inspectionMedia';
 
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -538,7 +539,7 @@ function withoutImageEvidence(data: InspectionPdfData): InspectionPdfData {
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   if (url.startsWith('data:')) return url;
   try {
-    const response = await fetch(url);
+    const response = await fetch(await resolveInspectionMediaUrl(url));
     if (!response.ok) return null;
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) return null;

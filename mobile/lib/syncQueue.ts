@@ -349,23 +349,17 @@ async function syncOne(item: QueuedInspection): Promise<void> {
   }
 
   const legacyUris = fileUris ?? [];
-  const fileRows: Array<{
-    inspection_id: string;
-    file_url: string;
-    file_name: string;
-    file_type: string;
-    checklist_item_id?: string;
-  }> = [];
-
-  for (const uri of legacyUris) {
-    fileRows.push({
-      inspection_id: resolvedId!,
-      file_url: uri,
-      file_name: uri.split('/').pop() ?? 'attachment',
-      file_type: /\.(png|jpe?g|webp)$/i.test(uri) ? 'image' : 'document',
-    });
-  }
-  if (fileRows.length) {
-    await supabase.from('inspection_files').insert(fileRows);
+  if (legacyUris.length > 0) {
+    const legacyFiles: Record<string, { uri: string; name: string; type: 'image' | 'document' }[]> = {
+      legacy: legacyUris.map((uri) => ({
+        uri,
+        name: uri.split('/').pop() ?? 'attachment',
+        type: /\.(png|jpe?g|webp|heic|heif)$/i.test(uri) ? 'image' as const : 'document' as const,
+      })),
+    };
+    const legacyUpload = await uploadInspectionFiles(resolvedId!, legacyFiles);
+    if (legacyUpload.failedCount > 0 && legacyUpload.successCount === 0) {
+      throw new Error(legacyUpload.errors[0] ?? 'Failed to upload queued legacy files');
+    }
   }
 }

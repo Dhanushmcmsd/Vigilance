@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   LineChart,
@@ -22,6 +22,8 @@ import {
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import RiskBadge from './RiskBadge';
+import { collectInspectionImageFiles, resolveInspectionMediaUrl } from '../lib/inspectionMedia';
+import { isInspectionImageFile } from '../lib/inspectionImages';
 
 interface BranchDetailDrawerProps {
   branchName: string | null;
@@ -86,7 +88,8 @@ export default function BranchDetailDrawer({
         .select(
           `id, inspection_date, submitted_at, compliance_score, risk_level, status,
            officer:user_roles!inspections_officer_id_fkey ( name ),
-           inspection_files ( file_url, file_type, file_name )`,
+           inspection_files ( id, file_url, file_type, file_name, checklist_item_id ),
+           inspection_answers ( checklist_item_id, photo_url )`,
         )
         .eq('branch_id', branch.id)
         .order('inspection_date', { ascending: false })
@@ -101,9 +104,21 @@ export default function BranchDetailDrawer({
         risk_level: r.risk_level ?? 'low',
         status: r.status,
         officer_name: r.officer?.name ?? 'Unknown',
-        files: (r.inspection_files ?? []).map((f: any) => ({
+        files: collectInspectionImageFiles(
+          (r.inspection_files ?? []).map((f: any, index: number) => ({
+            id: f.id ?? `file:${index}`,
+            file_url: f.file_url,
+            file_name: f.file_name ?? 'Inspection evidence',
+            file_type: f.file_type ?? 'image',
+            checklist_item_id: f.checklist_item_id ?? null,
+          })),
+          (r.inspection_answers ?? []).map((answer: any) => ({
+            checklist_item_id: answer.checklist_item_id ?? null,
+            photo_url: answer.photo_url ?? null,
+          })),
+        ).map((f) => ({
           url: f.file_url,
-          type: f.file_type,
+          type: 'image',
           name: f.file_name,
         })),
       }));
@@ -147,13 +162,12 @@ export default function BranchDetailDrawer({
       }));
   }, [data]);
 
-  // Flatten photo URLs (newest first) for the gallery.
   const photos = useMemo(() => {
     if (!data) return [];
     const out: { url: string; name: string; inspectionId: string; date: string }[] = [];
     for (const ins of data.inspections) {
       for (const f of ins.files) {
-        if (f.type === 'image') {
+        if (isInspectionImageFile({ file_url: f.url, file_name: f.name, file_type: f.type })) {
           out.push({
             url: f.url,
             name: f.name,
@@ -165,6 +179,25 @@ export default function BranchDetailDrawer({
     }
     return out.slice(0, 24);
   }, [data]);
+
+  const [resolvedPhotoUrls, setResolvedPhotoUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!photos.length) {
+      setResolvedPhotoUrls({});
+      return;
+    }
+    void Promise.all(
+      photos.map(async (photo) => [photo.url, await resolveInspectionMediaUrl(photo.url)] as const),
+    ).then((entries) => {
+      if (cancelled) return;
+      setResolvedPhotoUrls(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [photos]);
 
   const avgScore = useMemo(() => {
     if (!data || data.inspections.length === 0) return 0;
@@ -303,18 +336,21 @@ export default function BranchDetailDrawer({
                   <p className="text-sm text-muted-foreground">No photos uploaded for this branch.</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
-                    {photos.map((p) => (
-                      <a
-                        key={`${p.inspectionId}-${p.url}`}
-                        href={p.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={`${p.name} · ${p.date}`}
-                        className="aspect-square overflow-hidden rounded-md border bg-muted hover:opacity-90 transition-opacity"
-                      >
-                        <img src={p.url} alt={p.name} className="h-full w-full object-cover" />
-                      </a>
-                    ))}
+                    {photos.map((p) => {
+                      const displayUrl = resolvedPhotoUrls[p.url] ?? p.url;
+                      return (
+                        <a
+                          key={`${p.inspectionId}-${p.url}`}
+                          href={displayUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`${p.name} · ${p.date}`}
+                          className="aspect-square overflow-hidden rounded-md border bg-muted hover:opacity-90 transition-opacity"
+                        >
+                          <img src={displayUrl} alt={p.name} className="h-full w-full object-cover" />
+                        </a>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -431,6 +431,84 @@ body {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.2);
   }
+
+  .vms-media-viewer {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    width: min(96vw, 56rem);
+    max-height: min(92vh, 860px);
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 0.875rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: #0f1118;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.72);
+  }
+
+  .vms-media-viewer-toolbar {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: #171924;
+    padding: 0.875rem 1rem;
+  }
+
+  .vms-media-viewer-body {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #05060a;
+    padding: 1rem;
+  }
+
+  .vms-media-viewer-image,
+  .vms-media-viewer-video {
+    max-width: 100%;
+    max-height: min(72vh, 720px);
+    border-radius: 0.5rem;
+    object-fit: contain;
+    background: #000;
+  }
+
+  .vms-report-media-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow: hidden;
+    border-radius: 0.625rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.22);
+    padding: 0.75rem;
+  }
+
+  .vms-report-media-thumb {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #111827;
+    cursor: pointer;
+  }
+
+  .vms-report-media-thumb img {
+    display: block;
+    height: 6rem;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  .vms-report-media-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
 }
 
 /* Premium golden cursor enhancement (desktop pointer only) */

@@ -1,4 +1,10 @@
 import type { AuditReportRow } from './auditReports';
+import {
+  collectInspectionImageFiles,
+  resolveInspectionMediaUrls,
+  type InspectionAnswerPhoto,
+  type InspectionMediaFile,
+} from './inspectionMedia';
 
 export interface AuditPdfChecklistItem {
   item_text: string;
@@ -21,7 +27,8 @@ export interface AuditPdfInspection {
   time_out?: string | null;
   officer: { name: string } | null;
   inspection_responses: AuditPdfResponseRow[];
-  inspection_files?: { file_url: string; file_name?: string | null; file_type?: string | null }[];
+  inspection_files?: InspectionMediaFile[];
+  inspection_answers?: InspectionAnswerPhoto[];
   general_remarks: { remark_text: string }[];
 }
 
@@ -38,6 +45,22 @@ const formatReportTime = (value: string | null | undefined) => {
   if (!match) return value;
   return `${match[1].padStart(2, '0')}:${match[2]}`;
 };
+
+/** Resolve private-bucket URLs and merge gallery photos before PDF render. */
+export async function prepareAuditPdfInspection(data: AuditPdfInspection): Promise<AuditPdfInspection> {
+  const imageFiles = collectInspectionImageFiles(data.inspection_files ?? [], data.inspection_answers ?? []);
+  const resolved = await resolveInspectionMediaUrls(imageFiles);
+  return {
+    ...data,
+    inspection_files: resolved.map((file) => ({
+      id: file.id,
+      file_url: file.resolved_url,
+      file_name: file.file_name,
+      file_type: file.file_type,
+      checklist_item_id: file.checklist_item_id ?? null,
+    })),
+  };
+}
 
 export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string): string {
   const sections: Record<string, AuditPdfResponseRow[]> = {};

@@ -74,53 +74,33 @@ body {
 }
 
 * {
-  cursor: none !important;
+  cursor: url('/cursors/cursor-default.png') 4 4, auto !important;
 }
 
-#custom-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 28px;
-  height: 28px;
-  pointer-events: none;
-  z-index: 99999;
-  transform: translate(-2px, -2px);
-  background-repeat: no-repeat;
-  background-size: contain;
-  mix-blend-mode: multiply;
+a,
+button,
+[role='button'],
+[role='link'],
+input[type='submit'],
+input[type='button'],
+input[type='checkbox'],
+input[type='radio'],
+select,
+label,
+.clickable,
+[data-clickable],
+summary {
+  cursor: url('/cursors/cursor-pointer.png') 12 4, pointer !important;
 }
 
-#custom-cursor[data-cursor='default'] {
-  background-image: url('/cursors/cursor-default.png');
-  width: 28px;
-  height: 28px;
-}
-
-#custom-cursor[data-cursor='pointer'] {
-  background-image: url('/cursors/cursor-pointer.png');
-  width: 28px;
-  height: 28px;
-  transform: translate(-10px, -4px);
-}
-
-#custom-cursor[data-cursor='text'] {
-  background-image: none;
-  width: 2px;
-  height: 20px;
-  background-color: var(--text-primary, #f0f0f5);
-  border-radius: 1px;
-  transform: translate(-1px, -10px);
-  mix-blend-mode: normal;
-}
-
-[data-theme='light'] #custom-cursor {
-  mix-blend-mode: multiply;
-}
-
-[data-theme='dark'] #custom-cursor {
-  mix-blend-mode: multiply;
-  filter: invert(1);
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+input[type='number'],
+textarea,
+[contenteditable='true'] {
+  cursor: text !important;
 }
 
 /* ── shadcn/ui design tokens ────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system';
-import { supabase } from './supabase';
+import { supabase, supabaseAnonKey, supabaseUrl } from './supabase';
 
 const BUCKET = 'inspection-files';
 
@@ -30,44 +30,84 @@ function buildObjectPath(inspectionId: string, checklistItemId: string, fileName
   return `inspections/${inspectionId}/${checklistItemId}_${Date.now()}_${sanitizeFileName(fileName)}`;
 }
 
+function normalizeUploadUri(uri: string): string {
+  if (uri.startsWith('file://') || uri.startsWith('content://')) return uri;
+  return `file://${uri}`;
+}
+
+function encodeObjectPath(objectPath: string): string {
+  return objectPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function parseStorageErrorBody(body: string | undefined): string {
+  if (!body) return 'Unknown storage error';
+  try {
+    const parsed = JSON.parse(body) as { message?: string; error?: string; statusCode?: string };
+    return parsed.message || parsed.error || body;
+  } catch {
+    return body.slice(0, 240);
+  }
+}
+
 export function getInspectionFilePublicUrl(objectPath: string): string {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
   return data.publicUrl;
 }
 
-async function readLocalFileBlob(uri: string): Promise<Blob> {
-  try {
-    const response = await fetch(uri);
-    if (response.ok) {
-      return await response.blob();
-    }
-  } catch {
-    // Fall back to base64 read for devices where fetch(file://) is unreliable.
+async function assertLocalFileReadable(localUri: string): Promise<number> {
+  const uri = normalizeUploadUri(localUri);
+  const info = await FileSystem.getInfoAsync(uri, { size: true });
+  if (!info.exists) {
+    throw new Error('File not found on device. Please capture or select it again.');
   }
-
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const byteCharacters = atob(base64);
-  const byteNumbers = new Uint8Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i += 1) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  const size = 'size' in info && typeof info.size === 'number' ? info.size : 0;
+  if (!size || size <= 0) {
+    throw new Error('File is empty. Please capture or select it again.');
   }
-  return new Blob([byteNumbers]);
+  return size;
 }
 
-async function uploadBlobToInspectionBucket(
+/**
+ * Upload via Expo FileSystem (native) instead of supabase-js Blob uploads.
+ * Blob uploads intermittently return HTTP 400 / "Network request failed" on Android.
+ */
+async function uploadLocalFileToInspectionBucket(
+  localUri: string,
   objectPath: string,
-  blob: Blob,
   contentType: string,
 ): Promise<string> {
-  const { error } = await supabase.storage.from(BUCKET).upload(objectPath, blob, {
-    contentType,
-    upsert: false,
-  });
-  if (error) {
-    throw new Error(`Storage upload failed: ${error.message}`);
+  const uri = normalizeUploadUri(localUri);
+  await assertLocalFileReadable(uri);
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (sessionError || !accessToken) {
+    throw new Error('Session expired. Please sign in again.');
   }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase is not configured on this device.');
+  }
+
+  const uploadUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/${BUCKET}/${encodeObjectPath(objectPath)}`;
+  const result = await FileSystem.uploadAsync(uploadUrl, uri, {
+    httpMethod: 'POST',
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabaseAnonKey,
+      'Content-Type': contentType,
+      'x-upsert': 'false',
+    },
+  });
+
+  if (result.status < 200 || result.status >= 300) {
+    const detail = parseStorageErrorBody(result.body);
+    throw new Error(`Storage upload failed (${result.status}): ${detail}`);
+  }
+
   return getInspectionFilePublicUrl(objectPath);
 }
 
@@ -112,10 +152,9 @@ export async function uploadInspectionImageFile(
 ): Promise<{ fileUrl: string; fileName: string }> {
   const safeName = sanitizeFileName(fileName, 'jpg');
   const objectPath = buildObjectPath(inspectionId, checklistItemId, safeName);
-  const blob = await readLocalFileBlob(localUri);
-  const fileUrl = await uploadBlobToInspectionBucket(
+  const fileUrl = await uploadLocalFileToInspectionBucket(
+    localUri,
     objectPath,
-    blob,
     resolveImageContentType(safeName),
   );
   await recordInspectionImage(inspectionId, checklistItemId, fileUrl, safeName);
@@ -130,8 +169,7 @@ export async function uploadInspectionDocumentFile(
 ): Promise<{ fileUrl: string; fileName: string }> {
   const safeName = sanitizeFileName(fileName, 'pdf');
   const objectPath = buildObjectPath(inspectionId, checklistItemId, safeName);
-  const blob = await readLocalFileBlob(localUri);
-  const fileUrl = await uploadBlobToInspectionBucket(objectPath, blob, 'application/octet-stream');
+  const fileUrl = await uploadLocalFileToInspectionBucket(localUri, objectPath, 'application/octet-stream');
 
   const { error: insertErr } = await supabase.from('inspection_files').insert({
     inspection_id: inspectionId,
@@ -160,10 +198,10 @@ export async function uploadInspectionVideoFile(
     ext,
   );
   const objectPath = buildObjectPath(inspectionId, checklistItemId ?? 'general', fileName);
-  const blob = await readLocalFileBlob(localUri);
-  const fileUrl = await uploadBlobToInspectionBucket(
+  const fileSizeBytes = await assertLocalFileReadable(localUri);
+  const fileUrl = await uploadLocalFileToInspectionBucket(
+    localUri,
     objectPath,
-    blob,
     resolveVideoContentType(fileName),
   );
 
@@ -174,7 +212,7 @@ export async function uploadInspectionVideoFile(
     file_name: fileName,
     file_type: 'video',
     duration_seconds: durationSeconds,
-    file_size_bytes: blob.size || null,
+    file_size_bytes: fileSizeBytes,
   });
   if (insertErr) {
     throw new Error(`Failed to record video in database: ${insertErr.message}`);
@@ -183,6 +221,6 @@ export async function uploadInspectionVideoFile(
   return {
     fileUrl,
     fileName,
-    fileSizeBytes: blob.size,
+    fileSizeBytes,
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
@@ -13,10 +13,11 @@ import {
   X,
   Search,
   FolderArchive,
-  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { roleDisplayLabel, roleDisplaySublabel, roleInitial } from '../../lib/roleDisplay';
+import { ADMIN_TABS, adminTabLabel, adminTabPath, parseAdminTab } from '../../lib/adminTabs';
+import { usePendingAccountRequestCount } from '../../pages/admin/AccountRequestsTab';
 
 interface NavItem {
   label: string;
@@ -37,9 +38,6 @@ const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
     { label: 'Review Inspections', path: '/head/review', icon: Search },
     { label: 'Audit Archive', path: '/head/archive', icon: FolderArchive },
   ],
-  admin: [
-    { label: 'Admin Panel', path: '/admin', icon: Settings },
-  ],
 };
 
 interface SidebarProps {
@@ -52,10 +50,77 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { name, role, signOut } = useAuth();
+  const { data: pendingRequestCount = 0 } = usePendingAccountRequestCount();
 
-  const navItems = role ? ROLE_NAV_ITEMS[role] || [] : [];
+  const navItems = role && role !== 'admin' ? ROLE_NAV_ITEMS[role] || [] : [];
+
+  const isActive = (path: string) => {
+    if (path === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/dashboard/';
+    return location.pathname.startsWith(path);
+  };
+
+  const isAdminTabActive = (tabKey: string) =>
+    location.pathname === '/admin' && parseAdminTab(searchParams.get('tab')) === tabKey;
+
+  const renderNavLinks = (collapsedView: boolean, onClick?: () => void) => {
+    if (role === 'admin') {
+      return ADMIN_TABS.map((item) => {
+        const Icon = item.icon;
+        const active = isAdminTabActive(item.key);
+        const label = adminTabLabel(item.key, pendingRequestCount);
+        return (
+          <Link
+            key={item.key}
+            to={adminTabPath(item.key)}
+            data-cursor="pointer"
+            onClick={onClick}
+            aria-current={active ? 'page' : undefined}
+            className={`sidebar-link relative mx-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''} ${onClick ? 'mb-2' : ''}`}
+          >
+            <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
+            {(!collapsedView || onClick) && <span className="ml-3 truncate">{label}</span>}
+            {item.key === 'account-requests' && pendingRequestCount > 0 && (!collapsedView || onClick) ? (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                {pendingRequestCount}
+              </span>
+            ) : null}
+          </Link>
+        );
+      });
+    }
+
+    return navItems.map((item) => {
+      const Icon = item.icon;
+      const active = isActive(item.path);
+      return (
+        <Link
+          key={item.path}
+          to={item.path}
+          data-cursor="pointer"
+          onClick={onClick}
+          aria-current={active ? 'page' : undefined}
+          className={`sidebar-link relative mx-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''} ${onClick ? 'mb-2' : ''}`}
+        >
+          <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
+          {(!collapsedView || onClick) && <span className="ml-3 truncate">{item.label}</span>}
+          {!collapsedView && item.label === 'Review Inspections' && pendingCount > 0 && (
+            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+              {pendingCount}
+            </span>
+          )}
+        </Link>
+      );
+    });
+  };
+
+  const handleNavClick = () => {
+    if (isMobile) {
+      setMobileOpen(false);
+    }
+  };
 
   // Handle window resize
   useEffect(() => {
@@ -72,7 +137,6 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Calculate sidebar width based on device and state
   const getWidth = () => {
     if (isMobile) return mobileOpen ? 280 : 0;
     return collapsed ? 64 : 240;
@@ -87,17 +151,6 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
-  };
-
-  const isActive = (path: string) => {
-    if (path === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/dashboard/';
-    return location.pathname.startsWith(path);
-  };
-
-  const handleNavClick = () => {
-    if (isMobile) {
-      setMobileOpen(false);
-    }
   };
 
   // Desktop sidebar
@@ -121,28 +174,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 py-4 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.path);
-
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                data-cursor="pointer"
-                aria-current={active ? 'page' : undefined}
-                className={`sidebar-link relative mx-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''}`}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
-                {!collapsed && <span className="ml-3 truncate">{item.label}</span>}
-                {!collapsed && item.label === 'Review Inspections' && pendingCount > 0 && (
-                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
-                    {pendingCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+          {renderNavLinks(collapsed)}
         </nav>
 
         {/* Footer Section */}
@@ -248,29 +280,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
               </div>
 
               <nav className="flex-1 py-4 overflow-y-auto">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = isActive(item.path);
-
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      data-cursor="pointer"
-                      onClick={handleNavClick}
-                      aria-current={active ? 'page' : undefined}
-                      className={`sidebar-link relative mb-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''}`}
-                    >
-                      <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
-                      <span className="ml-3">{item.label}</span>
-                      {item.label === 'Review Inspections' && pendingCount > 0 && (
-                        <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
-                          {pendingCount}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
+                {renderNavLinks(false, handleNavClick)}
               </nav>
 
               {/* Footer Section */}

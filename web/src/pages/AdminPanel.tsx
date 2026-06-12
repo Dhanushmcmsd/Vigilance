@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,8 +24,7 @@ import { ChecklistAdminTab } from '../components/admin/ChecklistAdminTab';
 import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
-
-type Tab = 'users' | 'account-requests' | 'checklists' | 'branches' | 'reports';
+import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface UserRow {
@@ -62,36 +62,15 @@ function formatDate(iso: string) {
 
 // â”€â”€â”€ AdminPanel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function AdminPanel() {
-  const [tab, setTab] = useState<Tab>('users');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const tab = parseAdminTab(searchParams.get('tab'));
   const [userPrefill, setUserPrefill] = useState<PrefillNewUser | null>(null);
   const { data: pendingRequestCount = 0 } = usePendingAccountRequestCount();
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'users', label: 'Users' },
-    {
-      key: 'account-requests',
-      label: pendingRequestCount > 0 ? `Requests (${pendingRequestCount})` : 'Requests',
-    },
-    { key: 'checklists', label: 'Checklists' },
-    { key: 'branches', label: 'Branches' },
-    { key: 'reports', label: 'Reports' },
-  ];
-
   return (
     <div className="admin-panel space-y-6">
-      <h1 className="admin-panel-title">Admin Panel</h1>
-
-      <div className="admin-tabs">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`admin-tab ${tab === t.key ? 'admin-tab-active' : ''}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <h1 className="admin-panel-title">{adminTabLabel(tab, pendingRequestCount)}</h1>
 
       <div>
         {tab === 'users' && (
@@ -104,7 +83,7 @@ export default function AdminPanel() {
           <AccountRequestsTab
             onApprove={(prefill) => {
               setUserPrefill(prefill);
-              setTab('users');
+              navigate('/admin?tab=users');
             }}
           />
         )}

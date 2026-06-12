@@ -89,7 +89,7 @@ export default function ManagementArchive() {
             title="Management archive"
             description="Historical compliance by calendar month with store performance trend analysis for leadership review."
           />
-          <p className="mt-2 text-sm text-white/60" data-breadcrumb>
+          <p className="mt-2 text-sm bloom-subtitle" data-breadcrumb>
             Dashboard / Monthly Archive / {formatMonthLabel(activeMonth)}
             {selectedDistrict ? ` / ${selectedDistrict}` : ''}
           </p>

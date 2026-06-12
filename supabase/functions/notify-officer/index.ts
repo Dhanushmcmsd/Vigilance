@@ -55,6 +55,19 @@ interface DistrictReassignedPayload {
   notification_id?: string;
 }
 
+interface StoreAssignedPayload {
+  officer_role_id: string;
+  branch_name: string;
+  district: string;
+  notification_id?: string;
+}
+
+interface StoreUnassignedPayload {
+  officer_role_id: string;
+  branch_name: string;
+  district: string;
+}
+
 interface NotifyPayload {
   inspection_id?: string;
   status?: 'approved' | 'rejected' | 'submitted';
@@ -62,6 +75,8 @@ interface NotifyPayload {
   /** Optional override — useful when called from a DB trigger that doesn't auth. */
   recipient_role_id?: string;
   district_reassigned?: DistrictReassignedPayload;
+  store_assigned?: StoreAssignedPayload;
+  store_unassigned?: StoreUnassignedPayload;
 }
 
 serve(async (req) => {
@@ -85,6 +100,14 @@ serve(async (req) => {
 
   if (payload?.district_reassigned) {
     return handleDistrictReassigned(supabase, payload.district_reassigned);
+  }
+
+  if (payload?.store_assigned) {
+    return handleStoreAssigned(supabase, payload.store_assigned);
+  }
+
+  if (payload?.store_unassigned) {
+    return handleStoreUnassigned(supabase, payload.store_unassigned);
   }
 
   if (!payload?.inspection_id || !payload?.status) {
@@ -206,6 +229,59 @@ async function handleDistrictReassigned(
     type: 'district_reassigned',
     district: payload.district,
     notification_id: payload.notification_id ?? null,
+    screen: 'StoreList',
+  });
+
+  return jsonResponse({ ok: true, push: pushResult });
+}
+
+async function handleStoreAssigned(
+  supabase: ReturnType<typeof createClient>,
+  payload: StoreAssignedPayload,
+) {
+  const { data: officerRow, error: officerErr } = await supabase
+    .from('user_roles')
+    .select('id, name, expo_push_token')
+    .eq('id', payload.officer_role_id)
+    .maybeSingle();
+
+  if (officerErr) return jsonResponse({ error: officerErr.message }, 500);
+  if (!officerRow) return jsonResponse({ error: 'officer not found' }, 404);
+
+  const title = '🏪 New Store Assigned';
+  const body = `${payload.branch_name} in ${payload.district} has been assigned to you.`;
+
+  const pushResult = await sendExpoPush(officerRow.expo_push_token, title, body, {
+    type: 'store_assigned',
+    branch_name: payload.branch_name,
+    district: payload.district,
+    notification_id: payload.notification_id ?? null,
+    screen: 'StoreList',
+  });
+
+  return jsonResponse({ ok: true, push: pushResult });
+}
+
+async function handleStoreUnassigned(
+  supabase: ReturnType<typeof createClient>,
+  payload: StoreUnassignedPayload,
+) {
+  const { data: officerRow, error: officerErr } = await supabase
+    .from('user_roles')
+    .select('id, name, expo_push_token')
+    .eq('id', payload.officer_role_id)
+    .maybeSingle();
+
+  if (officerErr) return jsonResponse({ error: officerErr.message }, 500);
+  if (!officerRow) return jsonResponse({ error: 'officer not found' }, 404);
+
+  const title = '🏪 Store Reassigned';
+  const body = `${payload.branch_name} in ${payload.district} is no longer assigned to you.`;
+
+  const pushResult = await sendExpoPush(officerRow.expo_push_token, title, body, {
+    type: 'store_unassigned',
+    branch_name: payload.branch_name,
+    district: payload.district,
     screen: 'StoreList',
   });
 

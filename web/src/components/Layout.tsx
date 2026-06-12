@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { Sidebar } from './layout/Sidebar';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { resolvePageTitle } from '../lib/pageTitles';
+import { adminTabLabel, parseAdminTab } from '../lib/adminTabs';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { role } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -28,7 +30,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     enabled: role === 'head' || role === 'admin',
   });
 
-  const title = resolvePageTitle(location.pathname);
+  const title =
+    location.pathname === '/admin'
+      ? adminTabLabel(parseAdminTab(searchParams.get('tab')))
+      : resolvePageTitle(location.pathname);
 
   return (
     <div

@@ -17,11 +17,11 @@ const borderColors: Record<string, string> = {
 };
 
 const bloomBorderColors: Record<string, string> = {
-  default: 'border-white/25',
-  green: 'border-emerald-400',
-  yellow: 'border-amber-400',
-  red: 'border-red-400',
-  blue: 'border-sky-400',
+  default: 'border-black/30',
+  green: 'border-emerald-600',
+  yellow: 'border-amber-600',
+  red: 'border-red-600',
+  blue: 'border-sky-600',
 };
 
 export default function StatCard({
@@ -63,12 +63,12 @@ export default function StatCard({
               {badge}
             </span>
           )}
-          <div className="text-sm text-white/70 mb-1">{label}</div>
-          <div className="text-3xl font-bold text-white">{value}</div>
+          <div className="text-sm bloom-stat-label mb-1">{label}</div>
+          <div className="text-3xl font-bold bloom-stat-value">{value}</div>
           {trend && (
             <div
               className={`text-xs mt-1 font-medium ${
-                trend.value >= 0 ? 'text-emerald-300' : 'text-red-300'
+                trend.value >= 0 ? 'bloom-stat-trend-up' : 'bloom-stat-trend-down'
               }`}
             >
               {trend.value >= 0 ? '↑' : '↓'} {Math.abs(trend.value)}% {trend.label}

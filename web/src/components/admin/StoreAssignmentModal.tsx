@@ -37,14 +37,14 @@ export function StoreAssignmentModal({
   const [error, setError] = useState('');
 
   const { data: branches = [], refetch } = useQuery<BranchRow[]>({
-    queryKey: ['district-branches-assignment', district],
+    queryKey: ['all-branches-assignment'],
     queryFn: async () => {
       const { data, error: err } = await supabase
         .from('branches')
         .select('id, branch_name, location, city, region, assigned_officer_id')
-        .eq('region', district)
         .eq('is_active', true)
-        .order('branch_name');
+        .order('region', { ascending: true })
+        .order('branch_name', { ascending: true });
       if (err) throw err;
       return data ?? [];
     },
@@ -75,9 +75,22 @@ export function StoreAssignmentModal({
       (b) =>
         b.branch_name.toLowerCase().includes(q) ||
         (b.city ?? '').toLowerCase().includes(q) ||
-        (b.location ?? '').toLowerCase().includes(q),
+        (b.location ?? '').toLowerCase().includes(q) ||
+        (b.region ?? '').toLowerCase().includes(q),
     );
   };
+
+  const groupedAvailableStores = useMemo(() => {
+    const filtered = filterBranches(availableStores, availableSearch);
+    const groups = new Map<string, BranchRow[]>();
+    filtered.forEach((store) => {
+      const key = store.region ?? 'Unassigned';
+      const list = groups.get(key) ?? [];
+      list.push(store);
+      groups.set(key, list);
+    });
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [availableStores, availableSearch]);
 
   const markRemove = (branchId: string) => {
     setPendingAvailable((prev) => new Set(prev).add(branchId));
@@ -170,17 +183,27 @@ export function StoreAssignmentModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div
+        className="rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        style={{ background: 'var(--bg-modal)', color: 'var(--text-primary)' }}
+      >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg">Manage Stores — {officer.name}</h3>
-          <button type="button" onClick={onClose} className="btn-xs" aria-label="Close">
+          <h3 className="font-bold text-lg" style={{ color: 'var(--text-heading)' }}>
+            Manage Stores — {officer.name}
+          </h3>
+          <button type="button" onClick={onClose} className="admin-btn-secondary" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
-          <div className="flex flex-col min-h-0 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <h4 className="font-semibold text-sm mb-2">Currently Assigned Stores</h4>
+          <div
+            className="flex flex-col min-h-0 rounded-xl p-3"
+            style={{ border: '1px solid var(--border-color)' }}
+          >
+            <h4 className="font-semibold text-sm mb-2" style={{ color: 'var(--text-heading)' }}>
+              Currently Assigned Stores
+            </h4>
             <input
               className="input w-full mb-2"
               placeholder="Search assigned stores..."
@@ -189,12 +212,18 @@ export function StoreAssignmentModal({
             />
             <div className="overflow-y-auto flex-1 space-y-2">
               {filterBranches(assignedStores, assignedSearch).map((store) => (
-                <div key={store.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                <div
+                  key={store.id}
+                  className="flex items-center justify-between gap-2 rounded-lg p-2"
+                  style={{ border: '1px solid var(--border-color)' }}
+                >
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{store.branch_name}</p>
-                    <p className="text-xs text-gray-500 truncate">{store.location || store.city || district}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                      {store.location || store.city || store.region || district}
+                    </p>
                   </div>
-                  <button type="button" className="btn-xs btn-xs-red" onClick={() => markRemove(store.id)}>
+                  <button type="button" className="admin-btn-destructive" onClick={() => markRemove(store.id)}>
                     ✕
                   </button>
                 </div>
@@ -202,24 +231,40 @@ export function StoreAssignmentModal({
             </div>
           </div>
 
-          <div className="flex flex-col min-h-0 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <h4 className="font-semibold text-sm mb-2">Available Stores in {district}</h4>
+          <div
+            className="flex flex-col min-h-0 rounded-xl p-3"
+            style={{ border: '1px solid var(--border-color)' }}
+          >
+            <h4 className="font-semibold text-sm mb-2" style={{ color: 'var(--text-heading)' }}>
+              Available Stores (All Districts)
+            </h4>
             <input
               className="input w-full mb-2"
-              placeholder="Search available stores..."
+              placeholder="Search by name, city, or district..."
               value={availableSearch}
               onChange={(e) => setAvailableSearch(e.target.value)}
             />
             <div className="overflow-y-auto flex-1 space-y-2">
-              {filterBranches(availableStores, availableSearch).map((store) => (
-                <div key={store.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{store.branch_name}</p>
-                    <p className="text-xs text-gray-500 truncate">{store.location || store.city || district}</p>
-                  </div>
-                  <button type="button" className="btn-xs btn-xs-green" onClick={() => markAssign(store.id)}>
-                    Assign
-                  </button>
+              {groupedAvailableStores.map(([districtName, stores]) => (
+                <div key={districtName}>
+                  <div className="district-group-label">{districtName}</div>
+                  {stores.map((store) => (
+                    <div
+                      key={store.id}
+                      className="flex items-center justify-between gap-2 rounded-lg p-2 mb-2"
+                      style={{ border: '1px solid var(--border-color)' }}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{store.branch_name}</p>
+                        <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                          {store.location || store.city || districtName}
+                        </p>
+                      </div>
+                      <button type="button" className="admin-btn-primary" onClick={() => markAssign(store.id)}>
+                        Assign
+                      </button>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -229,10 +274,15 @@ export function StoreAssignmentModal({
         {error ? <p className="text-red-500 text-sm mt-3">{error}</p> : null}
 
         <div className="flex gap-2 mt-4">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1">
+          <button type="button" onClick={onClose} className="admin-btn-secondary flex-1">
             Close
           </button>
-          <button type="button" disabled={saving} onClick={() => void handleSave()} className="btn-primary flex-1">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="admin-btn-primary flex-1"
+          >
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

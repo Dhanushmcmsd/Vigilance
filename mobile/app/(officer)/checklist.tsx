@@ -33,6 +33,7 @@ import {
   uploadInspectionImageFile,
 } from '../../lib/inspectionStorageUpload';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
+import { getPreviousRiskItems } from '../../lib/queries';
 import { claimBranchInspection } from '../../lib/branchLocks';
 import VideoCapture from '../../components/VideoCapture';
 import { uploadInspectionVideo } from '../../lib/videoUpload';
@@ -188,38 +189,7 @@ export default function ChecklistScreen() {
 
   useEffect(() => {
     if (!branchId) return;
-    (async () => {
-      const { data: prevInspection } = await supabase
-        .from('inspections')
-        .select(
-          `id,
-          inspection_responses ( checklist_item_id, response, risk_level, checklist_templates:checklist_item_id ( trigger_on_no ) )`,
-        )
-        .eq('branch_id', branchId)
-        .eq('status', 'submitted')
-        .order('submitted_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!prevInspection?.inspection_responses) {
-        setPreviousRisks(new Set());
-        return;
-      }
-
-      const riskIds = new Set<string>();
-      (prevInspection.inspection_responses as Array<{
-        checklist_item_id: string;
-        response: string | null;
-        risk_level?: string | null;
-        checklist_templates?: { trigger_on_no?: boolean | null } | null;
-      }>).forEach((entry) => {
-        const triggerOnNo = entry.checklist_templates?.trigger_on_no ?? true;
-        if (isViolationResponse(entry.response, triggerOnNo)) {
-          riskIds.add(entry.checklist_item_id);
-        }
-      });
-      setPreviousRisks(riskIds);
-    })();
+    void getPreviousRiskItems(branchId).then(setPreviousRisks);
   }, [branchId]);
 
   const hydrateItems = (rows: ChecklistTemplateRow[]) => {
@@ -1220,16 +1190,22 @@ export default function ChecklistScreen() {
                   {hadPreviousRisk ? (
                     <View
                       style={{
-                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                        borderRadius: 4,
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
+                        flexDirection: 'row',
+                        alignItems: 'center',
                         alignSelf: 'flex-start',
-                        marginBottom: 4,
+                        backgroundColor: 'rgba(239,68,68,0.10)',
+                        borderColor: 'rgba(239,68,68,0.35)',
+                        borderWidth: 1,
+                        borderRadius: 99,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginBottom: 6,
+                        gap: 4,
                       }}
                     >
-                      <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '600' }}>
-                        ⚠ Marked as risk
+                      <Ionicons name="warning-outline" size={12} color="#EF4444" />
+                      <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '500' }}>
+                        Marked as risk
                       </Text>
                     </View>
                   ) : null}

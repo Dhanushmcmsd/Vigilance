@@ -246,22 +246,22 @@ export function DistrictOfficersPanel() {
 
   return (
     <div className="space-y-3">
-      <h3 className="font-semibold text-sm text-gray-300">District Officers</h3>
+      <h3 className="admin-section-heading">District Officers</h3>
       {isLoading ? (
-        <p className="text-gray-500 text-sm">Loading…</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-700">
+        <div className="admin-table-wrap overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-800">
+            <thead>
               <tr>
                 {['District', 'Assigned Officer', 'Status', 'Assigned Stores', 'Action'].map((h) => (
-                  <th key={h} className="th">
+                  <th key={h} className="th admin-col-header">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody>
               {assignments.map((row) => {
                 const name = row.officer?.name ?? 'Unassigned';
                 const storeCount = countAssignedStores(row.district, row.officer_id);

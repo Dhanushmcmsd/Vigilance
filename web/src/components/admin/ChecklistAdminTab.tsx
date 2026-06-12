@@ -568,9 +568,7 @@ export function ChecklistAdminTab() {
           + Add Item
         </button>
       </div>
-      <p className="text-xs text-yellow-600 dark:text-yellow-400">
-        ℹ Changes only affect future inspections.
-      </p>
+      <p className="admin-checklist-notice">⚠ Changes only affect future inspections.</p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void handleSectionDragEnd(e)}>
         <SortableContext items={orderedSections} strategy={verticalListSortingStrategy}>

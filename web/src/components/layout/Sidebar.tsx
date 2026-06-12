@@ -110,12 +110,12 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
         className="vms-sidebar fixed left-0 top-0 z-40 flex h-screen flex-col border-r"
       >
         {/* Header */}
-        <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-          <div className="font-bold tracking-tight text-sm text-text-primary">
+        <div className="p-6 border-b sidebar-user-block" style={{ borderTop: 'none' }}>
+          <div className="font-bold tracking-tight text-sm user-name">
             {!collapsed && 'VIGILANCE'}
           </div>
           {!collapsed && (
-            <p className="text-xs text-muted mt-2 font-medium">Executive Command</p>
+            <p className="text-xs user-role mt-2 font-medium">Executive Command</p>
           )}
         </div>
 
@@ -130,18 +130,11 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
                 key={item.path}
                 to={item.path}
                 data-cursor="pointer"
-                className={`relative mx-2 flex h-11 items-center rounded-md px-4 transition-all group ${
-                  active ? 'vms-sidebar-nav-active' : ''
-                }`}
-                style={{
-                  color: active ? '#F5F5F0' : 'rgba(245,245,240,0.58)',
-                  backgroundColor: active ? undefined : 'transparent',
-                  borderLeft: active ? '3px solid rgba(148,163,184,0.55)' : '3px solid transparent',
-                  paddingLeft: active ? 'calc(16px - 3px)' : '16px',
-                }}
+                aria-current={active ? 'page' : undefined}
+                className={`sidebar-link relative mx-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''}`}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
-                {!collapsed && <span className="ml-3 text-sm font-medium truncate">{item.label}</span>}
+                {!collapsed && <span className="ml-3 truncate">{item.label}</span>}
                 {!collapsed && item.label === 'Review Inspections' && pendingCount > 0 && (
                   <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
                     {pendingCount}
@@ -153,15 +146,15 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
         </nav>
 
         {/* Footer Section */}
-        <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+        <div className="sidebar-user-block">
           {/* User Info */}
           <div className="flex items-center gap-3 mb-4">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
               style={{
-                border: '2px solid rgba(37,99,235,0.3)',
-                backgroundColor: 'rgba(37,99,235,0.12)',
-                color: '#3B82F6',
+                border: '2px solid rgba(99,102,241,0.3)',
+                backgroundColor: 'rgba(99,102,241,0.12)',
+                color: 'var(--accent-blue)',
               }}
             >
               {roleInitial(name, role)}
@@ -169,10 +162,10 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
 
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-text-primary truncate">{name || 'Signed in'}</div>
-                <div className="text-[11px] text-muted truncate">{roleDisplayLabel(role)}</div>
+                <div className="user-name truncate">{name || 'Signed in'}</div>
+                <div className="user-role truncate">{roleDisplayLabel(role)}</div>
                 {roleDisplaySublabel(role) && (
-                  <div className="text-[10px] text-muted/70 truncate">{roleDisplaySublabel(role)}</div>
+                  <div className="user-role truncate opacity-80">{roleDisplaySublabel(role)}</div>
                 )}
               </div>
             )}
@@ -184,12 +177,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
               type="button"
               onClick={() => void handleSignOut()}
               data-cursor="pointer"
-              className="w-full flex items-center justify-center gap-2 h-9 rounded-md text-xs font-medium transition-colors mb-3"
-              style={{
-                backgroundColor: 'rgba(239,68,68,0.1)',
-                color: 'rgba(245,245,240,0.8)',
-                border: '1px solid rgba(239,68,68,0.2)',
-              }}
+              className="admin-btn-destructive w-full flex items-center justify-center gap-2 h-9 text-xs font-medium mb-3"
             >
               <LogOut className="w-4 h-4" aria-hidden />
               Sign Out
@@ -202,11 +190,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
             onClick={() => setCollapsed(!collapsed)}
             data-cursor="pointer"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-full flex items-center justify-center h-9 rounded-md transition-all"
-            style={{
-              backgroundColor: 'rgba(255,255,255,0.05)',
-              color: '#F5F5F0',
-            }}
+            className="admin-btn-secondary w-full flex items-center justify-center h-9"
           >
             <ChevronLeft
               className="w-5 h-5 transition-transform"
@@ -258,9 +242,9 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
               className="vms-sidebar fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r"
             >
               {/* Header */}
-              <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                <div className="font-bold tracking-tight text-sm text-text-primary">VIGILANCE</div>
-                <p className="text-xs text-muted mt-2 font-medium">Executive Command</p>
+              <div className="p-6 border-b sidebar-user-block" style={{ borderTop: 'none' }}>
+                <div className="font-bold tracking-tight text-sm user-name">VIGILANCE</div>
+                <p className="text-xs user-role mt-2 font-medium">Executive Command</p>
               </div>
 
               <nav className="flex-1 py-4 overflow-y-auto">
@@ -274,18 +258,11 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
                       to={item.path}
                       data-cursor="pointer"
                       onClick={handleNavClick}
-                      className={`relative mb-2 flex h-11 items-center rounded-md px-4 transition-all group ${
-                        active ? 'vms-sidebar-nav-active' : ''
-                      }`}
-                      style={{
-                        color: active ? '#F5F5F0' : 'rgba(245,245,240,0.58)',
-                        backgroundColor: active ? undefined : 'transparent',
-                        borderLeft: active ? '3px solid rgba(148,163,184,0.55)' : '3px solid transparent',
-                        paddingLeft: active ? 'calc(16px - 3px)' : '16px',
-                      }}
+                      aria-current={active ? 'page' : undefined}
+                      className={`sidebar-link relative mb-2 flex h-11 items-center ${active ? 'active vms-sidebar-nav-active' : ''}`}
                     >
                       <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
-                      <span className="ml-3 text-sm font-medium">{item.label}</span>
+                      <span className="ml-3">{item.label}</span>
                       {item.label === 'Review Inspections' && pendingCount > 0 && (
                         <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
                           {pendingCount}
@@ -297,29 +274,27 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
               </nav>
 
               {/* Footer Section */}
-              <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                {/* User Info */}
+              <div className="sidebar-user-block">
                 <div className="flex items-center gap-3 mb-4">
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                     style={{
-                      border: '2px solid rgba(37,99,235,0.3)',
-                      backgroundColor: 'rgba(37,99,235,0.12)',
-                      color: '#3B82F6',
+                      border: '2px solid rgba(99,102,241,0.3)',
+                      backgroundColor: 'rgba(99,102,241,0.12)',
+                      color: 'var(--accent-blue)',
                     }}
                   >
                     {roleInitial(name, role)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-text-primary truncate">{name || 'Signed in'}</div>
-                    <div className="text-[11px] text-muted truncate">{roleDisplayLabel(role)}</div>
+                    <div className="user-name truncate">{name || 'Signed in'}</div>
+                    <div className="user-role truncate">{roleDisplayLabel(role)}</div>
                     {roleDisplaySublabel(role) && (
-                      <div className="text-[10px] text-muted/70 truncate">{roleDisplaySublabel(role)}</div>
+                      <div className="user-role truncate opacity-80">{roleDisplaySublabel(role)}</div>
                     )}
                   </div>
                 </div>
 
-                {/* Sign Out Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -327,12 +302,7 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
                     setMobileOpen(false);
                   }}
                   data-cursor="pointer"
-                  className="w-full flex items-center justify-center gap-2 h-9 rounded-md text-xs font-medium transition-colors"
-                  style={{
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    color: 'rgba(245,245,240,0.8)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                  }}
+                  className="admin-btn-destructive w-full flex items-center justify-center gap-2 h-9 text-xs font-medium"
                 >
                   <LogOut className="w-4 h-4" aria-hidden />
                   Sign Out

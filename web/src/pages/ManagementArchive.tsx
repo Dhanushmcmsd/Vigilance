@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Calendar } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import ComplianceChart from '../components/ComplianceChart';
 import { BloomGradientPanel, BloomPageHeader } from '../components/ui/BloomGradientPanel';
@@ -9,11 +9,7 @@ import { formatMonthLabel, monthKey } from '../lib/inspectionQueries';
 import { computeComplianceTrend } from '../lib/managementAnalytics';
 import { filterByDateRange } from '../lib/dateRanges';
 import { filterInspectionsByDistrict } from '../lib/districtCalculations';
-import {
-  complianceScoreColor,
-  computeDistrictMonthSummariesV2,
-  computeMonthlyArchiveStats,
-} from '../lib/managementArchive';
+import { computeMonthlyArchiveStats } from '../lib/managementArchive';
 
 export default function ManagementArchive() {
   const { data = [], isLoading } = useManagementInspections();
@@ -60,11 +56,6 @@ export default function ManagementArchive() {
     return computeComplianceTrend(source, true);
   }, [monthInspections, scopedMonthInspections, selectedDistrict]);
 
-  const districtSummaries = useMemo(
-    () => computeDistrictMonthSummariesV2(monthInspections, prevMonthInspections),
-    [monthInspections, prevMonthInspections],
-  );
-
   const onMonthChange = (month: string) => {
     setSelectedMonth(month);
     if (selectedDistrict) {
@@ -74,12 +65,6 @@ export default function ManagementArchive() {
     } else {
       setSearchParams({});
     }
-  };
-
-  const trendArrow = (direction: 'up' | 'down' | 'stable') => {
-    if (direction === 'up') return '↑';
-    if (direction === 'down') return '↓';
-    return '→';
   };
 
   return (
@@ -169,55 +154,6 @@ export default function ManagementArchive() {
           </div>
 
           <ComplianceChart data={trendData} surface="bloom" />
-
-          {!selectedDistrict ? (
-            <BloomGradientPanel className="p-6">
-              <h2 className="mb-4 text-lg font-bold text-white">Districts — {formatMonthLabel(activeMonth)}</h2>
-              <div className="space-y-3">
-                {districtSummaries.map((district) => {
-                  const scoreColor = complianceScoreColor(district.avgCompliance);
-                  return (
-                    <button
-                      key={district.district}
-                      type="button"
-                      onClick={() =>
-                        setSearchParams({
-                          district: district.district,
-                          ...(activeMonth ? { month: activeMonth } : {}),
-                        })
-                      }
-                      className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-white">
-                          {district.district} · {district.totalReports}{' '}
-                          {district.totalReports === 1 ? 'report' : 'reports'}
-                        </p>
-                        <p className="text-sm text-white/65">
-                          {district.redFlagsRaised} red flags · {district.officersActive} officers · Last report{' '}
-                          {district.lastReportDate}
-                        </p>
-                        <p className="mt-1 text-xs text-white/50">
-                          {district.mostCommonFailedSection !== '—'
-                            ? `Most failed: ${district.mostCommonFailedSection}`
-                            : 'No failed sections recorded'}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <span className="text-xl font-black tabular-nums" style={{ color: scoreColor }}>
-                          {district.avgCompliance.toFixed(1)}%
-                        </span>
-                        <p className="mt-1 text-sm font-semibold text-white/80">
-                          {trendArrow(district.complianceTrend)} vs prior month
-                        </p>
-                      </div>
-                      <ChevronRight className="h-5 w-5 shrink-0 text-white/45" />
-                    </button>
-                  );
-                })}
-              </div>
-            </BloomGradientPanel>
-          ) : null}
         </>
       )}
     </div>

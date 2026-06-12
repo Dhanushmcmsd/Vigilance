@@ -30,6 +30,8 @@ import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttac
 import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
 import { uploadInspectionFiles } from '../../lib/uploadInspectionFiles';
 import { claimBranchInspection } from '../../lib/branchLocks';
+import VideoCapture from '../../components/VideoCapture';
+import { uploadInspectionVideo } from '../../lib/videoUpload';
 
 const today = new Date().toISOString().split('T')[0];
 const nowTime = () => {
@@ -100,6 +102,19 @@ export default function ChecklistScreen() {
   const [timeOut, setTimeOut] = useState('');
   const [generalRemark, setGeneralRemark] = useState('');
   const [itemFiles, setItemFiles] = useState<Record<string, ItemAttachment[]>>({});
+  const [videoCaptureItemId, setVideoCaptureItemId] = useState<string | null>(null);
+  const [itemVideos, setItemVideos] = useState<
+    Record<
+      string,
+      Array<{
+        uri: string;
+        fileUrl?: string;
+        fileName?: string;
+        durationSeconds: number;
+        uploading: boolean;
+      }>
+    >
+  >({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'warning' }>({
@@ -405,6 +420,19 @@ export default function ChecklistScreen() {
       [itemId]: (prev[itemId] ?? []).filter((f) => f.uri !== uri),
     }));
   }, []);
+
+  const removeItemVideo = useCallback((itemId: string, uri: string) => {
+    setItemVideos((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).filter((v) => v.uri !== uri),
+    }));
+  }, []);
+
+  const formatVideoDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
 
   const normalizeImageUri = useCallback(
     async (
@@ -992,8 +1020,11 @@ export default function ChecklistScreen() {
               const showRemark = isRemarkVisible(item.id);
               const triggerOnNo = item.trigger_on_no ?? true;
               const itemAttachments = itemFiles[item.id] ?? [];
+              const itemVideoList = itemVideos[item.id] ?? [];
               const attachmentHint =
-                itemAttachments.length > 0 ? ` · ${itemAttachments.length} file(s)` : '';
+                itemAttachments.length + itemVideoList.length > 0
+                  ? ` · ${itemAttachments.length + itemVideoList.length} file(s)`
+                  : '';
 
               return (
                 <View
@@ -1113,6 +1144,24 @@ export default function ChecklistScreen() {
                           paddingVertical: 8,
                         }}
                       />
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                        <TouchableOpacity
+                          onPress={() => setVideoCaptureItemId(item.id)}
+                          style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            backgroundColor: '#fef2f2',
+                            borderRadius: 10,
+                            paddingVertical: 10,
+                          }}
+                        >
+                          <Ionicons name="videocam-outline" size={16} color="#dc2626" />
+                          <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 12 }}>Video</Text>
+                        </TouchableOpacity>
+                      </View>
                       <ItemAttachments
                         compact
                         files={itemAttachments}
@@ -1121,6 +1170,52 @@ export default function ChecklistScreen() {
                         onAddDocument={() => void pickDocumentForItem(item.id)}
                         onRemove={(uri) => removeItemFile(item.id, uri)}
                       />
+                      {itemVideoList.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                          {itemVideoList.map((video) => (
+                            <View key={video.uri} style={{ marginRight: 10, position: 'relative' }}>
+                              <View
+                                style={{
+                                  width: 72,
+                                  height: 72,
+                                  borderRadius: 8,
+                                  backgroundColor: '#1e293b',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {video.uploading ? (
+                                  <ActivityIndicator color="#fff" size="small" />
+                                ) : (
+                                  <>
+                                    <Ionicons name="play-circle" size={28} color="#fff" />
+                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                                      {formatVideoDuration(video.durationSeconds)}
+                                    </Text>
+                                  </>
+                                )}
+                              </View>
+                              <TouchableOpacity
+                                onPress={() => removeItemVideo(item.id, video.uri)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{
+                                  position: 'absolute',
+                                  top: -6,
+                                  right: -6,
+                                  backgroundColor: '#dc2626',
+                                  borderRadius: 10,
+                                  width: 20,
+                                  height: 20,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Ionicons name="close" size={12} color="#fff" />
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
                     </View>
                   )}
                 </View>
@@ -1315,6 +1410,46 @@ export default function ChecklistScreen() {
             : 'Answer all items on this page to continue.'}
         </Text>
       </View>
+
+      {videoCaptureItemId && (
+        <VideoCapture
+          onVideoCaptured={async (uri, durationSeconds) => {
+            const capturedItemId = videoCaptureItemId;
+            setItemVideos((prev) => ({
+              ...prev,
+              [capturedItemId]: [
+                ...(prev[capturedItemId] ?? []),
+                { uri, durationSeconds, uploading: true },
+              ],
+            }));
+            setVideoCaptureItemId(null);
+            try {
+              const inspId = await ensureInspection();
+              if (!inspId) throw new Error('Inspection not ready for video upload');
+              const result = await uploadInspectionVideo(
+                uri,
+                inspId,
+                capturedItemId,
+                durationSeconds,
+              );
+              setItemVideos((prev) => {
+                const list = [...(prev[capturedItemId] ?? [])];
+                const idx = list.findIndex((v) => v.uri === uri);
+                if (idx !== -1) {
+                  list[idx] = { ...list[idx], ...result, uploading: false };
+                }
+                return { ...prev, [capturedItemId]: list };
+              });
+              setItemRemarkToggles((prev) => ({ ...prev, [capturedItemId]: true }));
+              showToast('Video uploaded', 'success');
+            } catch (e) {
+              removeItemVideo(capturedItemId, uri);
+              showToast(e instanceof Error ? e.message : 'Video upload failed', 'error');
+            }
+          }}
+          onClose={() => setVideoCaptureItemId(null)}
+        />
+      )}
     </View>
   );
 }

@@ -36,6 +36,8 @@ interface FileRow {
   file_name: string;
   file_type: string;
   checklist_item_id: string | null;
+  duration_seconds?: number | null;
+  file_size_bytes?: number | null;
 }
 
 interface SubmissionDetail {
@@ -51,6 +53,25 @@ interface SubmissionDetail {
   inspection_files: FileRow[];
   general_remarks: { remark_text: string }[];
 }
+
+const isVideoFile = (f: FileRow) => {
+  const type = (f.file_type ?? '').toLowerCase();
+  const name = (f.file_name ?? '').toLowerCase();
+  const url = (f.file_url ?? '').toLowerCase();
+  return type === 'video' || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(name) || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
+};
+
+const formatDuration = (seconds: number | null | undefined) => {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+
+const formatFileSizeMb = (bytes: number | null | undefined) => {
+  if (!bytes || bytes <= 0) return '—';
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const isImageFile = (f: FileRow) => {
   const type = (f.file_type ?? '').toLowerCase();
@@ -104,7 +125,7 @@ export default function SubmissionDetailScreen() {
               item_text, section, item_order, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
+          inspection_files ( id, file_url, file_name, file_type, checklist_item_id, duration_seconds, file_size_bytes ),
           general_remarks ( remark_text )
         `,
         )
@@ -140,6 +161,16 @@ export default function SubmissionDetailScreen() {
     const seen = new Set<string>();
     return (data?.inspection_files ?? []).filter((f) => {
       if (!isImageFile(f)) return false;
+      if (seen.has(f.file_url)) return false;
+      seen.add(f.file_url);
+      return true;
+    });
+  }, [data?.inspection_files]);
+
+  const allVideos = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.inspection_files ?? []).filter((f) => {
+      if (!isVideoFile(f)) return false;
       if (seen.has(f.file_url)) return false;
       seen.add(f.file_url);
       return true;
@@ -383,6 +414,67 @@ export default function SubmissionDetailScreen() {
                     resizeMode="cover"
                   />
                 </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {allVideos.length > 0 && (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 12,
+              shadowColor: '#000',
+              shadowOpacity: 0.05,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 2,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1, marginBottom: 12 }}>
+              VIDEOS
+            </Text>
+            <View style={{ gap: 8 }}>
+              {allVideos.map((f) => (
+                <View
+                  key={f.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    padding: 12,
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }} numberOfLines={1}>
+                      {f.file_name ?? 'Inspection video'}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                      {formatDuration(f.duration_seconds)} · {formatFileSizeMb(f.file_size_bytes)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(f.file_url)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: '#2563eb',
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Ionicons name="play" size={14} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Play</Text>
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           </View>

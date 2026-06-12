@@ -65,7 +65,15 @@ interface ReportDetail {
       trigger_on_no: boolean;
     } | null;
   }[];
-  inspection_files: { id: string; file_url: string; file_name: string; file_type: string }[];
+  inspection_files: {
+    id: string;
+    file_url: string;
+    file_name: string;
+    file_type: string;
+    duration_seconds?: number | null;
+    file_size_bytes?: number | null;
+    uploaded_at?: string | null;
+  }[];
   general_remarks: { remark_text: string }[];
 }
 
@@ -74,6 +82,18 @@ type View =
   | { kind: 'district'; district: string }
   | { kind: 'store'; branchId: string; branchName: string; district: string }
   | { kind: 'month'; branchId: string; branchName: string; district: string; yearMonth: string };
+
+function formatVideoDuration(seconds: number | null | undefined): string {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatVideoSizeMb(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return '—';
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function formatReportTime(value: string | null | undefined): string {
   if (!value?.trim()) return '—';
@@ -178,7 +198,7 @@ export function ReportDetailModal({
               item_text, section, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type ),
+          inspection_files ( id, file_url, file_name, file_type, duration_seconds, file_size_bytes, uploaded_at ),
           general_remarks ( remark_text )
         `,
         )
@@ -203,6 +223,16 @@ export function ReportDetailModal({
     () => dedupeInspectionImageFiles(data?.inspection_files ?? []),
     [data?.inspection_files],
   );
+
+  const videoFiles = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.inspection_files ?? []).filter((f) => {
+      if (f.file_type !== 'video') return false;
+      if (seen.has(f.file_url)) return false;
+      seen.add(f.file_url);
+      return true;
+    });
+  }, [data?.inspection_files]);
 
   return createPortal(
     <div
@@ -353,6 +383,50 @@ export function ReportDetailModal({
                       >
                         <img src={f.file_url} alt={f.file_name} className="h-24 w-full object-cover" />
                       </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {videoFiles.length > 0 && (
+                <div className="vms-report-section p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Field Videos</p>
+                  <div className="space-y-2">
+                    {videoFiles.map((f) => (
+                      <div
+                        key={f.id}
+                        className="flex flex-col gap-3 rounded-lg border border-white/15 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">{f.file_name}</p>
+                          <p className="mt-1 text-xs text-white/55">
+                            {formatVideoDuration(f.duration_seconds)} · {formatVideoSizeMb(f.file_size_bytes)}
+                            {f.uploaded_at
+                              ? ` · ${new Date(f.uploaded_at).toLocaleString('en-IN')}`
+                              : ''}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <a
+                            href={f.file_url}
+                            download={f.file_name}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="vms-modal-btn-primary"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </a>
+                          <a
+                            href={f.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="vms-modal-btn-ghost"
+                          >
+                            Open
+                          </a>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -107,6 +107,8 @@ interface ReportDetail {
     file_name: string;
     file_type: string;
     checklist_item_id: string | null;
+    duration_seconds?: number | null;
+    file_size_bytes?: number | null;
   }[];
   inspection_answers: {
     checklist_item_id: string | null;
@@ -114,6 +116,25 @@ interface ReportDetail {
   }[];
   general_remarks: { remark_text: string }[];
 }
+
+const isVideoEvidence = (file: ReportDetail['inspection_files'][number]) => {
+  const type = (file.file_type ?? '').toLowerCase();
+  const name = (file.file_name ?? '').toLowerCase();
+  const url = (file.file_url ?? '').toLowerCase();
+  return type === 'video' || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(name) || /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
+};
+
+const formatVideoDuration = (seconds: number | null | undefined) => {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+
+const formatVideoSizeMb = (bytes: number | null | undefined) => {
+  if (!bytes || bytes <= 0) return '—';
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const isImageEvidence = (file: ReportDetail['inspection_files'][number]) => {
   const type = (file.file_type ?? '').toLowerCase();
@@ -167,7 +188,7 @@ export default function AuditReportDetailScreen() {
               item_text, section, item_order, trigger_on_no
             )
           ),
-          inspection_files ( id, file_url, file_name, file_type, checklist_item_id ),
+          inspection_files ( id, file_url, file_name, file_type, checklist_item_id, duration_seconds, file_size_bytes ),
           inspection_answers ( checklist_item_id, photo_url ),
           general_remarks ( remark_text )
         `,
@@ -221,6 +242,16 @@ export default function AuditReportDetailScreen() {
     const seen = new Set<string>();
     return (data?.inspection_files ?? []).filter((f) => {
       if (!isImageEvidence(f)) return false;
+      if (seen.has(f.file_url)) return false;
+      seen.add(f.file_url);
+      return true;
+    });
+  }, [data?.inspection_files]);
+
+  const videoFiles = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.inspection_files ?? []).filter((f) => {
+      if (!isVideoEvidence(f)) return false;
       if (seen.has(f.file_url)) return false;
       seen.add(f.file_url);
       return true;
@@ -570,6 +601,72 @@ export default function AuditReportDetailScreen() {
                     resizeMode="cover"
                   />
                 </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {videoFiles.length > 0 && (
+          <View
+            style={{
+              backgroundColor: AUDIT.surface,
+              borderRadius: RADIUS.xl,
+              padding: SPACING.lg,
+              marginBottom: SPACING.md,
+              borderWidth: 1,
+              borderColor: AUDIT.border,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '800',
+                color: AUDIT.textMuted,
+                letterSpacing: 1,
+                marginBottom: 12,
+              }}
+            >
+              VIDEOS
+            </Text>
+            <View style={{ gap: 8 }}>
+              {videoFiles.map((f) => (
+                <View
+                  key={f.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderRadius: RADIUS.md,
+                    borderWidth: 1,
+                    borderColor: AUDIT.border,
+                    backgroundColor: '#1c2a3a',
+                    padding: SPACING.md,
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: AUDIT.text }} numberOfLines={1}>
+                      {f.file_name ?? 'Inspection video'}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: AUDIT.textMuted, marginTop: 4 }}>
+                      {formatVideoDuration(f.duration_seconds)} · {formatVideoSizeMb(f.file_size_bytes)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(f.file_url)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: AUDIT.accent,
+                      borderRadius: RADIUS.md,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Ionicons name="play" size={14} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>Play</Text>
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           </View>

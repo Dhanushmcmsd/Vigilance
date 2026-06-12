@@ -73,6 +73,8 @@ const config = {
       infoPlist: {
         NSCameraUsageDescription:
           'Allow Vigilance to use the camera for inspection photos.',
+        NSMicrophoneUsageDescription:
+          'Required to record video during store inspections',
         NSPhotoLibraryUsageDescription:
           'Allow Vigilance to access your photos for inspection reports.',
         NSLocationWhenInUseUsageDescription:
@@ -90,6 +92,7 @@ const config = {
       },
       permissions: [
         'CAMERA',
+        'RECORD_AUDIO',
         'READ_EXTERNAL_STORAGE',
         'WRITE_EXTERNAL_STORAGE',
         'ACCESS_FINE_LOCATION',
@@ -118,6 +121,14 @@ const config = {
             'Allow Vigilance to access your photos for inspection reports.',
           cameraPermission:
             'Allow Vigilance to use the camera for inspection photos.',
+        },
+      ],
+      [
+        'expo-camera',
+        {
+          cameraPermission: 'Allow Vigilance to use the camera for inspection photos.',
+          microphonePermission: 'Required to record video during store inspections',
+          recordAudioAndroid: true,
         },
       ],
       [

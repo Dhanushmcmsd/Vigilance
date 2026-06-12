@@ -12,6 +12,8 @@ export interface InspectionResponseRow {
   trigger_on_no: boolean;
   risk_level: string | null;
   checklist_item_id: string;
+  was_previously_at_risk: boolean;
+  resolved_this_inspection: boolean;
 }
 
 export interface ManagementInspection {
@@ -61,6 +63,8 @@ const INSPECTION_SELECT = `
     response,
     remarks,
     checklist_item_id,
+    was_previously_at_risk,
+    resolved_this_inspection,
     checklist_templates:checklist_item_id (
       section,
       item_text,
@@ -88,6 +92,8 @@ function mapInspectionRow(item: Record<string, unknown>): ManagementInspection {
       trigger_on_no: Boolean(ct?.trigger_on_no ?? true),
       risk_level: (ct?.risk_level as string | null) ?? null,
       checklist_item_id: String(r.checklist_item_id ?? ''),
+      was_previously_at_risk: Boolean(r.was_previously_at_risk ?? false),
+      resolved_this_inspection: Boolean(r.resolved_this_inspection ?? false),
     };
   });
   const answerPhotos = ((item.inspection_answers as Record<string, unknown>[]) ?? [])

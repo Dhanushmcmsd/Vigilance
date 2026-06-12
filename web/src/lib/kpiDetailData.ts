@@ -151,9 +151,7 @@ export function computeRisksResolvedThisMonth(
   const rows: KpiDetailRow[] = [];
   scoped.forEach((inspection) => {
     inspection.responses.forEach((response) => {
-      const wasRisk = (response as { was_previously_at_risk?: boolean }).was_previously_at_risk;
-      const resolved = (response as { resolved_this_inspection?: boolean }).resolved_this_inspection;
-      if (wasRisk && resolved) {
+      if (response.was_previously_at_risk && response.resolved_this_inspection) {
         rows.push({
           id: `${inspection.id}-${response.id}`,
           primary: inspection.branch_name,
@@ -166,6 +164,89 @@ export function computeRisksResolvedThisMonth(
   });
 
   return { count: rows.length, rows };
+}
+
+export interface ResolvedStoreSummary {
+  branchId: string;
+  storeName: string;
+  district: string;
+  resolvedCount: number;
+  latestDate: string;
+}
+
+export interface ResolvedItemDetail {
+  id: string;
+  itemText: string;
+  section: string;
+  inspectionDate: string;
+}
+
+export function computeRisksResolvedStoreSummaries(
+  inspections: ManagementInspection[],
+  district?: string | null,
+): ResolvedStoreSummary[] {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const scoped = filterInspectionsByDistrict(inspections, district).filter(
+    (i) => new Date(i.submitted_at) >= monthStart,
+  );
+
+  const byBranch = new Map<string, ResolvedStoreSummary>();
+
+  scoped.forEach((inspection) => {
+    let resolvedInInspection = 0;
+    inspection.responses.forEach((response) => {
+      if (response.was_previously_at_risk && response.resolved_this_inspection) {
+        resolvedInInspection += 1;
+      }
+    });
+    if (resolvedInInspection === 0) return;
+
+    const existing = byBranch.get(inspection.branch_id);
+    const dateLabel = new Date(inspection.submitted_at).toLocaleDateString('en-IN');
+    if (existing) {
+      existing.resolvedCount += resolvedInInspection;
+      existing.latestDate = dateLabel;
+    } else {
+      byBranch.set(inspection.branch_id, {
+        branchId: inspection.branch_id,
+        storeName: inspection.branch_name,
+        district: storeDistrict(inspection.region),
+        resolvedCount: resolvedInInspection,
+        latestDate: dateLabel,
+      });
+    }
+  });
+
+  return [...byBranch.values()].sort((a, b) => a.storeName.localeCompare(b.storeName));
+}
+
+export function computeRisksResolvedItemsForStore(
+  inspections: ManagementInspection[],
+  branchId: string,
+  district?: string | null,
+): ResolvedItemDetail[] {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const scoped = filterInspectionsByDistrict(inspections, district).filter(
+    (i) => i.branch_id === branchId && new Date(i.submitted_at) >= monthStart,
+  );
+
+  const rows: ResolvedItemDetail[] = [];
+  scoped.forEach((inspection) => {
+    inspection.responses.forEach((response) => {
+      if (response.was_previously_at_risk && response.resolved_this_inspection) {
+        rows.push({
+          id: `${inspection.id}-${response.id}`,
+          itemText: response.item_text,
+          section: response.section,
+          inspectionDate: new Date(inspection.submitted_at).toLocaleDateString('en-IN'),
+        });
+      }
+    });
+  });
+
+  return rows;
 }
 
 export function computeRiskResolutionTrend(
@@ -194,8 +275,8 @@ export function computeRiskResolutionTrend(
               newRisks += 1;
             }
           }
-          const wasRisk = (response as { was_previously_at_risk?: boolean }).was_previously_at_risk;
-          const didResolve = (response as { resolved_this_inspection?: boolean }).resolved_this_inspection;
+          const wasRisk = response.was_previously_at_risk;
+          const didResolve = response.resolved_this_inspection;
           if (wasRisk && didResolve) resolved += 1;
         });
       });

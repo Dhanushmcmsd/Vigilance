@@ -165,14 +165,14 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
-      <OfficerTabHeader title="Profile" subtitle="Your account, photo, and recent branch activity." />
-
       <ScrollView
         contentContainerStyle={{
-          padding: SPACING.lg,
           paddingBottom: insets.bottom + SPACING.xl,
         }}
       >
+        <OfficerTabHeader title="Profile" subtitle="Your account, photo, and recent branch activity." />
+
+        <View style={{ padding: SPACING.lg }}>
         {/* Identity card */}
         <View style={styles.identityCard}>
           <TouchableOpacity
@@ -279,6 +279,7 @@ export default function ProfileScreen() {
           <Ionicons name="log-out-outline" size={22} color={COLOR.danger} />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Confirmation modal */}

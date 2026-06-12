@@ -135,37 +135,12 @@ export default function DraftsScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
-        <OfficerTabHeader
-          title="Drafts"
-          subtitle="Resume in-progress inspections or sync queued submissions."
-        />
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#0f766e" />
-        </View>
-      </View>
-    );
-  }
-
-  const empty = drafts.length === 0 && queue.length === 0;
-
-  return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
-      <ToastMessage
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={() => setToast((p) => ({ ...p, visible: false }))}
-      />
-
+  const listHeader = (
+    <>
       <OfficerTabHeader
         title="Drafts"
         subtitle="Resume in-progress inspections or sync queued submissions."
       />
-
-      {/* Sync now */}
       <View style={{ padding: SPACING.lg }}>
         <TouchableOpacity
           onPress={onSyncNow}
@@ -191,20 +166,66 @@ export default function DraftsScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-
-      {empty ? (
-        <View style={styles.emptyWrap}>
-          <Ionicons
-            name="document-text-outline"
-            size={56}
-            color={COLOR.borderStrong}
-          />
-          <Text style={styles.emptyTitle}>No drafts yet</Text>
-          <Text style={styles.emptyBody}>
-            Start an inspection from the home screen — any progress will be
-            saved here automatically.
+      {queue.length > 0 ? (
+        <View style={[styles.queueBanner, { marginHorizontal: SPACING.lg }]}>
+          <Ionicons name="cloud-offline-outline" size={20} color={COLOR.warning} />
+          <Text style={styles.queueBannerText}>
+            {queue.length} submitted offline — will sync automatically when online.
           </Text>
         </View>
+      ) : null}
+    </>
+  );
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <>
+              {listHeader}
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator size="large" color="#0f766e" />
+              </View>
+            </>
+          }
+        />
+      </View>
+    );
+  }
+
+  const empty = drafts.length === 0 && queue.length === 0;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+      <ToastMessage
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast((p) => ({ ...p, visible: false }))}
+      />
+
+      {empty ? (
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListHeaderComponent={
+            <>
+              {listHeader}
+              <View style={styles.emptyWrap}>
+                <Ionicons name="document-text-outline" size={56} color={COLOR.borderStrong} />
+                <Text style={styles.emptyTitle}>No drafts yet</Text>
+                <Text style={styles.emptyBody}>
+                  Start an inspection from the home screen — any progress will be saved here
+                  automatically.
+                </Text>
+              </View>
+            </>
+          }
+        />
       ) : (
         <FlatList
           data={drafts}
@@ -213,24 +234,8 @@ export default function DraftsScreen() {
             paddingHorizontal: SPACING.lg,
             paddingBottom: insets.bottom + SPACING.xl,
           }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListHeaderComponent={
-            queue.length > 0 ? (
-              <View style={styles.queueBanner}>
-                <Ionicons
-                  name="cloud-offline-outline"
-                  size={20}
-                  color={COLOR.warning}
-                />
-                <Text style={styles.queueBannerText}>
-                  {queue.length} submitted offline — will sync automatically
-                  when online.
-                </Text>
-              </View>
-            ) : null
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListHeaderComponent={listHeader}
           renderItem={({ item }) => {
             const answered = Object.values(item.draft.responses).filter(
               (r) => r.response != null,

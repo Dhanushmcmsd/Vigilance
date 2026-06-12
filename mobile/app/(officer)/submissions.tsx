@@ -15,15 +15,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { isViolationResponse } from '../../lib/checklistScoring';
-import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
+import { COLOR, FONT, RADIUS, SPACING } from '../../lib/a11y';
 import { haptics } from '../../lib/haptics';
 import { peekQueue, flushQueue } from '../../lib/syncQueue';
 import { OfficerTabHeader } from '../../components/OfficerTabHeader';
 
 interface ResponseRow {
   response: string | null;
-  risk_level?: string | null;
-  checklist_item?: { trigger_on_no?: boolean | null } | null;
+  checklist_item?: { trigger_on_no?: boolean | null; risk_level?: string | null } | null;
 }
 
 interface SubmissionRow {
@@ -51,7 +50,7 @@ function countBadges(responses: ResponseRow[] = []) {
 
   responses.forEach((entry) => {
     const triggerOnNo = entry.checklist_item?.trigger_on_no ?? true;
-    const level = entry.risk_level?.toUpperCase();
+    const level = entry.checklist_item?.risk_level?.toUpperCase();
     if (isViolationResponse(entry.response, triggerOnNo)) {
       if (level === 'YELLOW') yellow += 1;
       else red += 1;
@@ -123,8 +122,10 @@ export default function SubmissionsScreen() {
           officer:user_roles!inspections_officer_id_fkey ( name ),
           inspection_responses (
             response,
-            risk_level,
-            checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey ( trigger_on_no )
+            checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
+              trigger_on_no,
+              risk_level
+            )
           )
         `,
         )
@@ -158,92 +159,136 @@ export default function SubmissionsScreen() {
   const pendingCount = pendingQuery.data ?? 0;
   const empty = !isLoading && !isError && (data?.length ?? 0) === 0 && pendingCount === 0;
 
-  return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+  const listHeader = (
+    <>
       <OfficerTabHeader
         title="Submissions"
         subtitle="Your completed inspections and compliance scores."
       />
-
-      {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0f766e" />
-        </View>
-      ) : isError ? (
-        <View style={styles.center}>
-          <Ionicons name="alert-circle-outline" size={56} color={COLOR.danger} />
-          <Text style={styles.emptyTitle}>Could not load submissions</Text>
-          <Text style={styles.emptyBody}>
-            {error instanceof Error ? error.message : 'Please pull down to try again.'}
-          </Text>
-          <TouchableOpacity
-            onPress={() => void refetch()}
-            style={[styles.pendingBanner, { marginTop: SPACING.lg, alignSelf: 'stretch' }]}
-          >
-            <Text style={[styles.pendingTitle, { color: '#0f766e' }]}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      ) : empty ? (
-        <View style={styles.center}>
-          <Ionicons name="folder-open-outline" size={56} color={COLOR.borderStrong} />
-          <Text style={styles.emptyTitle}>No submissions yet</Text>
-          <Text style={styles.emptyBody}>Your completed inspections will appear here. Pull down to refresh.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={data}
-          keyExtractor={(it) => it.id}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: insets.bottom + SPACING.xl,
-            gap: 12,
+      {pendingCount > 0 ? (
+        <TouchableOpacity
+          onPress={() => {
+            haptics.tap();
+            router.push('/(officer)/drafts');
           }}
+          style={[styles.pendingBanner, { marginTop: 12 }]}
+          accessibilityRole="button"
+        >
+          <Ionicons name="cloud-offline-outline" size={28} color="#a16207" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pendingTitle}>{pendingCount} pending sync</Text>
+            <Text style={styles.pendingBody}>
+              These submissions will upload automatically when you're online. Tap to manage.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color="#a16207" />
+        </TouchableOpacity>
+      ) : null}
+    </>
+  );
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
           ListHeaderComponent={
-            pendingCount > 0 ? (
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.tap();
-                  router.push('/(officer)/drafts');
-                }}
-                style={styles.pendingBanner}
-                accessibilityRole="button"
-              >
-                <Ionicons name="cloud-offline-outline" size={28} color="#a16207" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.pendingTitle}>{pendingCount} pending sync</Text>
-                  <Text style={styles.pendingBody}>
-                    These submissions will upload automatically when you're online. Tap to manage.
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={22} color="#a16207" />
-              </TouchableOpacity>
-            ) : null
-          }
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
-          renderItem={({ item }) => (
-            <SubmissionCard
-              item={item}
-              onPress={() => {
-                haptics.tap();
-                router.push({
-                  pathname: '/(officer)/submission-detail',
-                  params: {
-                    inspectionId: item.id,
-                    branchName: item.branch?.branch_name ?? 'Store',
-                  },
-                });
-              }}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 }}>
-              <Text style={{ fontSize: 15, color: COLOR.textMuted }}>No submissions yet.</Text>
-            </View>
+            <>
+              {listHeader}
+              <View style={styles.center}>
+                <ActivityIndicator size="large" color="#0f766e" />
+              </View>
+            </>
           }
         />
-      )}
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <>
+              {listHeader}
+              <View style={styles.center}>
+                <Ionicons name="alert-circle-outline" size={56} color={COLOR.danger} />
+                <Text style={styles.emptyTitle}>Could not load submissions</Text>
+                <Text style={styles.emptyBody}>
+                  {error instanceof Error ? error.message : 'Please pull down to try again.'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => void refetch()}
+                  style={[styles.pendingBanner, { marginTop: SPACING.lg, alignSelf: 'stretch' }]}
+                >
+                  <Text style={[styles.pendingTitle, { color: '#0f766e' }]}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          }
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+        />
+      </View>
+    );
+  }
+
+  if (empty) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <>
+              {listHeader}
+              <View style={styles.center}>
+                <Ionicons name="folder-open-outline" size={56} color={COLOR.borderStrong} />
+                <Text style={styles.emptyTitle}>No submissions yet</Text>
+                <Text style={styles.emptyBody}>
+                  Your completed inspections will appear here. Pull down to refresh.
+                </Text>
+              </View>
+            </>
+          }
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+      <FlatList
+        data={data}
+        keyExtractor={(it) => it.id}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: insets.bottom + SPACING.xl,
+          gap: 12,
+        }}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+        renderItem={({ item }) => (
+          <SubmissionCard
+            item={item}
+            onPress={() => {
+              haptics.tap();
+              router.push({
+                pathname: '/(officer)/submission-detail',
+                params: {
+                  inspectionId: item.id,
+                  branchName: item.branch?.branch_name ?? 'Store',
+                },
+              });
+            }}
+          />
+        )}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
@@ -335,7 +380,6 @@ const styles = {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    minHeight: TOUCH.rowHeight,
   } as const,
   pendingTitle: {
     fontSize: FONT.bodyLg,

@@ -6,6 +6,7 @@ import { SectionRiskChart } from '../../components/dashboard/SectionRiskChart';
 import { StoreGrid } from '../../components/dashboard/StoreGrid';
 import { StoreDetailPanel } from '../../components/dashboard/StoreDetailPanel';
 import { KpiDetailModal } from '../../components/dashboard/KpiDetailModal';
+import { RisksResolvedDetailModal } from '../../components/dashboard/RisksResolvedDetailModal';
 import { useCeoDashboard } from '../../context/CeoDashboardContext';
 import { staggerContainer, fadeUp } from '../../lib/animations';
 import {
@@ -85,11 +86,11 @@ export default function CeoOverviewPage() {
           rows: computeInspectionsTodayDetails(inspections, selectedDistrict),
         };
       case 'risksResolved':
-        return { title: 'Risks Resolved', rows: risksResolved.rows };
+        return { title: 'Risks Resolved', rows: [] };
       default:
         return { title: '', rows: [] };
     }
-  }, [activeKpi, inspections, selectedDistrict, storeCards, risksResolved.rows]);
+  }, [activeKpi, inspections, selectedDistrict, storeCards]);
 
   const gridStores = useMemo(() => {
     if (selectedDistrict) {
@@ -189,9 +190,16 @@ export default function CeoOverviewPage() {
       <StoreDetailPanel store={selectedStore} onClose={() => setSelectedStore(null)} />
 
       <KpiDetailModal
-        open={activeKpi !== null}
+        open={activeKpi !== null && activeKpi !== 'risksResolved'}
         title={kpiModalConfig.title}
         rows={kpiModalConfig.rows}
+        onClose={() => setActiveKpi(null)}
+      />
+
+      <RisksResolvedDetailModal
+        open={activeKpi === 'risksResolved'}
+        inspections={inspections}
+        district={selectedDistrict}
         onClose={() => setActiveKpi(null)}
       />
     </motion.div>

@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -18,11 +18,12 @@ import { isViolationResponse } from '../../lib/checklistScoring';
 import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
 import { haptics } from '../../lib/haptics';
 import { peekQueue, flushQueue } from '../../lib/syncQueue';
+import { OfficerTabHeader } from '../../components/OfficerTabHeader';
 
 interface ResponseRow {
   response: string | null;
   risk_level?: string | null;
-  checklist_templates?: { trigger_on_no?: boolean | null } | null;
+  checklist_item?: { trigger_on_no?: boolean | null } | null;
 }
 
 interface SubmissionRow {
@@ -49,7 +50,7 @@ function countBadges(responses: ResponseRow[] = []) {
   let green = 0;
 
   responses.forEach((entry) => {
-    const triggerOnNo = entry.checklist_templates?.trigger_on_no ?? true;
+    const triggerOnNo = entry.checklist_item?.trigger_on_no ?? true;
     const level = entry.risk_level?.toUpperCase();
     if (isViolationResponse(entry.response, triggerOnNo)) {
       if (level === 'YELLOW') yellow += 1;
@@ -62,7 +63,7 @@ function countBadges(responses: ResponseRow[] = []) {
   return { red, yellow, green };
 }
 
-function SubmissionCard({ item }: { item: SubmissionRow }) {
+function SubmissionCard({ item, onPress }: { item: SubmissionRow; onPress: () => void }) {
   const storeName = item.branch?.branch_name ?? 'Unknown branch';
   const score = item.compliance_score;
   const dateLabel = item.submitted_at
@@ -71,7 +72,7 @@ function SubmissionCard({ item }: { item: SubmissionRow }) {
   const { red, yellow, green } = countBadges(item.inspection_responses);
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity onPress={onPress} style={styles.card} accessibilityRole="button">
       <View style={styles.cardTopRow}>
         <Text style={styles.storeName} numberOfLines={2}>
           {storeName}
@@ -100,7 +101,7 @@ function SubmissionCard({ item }: { item: SubmissionRow }) {
           </View>
         ) : null}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -109,11 +110,11 @@ export default function SubmissionsScreen() {
   const insets = useSafeAreaInsets();
   const { userRolesId } = useAuth();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<SubmissionRow[]>({
+  const { data, isLoading, refetch, isRefetching, error, isError } = useQuery<SubmissionRow[]>({
     queryKey: ['officer-submissions', userRolesId],
     enabled: !!userRolesId,
     queryFn: async () => {
-      const { data: rows, error } = await supabase
+      const { data: rows, error: qErr } = await supabase
         .from('inspections')
         .select(
           `
@@ -123,7 +124,7 @@ export default function SubmissionsScreen() {
           inspection_responses (
             response,
             risk_level,
-            checklist_templates:checklist_item_id ( trigger_on_no )
+            checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey ( trigger_on_no )
           )
         `,
         )
@@ -131,10 +132,16 @@ export default function SubmissionsScreen() {
         .neq('status', 'draft')
         .order('submitted_at', { ascending: false, nullsFirst: false })
         .limit(100);
-      if (error) throw error;
+      if (qErr) throw qErr;
       return ((rows ?? []) as unknown) as SubmissionRow[];
     },
   });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userRolesId) void refetch();
+    }, [userRolesId, refetch]),
+  );
 
   const pendingQuery = useQuery<number>({
     queryKey: ['officer-pending-sync'],
@@ -149,30 +156,32 @@ export default function SubmissionsScreen() {
   }, [refetch, pendingQuery]);
 
   const pendingCount = pendingQuery.data ?? 0;
-  const empty = !isLoading && (data?.length ?? 0) === 0 && pendingCount === 0;
+  const empty = !isLoading && !isError && (data?.length ?? 0) === 0 && pendingCount === 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            router.back();
-          }}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="arrow-back" size={24} color={COLOR.textOnPrimary} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Submissions</Text>
-        <View style={{ width: 80 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+      <OfficerTabHeader
+        title="Submissions"
+        subtitle="Your completed inspections and compliance scores."
+      />
 
       {isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={COLOR.brand} />
+          <ActivityIndicator size="large" color="#0f766e" />
+        </View>
+      ) : isError ? (
+        <View style={styles.center}>
+          <Ionicons name="alert-circle-outline" size={56} color={COLOR.danger} />
+          <Text style={styles.emptyTitle}>Could not load submissions</Text>
+          <Text style={styles.emptyBody}>
+            {error instanceof Error ? error.message : 'Please pull down to try again.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => void refetch()}
+            style={[styles.pendingBanner, { marginTop: SPACING.lg, alignSelf: 'stretch' }]}
+          >
+            <Text style={[styles.pendingTitle, { color: '#0f766e' }]}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : empty ? (
         <View style={styles.center}>
@@ -212,7 +221,21 @@ export default function SubmissionsScreen() {
             ) : null
           }
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
-          renderItem={({ item }) => <SubmissionCard item={item} />}
+          renderItem={({ item }) => (
+            <SubmissionCard
+              item={item}
+              onPress={() => {
+                haptics.tap();
+                router.push({
+                  pathname: '/(officer)/submission-detail',
+                  params: {
+                    inspectionId: item.id,
+                    branchName: item.branch?.branch_name ?? 'Store',
+                  },
+                });
+              }}
+            />
+          )}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 }}>
@@ -226,32 +249,6 @@ export default function SubmissionsScreen() {
 }
 
 const styles = {
-  header: {
-    backgroundColor: COLOR.brand,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  } as const,
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: TOUCH.minHeight,
-    paddingHorizontal: SPACING.sm,
-    gap: SPACING.xs,
-  } as const,
-  backText: {
-    color: COLOR.textOnPrimary,
-    fontSize: FONT.body,
-    fontWeight: '600',
-  } as const,
-  headerTitle: {
-    color: COLOR.textOnPrimary,
-    fontSize: FONT.h1,
-    fontWeight: '800',
-  } as const,
   center: {
     flex: 1,
     alignItems: 'center',

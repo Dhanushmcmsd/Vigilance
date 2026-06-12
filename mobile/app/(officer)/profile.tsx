@@ -21,6 +21,7 @@ import { supabase } from '../../lib/supabase';
 import { COLOR, FONT, RADIUS, SPACING, TOUCH } from '../../lib/a11y';
 import { haptics } from '../../lib/haptics';
 import { peekQueue } from '../../lib/syncQueue';
+import { OfficerTabHeader } from '../../components/OfficerTabHeader';
 
 interface AssignmentRow {
   branch_name: string;
@@ -163,23 +164,8 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            router.back();
-          }}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="arrow-back" size={24} color={COLOR.textOnPrimary} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Profile</Text>
-        <View style={{ width: 80 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+      <OfficerTabHeader title="Profile" subtitle="Your account, photo, and recent branch activity." />
 
       <ScrollView
         contentContainerStyle={{

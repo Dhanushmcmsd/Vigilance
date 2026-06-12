@@ -227,13 +227,11 @@ export function DistrictOfficersPanel() {
     },
   });
 
-  const countAssignedStores = (district: string, officerRoleId: string | null) => {
+  const countAssignedStores = (officerRoleId: string | null) => {
     if (!officerRoleId) return 0;
     const profile = officerProfiles.find((o) => o.id === officerRoleId);
     if (!profile?.user_id) return 0;
-    return branchAssignments.filter(
-      (b) => b.region === district && b.assigned_officer_id === profile.user_id,
-    ).length;
+    return branchAssignments.filter((b) => b.assigned_officer_id === profile.user_id).length;
   };
 
   const toggleLeave = async (id: string, isOnLeave: boolean) => {
@@ -264,7 +262,7 @@ export function DistrictOfficersPanel() {
             <tbody>
               {assignments.map((row) => {
                 const name = row.officer?.name ?? 'Unassigned';
-                const storeCount = countAssignedStores(row.district, row.officer_id);
+                const storeCount = countAssignedStores(row.officer_id);
                 const officerProfile = officerProfiles.find((o) => o.id === row.officer_id);
                 return (
                   <tr key={row.id} className="tr">

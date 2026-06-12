@@ -1,9 +1,20 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ComponentProps } from 'react';
+import { Platform } from 'react-native';import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthGuard } from '../../components/AuthGuard';
 import { DistrictAssignmentModal } from '../../components/DistrictAssignmentModal';
+
+const TAB_ACTIVE = '#2dd4bf';
+const TAB_INACTIVE = '#64748b';
+
+function tabIcon(
+  focusedName: ComponentProps<typeof Ionicons>['name'],
+  outlineName: ComponentProps<typeof Ionicons>['name'],
+) {  return ({ color, size, focused }: { color: string; size: number; focused: boolean }) => (
+    <Ionicons name={focused ? focusedName : outlineName} size={size} color={color} />
+  );
+}
 
 export default function OfficerLayout() {
   const insets = useSafeAreaInsets();
@@ -26,8 +37,8 @@ export default function OfficerLayout() {
             shadowOffset: { width: 0, height: -4 },
             shadowRadius: 12,
           },
-          tabBarActiveTintColor: '#2dd4bf',
-          tabBarInactiveTintColor: '#64748b',
+          tabBarActiveTintColor: TAB_ACTIVE,
+          tabBarInactiveTintColor: TAB_INACTIVE,
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
         }}
       >
@@ -35,28 +46,28 @@ export default function OfficerLayout() {
           name="index"
           options={{
             title: 'Stores',
-            tabBarIcon: ({ color, size }) => <Ionicons name="storefront-outline" size={size} color={color} />,
+            tabBarIcon: tabIcon('storefront', 'storefront-outline'),
           }}
         />
         <Tabs.Screen
           name="drafts"
           options={{
             title: 'Drafts',
-            tabBarIcon: ({ color, size }) => <Ionicons name="document-text-outline" size={size} color={color} />,
+            tabBarIcon: tabIcon('document-text', 'document-text-outline'),
           }}
         />
         <Tabs.Screen
           name="submissions"
           options={{
             title: 'Submissions',
-            tabBarIcon: ({ color, size }) => <Ionicons name="checkmark-done-outline" size={size} color={color} />,
+            tabBarIcon: tabIcon('checkmark-done', 'checkmark-done-outline'),
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
+            tabBarIcon: tabIcon('person', 'person-outline'),
           }}
         />
         <Tabs.Screen name="select-branch" options={{ href: null }} />

@@ -589,23 +589,23 @@ export default function CeoMapPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-200">
-          <p className="font-semibold uppercase tracking-wide">
+        <div className="ceo-map-stat-card ceo-map-stat-card--critical">
+          <p className="ceo-map-stat-label font-semibold uppercase tracking-wide">
             {selectedDistrict ? 'Critical Stores' : 'Critical Districts'}
           </p>
-          <p className="mt-1 text-2xl font-bold text-red-300">{mapSummary.critical}</p>
+          <p className="ceo-map-stat-value mt-1 text-2xl font-bold">{mapSummary.critical}</p>
         </div>
-        <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-xs text-yellow-100">
-          <p className="font-semibold uppercase tracking-wide">
+        <div className="ceo-map-stat-card ceo-map-stat-card--normal">
+          <p className="ceo-map-stat-label font-semibold uppercase tracking-wide">
             {selectedDistrict ? 'Normal Stores' : 'Normal Districts'}
           </p>
-          <p className="mt-1 text-2xl font-bold text-yellow-300">{mapSummary.watch}</p>
+          <p className="ceo-map-stat-value mt-1 text-2xl font-bold">{mapSummary.watch}</p>
         </div>
-        <div className="rounded-xl border border-green-500/30 bg-green-950/20 p-3 text-xs text-green-100">
-          <p className="font-semibold uppercase tracking-wide">
+        <div className="ceo-map-stat-card ceo-map-stat-card--healthy">
+          <p className="ceo-map-stat-label font-semibold uppercase tracking-wide">
             {selectedDistrict ? 'Healthy Stores' : 'Healthy Districts'}
           </p>
-          <p className="mt-1 text-2xl font-bold text-green-300">{mapSummary.healthy}</p>
+          <p className="ceo-map-stat-value mt-1 text-2xl font-bold">{mapSummary.healthy}</p>
         </div>
       </div>
     </div>

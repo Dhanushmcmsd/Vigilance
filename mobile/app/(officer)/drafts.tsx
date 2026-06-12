@@ -17,6 +17,7 @@ import { deleteDraft, getAllDrafts, type DraftForm } from '../../lib/storage';
 import { peekQueue, flushQueue, type QueuedInspection } from '../../lib/syncQueue';
 import { haptics } from '../../lib/haptics';
 import { ToastMessage } from '../../components/ToastMessage';
+import { OfficerTabHeader } from '../../components/OfficerTabHeader';
 
 interface DraftRow {
   key: string;
@@ -136,8 +137,14 @@ export default function DraftsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator size="large" color={COLOR.brand} />
+      <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
+        <OfficerTabHeader
+          title="Drafts"
+          subtitle="Resume in-progress inspections or sync queued submissions."
+        />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#0f766e" />
+        </View>
       </View>
     );
   }
@@ -145,7 +152,7 @@ export default function DraftsScreen() {
   const empty = drafts.length === 0 && queue.length === 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLOR.bg, paddingTop: insets.top }}>
+    <View style={{ flex: 1, backgroundColor: COLOR.bg }}>
       <ToastMessage
         visible={toast.visible}
         message={toast.message}
@@ -153,23 +160,10 @@ export default function DraftsScreen() {
         onHide={() => setToast((p) => ({ ...p, visible: false }))}
       />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            router.back();
-          }}
-          style={styles.backButton}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-        >
-          <Ionicons name="arrow-back" size={24} color={COLOR.textOnPrimary} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Drafts</Text>
-        <View style={{ width: 80 }} />
-      </View>
+      <OfficerTabHeader
+        title="Drafts"
+        subtitle="Resume in-progress inspections or sync queued submissions."
+      />
 
       {/* Sync now */}
       <View style={{ padding: SPACING.lg }}>
@@ -178,7 +172,7 @@ export default function DraftsScreen() {
           disabled={syncing}
           style={[
             styles.syncButton,
-            { backgroundColor: syncing ? '#93c5fd' : COLOR.brandStrong },
+            { backgroundColor: syncing ? '#5eead4' : '#0f766e' },
           ]}
           accessibilityRole="button"
           accessibilityLabel={`Sync ${queue.length} queued submissions now`}

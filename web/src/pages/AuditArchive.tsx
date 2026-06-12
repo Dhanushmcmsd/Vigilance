@@ -248,7 +248,7 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps 
 
       <BloomGradientPanel className="p-4">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-white/60">Filter submissions and export a compliance summary.</p>
+          <p className="bloom-subtitle text-sm">Filter submissions and export a compliance summary.</p>
           <button type="button" onClick={downloadReport} className="bloom-btn shrink-0">
             <Download className="h-4 w-4" />
             Export Report

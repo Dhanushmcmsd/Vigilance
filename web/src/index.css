@@ -117,6 +117,30 @@ body {
   transform: scale(0.82) translate(-8px, -3px);
 }
 
+[data-theme='light'] #custom-cursor[data-cursor='default'],
+[data-theme='light'] #custom-cursor[data-cursor='pointer'] {
+  filter:
+    drop-shadow(0 0 0.75px #000)
+    drop-shadow(0 0 0.75px #000)
+    drop-shadow(1px 0 0 #000)
+    drop-shadow(-1px 0 0 #000)
+    drop-shadow(0 1px 0 #000)
+    drop-shadow(0 -1px 0 #000);
+}
+
+[data-theme='dark'] #custom-cursor[data-cursor='default'],
+[data-theme='dark'] #custom-cursor[data-cursor='pointer'],
+:root:not([data-theme='light']) #custom-cursor[data-cursor='default'],
+:root:not([data-theme='light']) #custom-cursor[data-cursor='pointer'] {
+  filter:
+    drop-shadow(0 0 0.75px #fff)
+    drop-shadow(0 0 0.75px #fff)
+    drop-shadow(1px 0 0 #fff)
+    drop-shadow(-1px 0 0 #fff)
+    drop-shadow(0 1px 0 #fff)
+    drop-shadow(0 -1px 0 #fff);
+}
+
 /* ── shadcn/ui design tokens ────────────────────────────────────────────────
    Backed by CSS variables so swapping light/dark requires only toggling
    `.dark` on <html>. Values are HSL triples (no `hsl()` wrapper) — Tailwind
@@ -464,6 +488,143 @@ body {
 
   [data-theme='light'] .bloom-stat-trend-down {
     color: #dc2626;
+  }
+
+  /* Light mode: fix hardcoded white text inside bloom panels */
+  [data-theme='light'] .bloom-panel .text-white,
+  [data-theme='light'] .bloom-panel-nested .text-white {
+    color: #000000;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/45,
+  [data-theme='light'] .bloom-panel-nested .text-white\/45 {
+    color: #666666;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/50,
+  [data-theme='light'] .bloom-panel-nested .text-white\/50 {
+    color: #555555;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/55,
+  [data-theme='light'] .bloom-panel-nested .text-white\/55 {
+    color: #444444;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/65,
+  [data-theme='light'] .bloom-panel-nested .text-white\/65 {
+    color: #333333;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/70,
+  [data-theme='light'] .bloom-panel-nested .text-white\/70 {
+    color: #333333;
+  }
+
+  [data-theme='light'] .bloom-panel .text-white\/85,
+  [data-theme='light'] .bloom-panel-nested .text-white\/85 {
+    color: #111111;
+  }
+
+  [data-theme='light'] .bloom-panel .border-white\/10,
+  [data-theme='light'] .bloom-panel .border-white\/8,
+  [data-theme='light'] .bloom-panel-nested .border-white\/10,
+  [data-theme='light'] .bloom-panel-nested .border-white\/8 {
+    border-color: #000000;
+  }
+
+  [data-theme='light'] .bloom-panel .bg-white\/10,
+  [data-theme='light'] .bloom-panel-nested .bg-white\/10 {
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme='light'] .bloom-panel .bg-white\/\[0\.03\] {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .ceo-map-stat-card {
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .ceo-map-stat-card--critical {
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(127, 29, 29, 0.25);
+  }
+
+  .ceo-map-stat-card--normal {
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    background: rgba(113, 63, 18, 0.2);
+  }
+
+  .ceo-map-stat-card--healthy {
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    background: rgba(20, 83, 45, 0.2);
+  }
+
+  .ceo-map-stat-label {
+    color: rgba(254, 202, 202, 0.95);
+  }
+
+  .ceo-map-stat-card--normal .ceo-map-stat-label {
+    color: rgba(254, 240, 138, 0.95);
+  }
+
+  .ceo-map-stat-card--healthy .ceo-map-stat-label {
+    color: rgba(187, 247, 208, 0.95);
+  }
+
+  .ceo-map-stat-value {
+    color: #fca5a5;
+  }
+
+  .ceo-map-stat-card--normal .ceo-map-stat-value {
+    color: #fde047;
+  }
+
+  .ceo-map-stat-card--healthy .ceo-map-stat-value {
+    color: #86efac;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--critical {
+    border: 1px solid #dc2626;
+    background: #fef2f2;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--normal {
+    border: 1px solid #ca8a04;
+    background: #fefce8;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--healthy {
+    border: 1px solid #16a34a;
+    background: #f0fdf4;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--critical .ceo-map-stat-label {
+    color: #991b1b;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--normal .ceo-map-stat-label {
+    color: #854d0e;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--healthy .ceo-map-stat-label {
+    color: #166534;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--critical .ceo-map-stat-value {
+    color: #dc2626;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--normal .ceo-map-stat-value {
+    color: #ca8a04;
+  }
+
+  [data-theme='light'] .ceo-map-stat-card--healthy .ceo-map-stat-value {
+    color: #16a34a;
   }
 
   .bloom-stat-label {

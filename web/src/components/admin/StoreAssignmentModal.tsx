@@ -18,6 +18,11 @@ interface OfficerInfo {
   user_id: string | null;
 }
 
+function branchSubtitle(branch: BranchRow) {
+  const parts = [branch.location, branch.city, branch.region].filter(Boolean);
+  return parts.join(' · ') || '—';
+}
+
 export function StoreAssignmentModal({
   officer,
   district,
@@ -38,13 +43,13 @@ export function StoreAssignmentModal({
   const [toast, setToast] = useState<string | null>(null);
 
   const { data: branches = [], refetch } = useQuery<BranchRow[]>({
-    queryKey: ['district-branches-assignment', district],
+    queryKey: ['all-branches-assignment'],
     queryFn: async () => {
       const { data, error: err } = await supabase
         .from('branches')
         .select('id, branch_name, location, city, region, assigned_officer_id')
-        .eq('region', district)
         .eq('is_active', true)
+        .order('region', { ascending: true })
         .order('branch_name', { ascending: true });
       if (err) throw err;
       return data ?? [];
@@ -52,26 +57,37 @@ export function StoreAssignmentModal({
   });
 
   const officerUserId = officer.user_id;
-  const districtBranches = useMemo(
-    () => branches.filter((b) => b.region === district),
-    [branches, district],
-  );
 
   const assignedStores = useMemo(() => {
-    return districtBranches.filter((b) => {
+    return branches.filter((b) => {
       if (pendingAvailable.has(b.id)) return false;
       if (pendingAssigned.has(b.id)) return true;
       return b.assigned_officer_id === officerUserId;
     });
-  }, [districtBranches, officerUserId, pendingAssigned, pendingAvailable]);
+  }, [branches, officerUserId, pendingAssigned, pendingAvailable]);
 
-  const availableStores = useMemo(() => {
-    return districtBranches.filter((b) => {
+  const availableByDistrict = useMemo(() => {
+    const available = branches.filter((b) => {
       if (pendingAssigned.has(b.id)) return false;
       if (pendingAvailable.has(b.id)) return true;
       return b.assigned_officer_id !== officerUserId;
     });
-  }, [districtBranches, officerUserId, pendingAssigned, pendingAvailable]);
+
+    const grouped = new Map<string, BranchRow[]>();
+    for (const branch of available) {
+      const key = branch.region?.trim() || 'Unassigned district';
+      const list = grouped.get(key) ?? [];
+      list.push(branch);
+      grouped.set(key, list);
+    }
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([region, stores]) => ({
+        region,
+        stores: stores.sort((a, b) => a.branch_name.localeCompare(b.branch_name)),
+      }));
+  }, [branches, officerUserId, pendingAssigned, pendingAvailable]);
 
   const filterBranches = (list: BranchRow[], query: string) => {
     const q = query.trim().toLowerCase();
@@ -80,9 +96,30 @@ export function StoreAssignmentModal({
       (b) =>
         b.branch_name.toLowerCase().includes(q) ||
         (b.city ?? '').toLowerCase().includes(q) ||
-        (b.location ?? '').toLowerCase().includes(q),
+        (b.location ?? '').toLowerCase().includes(q) ||
+        (b.region ?? '').toLowerCase().includes(q),
     );
   };
+
+  const filteredAssigned = filterBranches(assignedStores, assignedSearch);
+
+  const filteredAvailableByDistrict = useMemo(() => {
+    const q = availableSearch.trim().toLowerCase();
+    if (!q) return availableByDistrict;
+
+    return availableByDistrict
+      .map(({ region, stores }) => ({
+        region,
+        stores: stores.filter(
+          (b) =>
+            b.branch_name.toLowerCase().includes(q) ||
+            (b.city ?? '').toLowerCase().includes(q) ||
+            (b.location ?? '').toLowerCase().includes(q) ||
+            region.toLowerCase().includes(q),
+        ),
+      }))
+      .filter(({ stores }) => stores.length > 0);
+  }, [availableByDistrict, availableSearch]);
 
   const markRemove = (branchId: string) => {
     setPendingAvailable((prev) => new Set(prev).add(branchId));
@@ -128,9 +165,10 @@ export function StoreAssignmentModal({
       let removedCount = 0;
 
       for (const branchId of pendingAssigned) {
-        const branch = districtBranches.find((b) => b.id === branchId);
+        const branch = branches.find((b) => b.id === branchId);
         if (!branch) continue;
         const fromOfficerAuthId = branch.assigned_officer_id;
+        const branchDistrict = branch.region ?? district;
 
         const { error: updateErr } = await supabase
           .from('branches')
@@ -155,7 +193,7 @@ export function StoreAssignmentModal({
             recipient_id: officer.id,
             type: 'store_assigned',
             title: 'New Store Assigned',
-            body: `${branch.branch_name} has been assigned to you in ${district}.`,
+            body: `${branch.branch_name} has been assigned to you${branchDistrict ? ` (${branchDistrict})` : ''}.`,
             link: '/officer',
           })
           .select('id')
@@ -177,7 +215,7 @@ export function StoreAssignmentModal({
                 store_unassigned: {
                   officer_role_id: previousRoleId,
                   branch_name: branch.branch_name,
-                  district,
+                  district: branchDistrict,
                 },
               },
             });
@@ -189,7 +227,7 @@ export function StoreAssignmentModal({
             store_assigned: {
               officer_role_id: officer.id,
               branch_name: branch.branch_name,
-              district,
+              district: branchDistrict,
               notification_id: officerNotif?.id,
             },
           },
@@ -199,7 +237,7 @@ export function StoreAssignmentModal({
       }
 
       for (const branchId of pendingAvailable) {
-        const branch = districtBranches.find((b) => b.id === branchId);
+        const branch = branches.find((b) => b.id === branchId);
         if (!branch) continue;
 
         const { error: updateErr } = await supabase
@@ -224,7 +262,7 @@ export function StoreAssignmentModal({
           recipient_id: adminRoleId,
           type: 'assignment_saved',
           title: 'Store assignments saved',
-          body: `${assignedCount} assigned, ${removedCount} removed for ${officer.name} (${district}).`,
+          body: `${assignedCount} assigned, ${removedCount} removed for ${officer.name}.`,
           link: '/admin?tab=branches',
         });
       }
@@ -250,9 +288,6 @@ export function StoreAssignmentModal({
     }
   };
 
-  const filteredAssigned = filterBranches(assignedStores, assignedSearch);
-  const filteredAvailable = filterBranches(availableStores, availableSearch);
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       {toast ? (
@@ -265,13 +300,18 @@ export function StoreAssignmentModal({
       ) : null}
 
       <div
-        className="rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="rounded-2xl p-6 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
         style={{ background: 'var(--bg-modal)', color: 'var(--text-primary)' }}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg" style={{ color: 'var(--text-heading)' }}>
-            Manage Stores — {officer.name} ({district})
-          </h3>
+          <div>
+            <h3 className="font-bold text-lg" style={{ color: 'var(--text-heading)' }}>
+              Manage Stores — {officer.name}
+            </h3>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              Home district: {district}. Assign individual stores from any district without reassigning the whole district.
+            </p>
+          </div>
           <button type="button" onClick={onClose} className="admin-btn-secondary" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -283,7 +323,7 @@ export function StoreAssignmentModal({
             style={{ border: '1px solid var(--border-color)' }}
           >
             <h4 className="font-semibold text-sm mb-2" style={{ color: 'var(--text-heading)' }}>
-              Currently Assigned Stores ({district})
+              Assigned to {officer.name} ({filteredAssigned.length})
             </h4>
             <input
               className="input w-full mb-2"
@@ -291,10 +331,10 @@ export function StoreAssignmentModal({
               value={assignedSearch}
               onChange={(e) => setAssignedSearch(e.target.value)}
             />
-            <div className="overflow-y-auto flex-1 space-y-2 min-h-[200px]">
+            <div className="overflow-y-auto flex-1 space-y-2 min-h-[240px]">
               {filteredAssigned.length === 0 ? (
                 <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>
-                  No stores assigned in {district}.
+                  No stores assigned to this officer yet.
                 </p>
               ) : (
                 filteredAssigned.map((store) => (
@@ -306,7 +346,7 @@ export function StoreAssignmentModal({
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{store.branch_name}</p>
                       <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                        {store.location || store.city || district}
+                        {branchSubtitle(store)}
                       </p>
                     </div>
                     <button type="button" className="admin-btn-destructive" onClick={() => markRemove(store.id)}>
@@ -323,35 +363,47 @@ export function StoreAssignmentModal({
             style={{ border: '1px solid var(--border-color)' }}
           >
             <h4 className="font-semibold text-sm mb-2" style={{ color: 'var(--text-heading)' }}>
-              Available Stores in {district}
+              All Stores (by district)
             </h4>
             <input
               className="input w-full mb-2"
-              placeholder="Search by name, city, or location..."
+              placeholder="Search by store, city, or district..."
               value={availableSearch}
               onChange={(e) => setAvailableSearch(e.target.value)}
             />
-            <div className="overflow-y-auto flex-1 space-y-2 min-h-[200px]">
-              {filteredAvailable.length === 0 ? (
+            <div className="overflow-y-auto flex-1 space-y-4 min-h-[240px]">
+              {filteredAvailableByDistrict.length === 0 ? (
                 <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>
-                  No other stores available in {district}.
+                  No other stores available to assign.
                 </p>
               ) : (
-                filteredAvailable.map((store) => (
-                  <div
-                    key={store.id}
-                    className="flex items-center justify-between gap-2 rounded-lg p-2"
-                    style={{ border: '1px solid var(--border-color)' }}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{store.branch_name}</p>
-                      <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                        {store.location || store.city || district}
-                      </p>
+                filteredAvailableByDistrict.map(({ region, stores }) => (
+                  <div key={region}>
+                    <p
+                      className="sticky top-0 z-10 mb-2 px-1 py-1 text-xs font-bold uppercase tracking-wide"
+                      style={{ background: 'var(--bg-modal)', color: 'var(--text-label)' }}
+                    >
+                      {region} ({stores.length})
+                    </p>
+                    <div className="space-y-2">
+                      {stores.map((store) => (
+                        <div
+                          key={store.id}
+                          className="flex items-center justify-between gap-2 rounded-lg p-2"
+                          style={{ border: '1px solid var(--border-color)' }}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">{store.branch_name}</p>
+                            <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                              {branchSubtitle(store)}
+                            </p>
+                          </div>
+                          <button type="button" className="admin-btn-primary shrink-0" onClick={() => markAssign(store.id)}>
+                            Assign
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    <button type="button" className="admin-btn-primary" onClick={() => markAssign(store.id)}>
-                      Assign
-                    </button>
                   </div>
                 ))
               )}

@@ -32,6 +32,7 @@ import {
 } from '../../lib/branchLocks';
 import { STORES } from '../../constants/stores';
 import { useOfficerDistricts } from '../../lib/useOfficerDistricts';
+import { OfficerTabHeader } from '../../components/OfficerTabHeader';
 
 interface Branch {
   id: string;
@@ -448,21 +449,26 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   const listData = nearMeActive ? nearMeBranches : filtered;
   const listHeader = (
     <View>
-      <LinearGradient
-        colors={['#0f172a', '#0f766e']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{
-          paddingHorizontal: 16,
-          paddingTop: insets.top + 16,
-          paddingBottom: 24,
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderBottomLeftRadius: 24,
-          borderBottomRightRadius: 24,
-        }}
-      >
-        {!embedded && (
+      {embedded ? (
+        <OfficerTabHeader
+          title="Stores"
+          subtitle="Select a store, review incharge details, and begin inspection."
+        />
+      ) : (
+        <LinearGradient
+          colors={['#0f172a', '#0f766e']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            paddingHorizontal: 16,
+            paddingTop: insets.top + 16,
+            paddingBottom: 24,
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderBottomLeftRadius: 24,
+            borderBottomRightRadius: 24,
+          }}
+        >
           <TouchableOpacity
             onPress={() => router.back()}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -478,33 +484,33 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
           >
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#99f6e4', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>
-            VIGILANCE
-          </Text>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#fff', marginTop: 4 }}>
-            Stores
-          </Text>
-          <Text style={{ color: '#ccfbf1', fontSize: 12, marginTop: 3 }}>
-            Select a store, review incharge details, and begin inspection.
-          </Text>
-        </View>
-        <View
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 16,
-            backgroundColor: 'rgba(255,255,255,0.16)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.24)',
-          }}
-        >
-          <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>V</Text>
-        </View>
-      </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#99f6e4', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>
+              VIGILANCE
+            </Text>
+            <Text style={{ fontSize: 24, fontWeight: '900', color: '#fff', marginTop: 4 }}>
+              Stores
+            </Text>
+            <Text style={{ color: '#ccfbf1', fontSize: 12, marginTop: 3 }}>
+              Select a store, review incharge details, and begin inspection.
+            </Text>
+          </View>
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 16,
+              backgroundColor: 'rgba(255,255,255,0.16)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.24)',
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>V</Text>
+          </View>
+        </LinearGradient>
+      )}
 
       <View
         style={{

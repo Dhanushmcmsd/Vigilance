@@ -88,7 +88,7 @@ const config = {
       edgeToEdgeEnabled: false,
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#1e40af',
+        backgroundColor: '#ffffff',
       },
       permissions: [
         'CAMERA',
@@ -111,7 +111,7 @@ const config = {
         {
           image: './assets/splash-icon.png',
           resizeMode: 'contain',
-          backgroundColor: '#1e40af',
+          backgroundColor: '#ffffff',
         },
       ],
       [

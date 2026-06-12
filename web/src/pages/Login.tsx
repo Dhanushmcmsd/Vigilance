@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { AccountRequestModal } from '../components/auth/AccountRequestModal';
 import { useAuth } from '../context/AuthContext';
 import { homePathForRole } from '../lib/roleRoutes';
@@ -58,9 +58,11 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-8 h-8 text-white" aria-hidden />
-          </div>
+          <img
+            src="/logo.png"
+            alt="CGC VMS"
+            className="w-24 h-24 rounded-2xl mx-auto mb-4 object-cover shadow-lg"
+          />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{COMPANY.platformAbbrev}</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{COMPANY.platformName}</p>
           <p className="text-gray-400 dark:text-gray-500 text-xs mt-2">{COMPANY.legalName}</p>

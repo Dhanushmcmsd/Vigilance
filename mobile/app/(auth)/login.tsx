@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -84,19 +85,16 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={{ alignItems: 'center', marginBottom: 48 }}>
-          <View
+          <Image
+            source={require('../../assets/logo.png')}
             style={{
-              width: 88,
-              height: 88,
-              borderRadius: 22,
-              backgroundColor: 'rgba(255,255,255,0.15)',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: 120,
+              height: 120,
+              borderRadius: 24,
               marginBottom: 20,
             }}
-          >
-            <Text style={{ fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: 2 }}>VMS</Text>
-          </View>
+            accessibilityLabel="CGC VMS logo"
+          />
           <Text style={{ fontSize: FONT.display, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>
             Vigilance
           </Text>

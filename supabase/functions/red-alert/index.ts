@@ -1,7 +1,6 @@
 // ============================================================
 // supabase/functions/red-alert
-// Sends RED-risk escalation emails to Store Manager, Area
-// Supervisor (head) and Legal team, plus MD/Management when
+// Sends RED-risk escalation emails to management and admin,
 // red_count >= 2. Also handles YELLOW_REALTIME notifications.
 // Writes one row per recipient into public.notification_log.
 // ============================================================
@@ -53,7 +52,7 @@ serve(async (req: Request) => {
 
     // --- SECURITY: Authorization guard (officers may trigger RED/YELLOW alerts) ---
     const authDenied = await enforceSecurityGuard(req, {
-      allowedRoles: ['management', 'admin', 'head', 'officer'],
+      allowedRoles: ['management', 'admin', 'officer'],
     });
     if (authDenied) return authDenied;
     // --- END security guard ---
@@ -100,7 +99,7 @@ serve(async (req: Request) => {
 
     // Resolve recipients by role. For the MVP we email every active user
     // whose role matches; production can later route by branch ownership.
-    const targetRoles = template === 'YELLOW_REALTIME' ? ['head'] : ['head', 'admin'];
+    const targetRoles = template === 'YELLOW_REALTIME' ? ['management'] : ['management', 'admin'];
     const escalateToManagement =
       template === 'RED_ALERT' && (body.red_count ?? 1) >= 2;
     if (escalateToManagement) targetRoles.push('management');
@@ -256,7 +255,7 @@ function renderEmail(opts: {
       </table>
       ${legalSection}
       <div style="margin-top:24px;text-align:center;">
-        <a href="${DASHBOARD_URL}/head?inspection=${opts.inspectionId}"
+        <a href="${DASHBOARD_URL}/dashboard"
            style="display:inline-block;background:${accent};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;">
           Open Escalation
         </a>

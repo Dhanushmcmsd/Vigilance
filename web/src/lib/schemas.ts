@@ -93,7 +93,7 @@ export const userSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(120),
   email: z.string().trim().email('Enter a valid email address'),
   phone: optionalString,
-  role: z.enum(['officer', 'head', 'management', 'admin'], {
+  role: z.enum(['officer', 'management', 'admin'], {
     required_error: 'Pick a role',
   }),
   is_active: z.boolean().default(true),

@@ -212,7 +212,6 @@ function UsersTab({
           >
             <option value="all">All roles</option>
             <option value="officer">Officer</option>
-            <option value="head">Head</option>
             <option value="management">Management</option>
             <option value="admin">Admin</option>
             <option value="audit">Audit</option>
@@ -432,7 +431,6 @@ function AddUserModal({
           <input className="input w-full" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           <select className="input w-full" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
             <option value="officer">Officer</option>
-            <option value="head">Vigilance Head</option>
             <option value="management">Management</option>
             <option value="admin">Admin</option>
             <option value="audit">Audit</option>
@@ -538,7 +536,6 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () 
         <input className="input w-full" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
         <select className="input w-full" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
           <option value="officer">Officer</option>
-          <option value="head">Head</option>
           <option value="management">Management</option>
           <option value="admin">Admin</option>
           <option value="audit">Audit</option>

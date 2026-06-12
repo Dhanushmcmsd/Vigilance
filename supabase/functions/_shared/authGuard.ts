@@ -6,7 +6,7 @@ export async function enforceSecurityGuard(
   req: Request,
   options?: { allowedRoles?: string[] },
 ): Promise<Response | null> {
-  const allowedRoles = options?.allowedRoles ?? ['management', 'admin', 'head'];
+  const allowedRoles = options?.allowedRoles ?? ['management', 'admin'];
   const authHeader = req.headers.get('Authorization');
   const cronSecret = Deno.env.get('CRON_SECRET');
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

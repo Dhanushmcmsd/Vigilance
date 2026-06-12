@@ -62,14 +62,14 @@ serve(async (req: Request) => {
 
     if (!insp) return new Response('Inspection not found', { status: 404 });
 
-    // Fetch head emails
-    const { data: heads } = await supabase
+    // Fetch management emails for new submission alerts
+    const { data: managers } = await supabase
       .from('user_roles')
       .select('email, name')
-      .eq('role', 'head')
+      .eq('role', 'management')
       .eq('is_active', true);
 
-    if (!heads?.length) return new Response('No head found', { status: 200 });
+    if (!managers?.length) return new Response('No management recipients found', { status: 200 });
 
     const isUrgent = ['critical', 'high'].includes(insp.risk_level);
     const noResponses = (insp.inspection_responses as any[])
@@ -100,12 +100,12 @@ serve(async (req: Request) => {
   </table>
   ${noItemsHtml}
   <div style="margin-top:24px;">
-    <a href="${DASHBOARD_URL}/head/review" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Review Now</a>
+    <a href="${DASHBOARD_URL}/dashboard" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Open Dashboard</a>
   </div>
 </body></html>`;
 
-    // Send emails to all heads
-    for (const head of heads) {
+    // Send emails to management users
+    for (const manager of managers) {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -114,7 +114,7 @@ serve(async (req: Request) => {
         },
         body: JSON.stringify({
           from: FROM_ADDR,
-          to: head.email,
+          to: manager.email,
           subject: `[${isUrgent ? 'URGENT' : 'NEW'}] Inspection Submitted — ${(insp as any).branches?.name ?? 'Branch'} — Risk: ${insp.risk_level?.toUpperCase()}`,
           html,
         }),

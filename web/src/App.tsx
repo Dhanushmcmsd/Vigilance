@@ -12,12 +12,8 @@ import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import AcceptableUse from './pages/legal/AcceptableUse';
 import { PolicyGate } from './components/legal/PolicyGate';
 
-// Lazy-load heavy dashboard pages so they split into separate chunks
-const HeadDashboard = lazy(() => import('./pages/HeadDashboard'));
-const HeadReview = lazy(() => import('./pages/HeadReview'));
 const CeoDashboard = lazy(() => import('./pages/CeoDashboard'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
-const AuditArchive = lazy(() => import('./pages/AuditArchive'));
 
 function PageLoader() {
   return (
@@ -28,7 +24,7 @@ function PageLoader() {
   );
 }
 
-type AllowedRole = 'head' | 'management' | 'admin' | 'officer' | 'audit';
+type AllowedRole = 'management' | 'admin' | 'officer' | 'audit';
 
 function RoleGuard({
   children,
@@ -50,7 +46,7 @@ function RoleGuard({
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (role === 'admin' && (location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/head'))) {
+  if (role === 'admin' && location.pathname.startsWith('/dashboard')) {
     return <Navigate to="/admin" replace />;
   }
 
@@ -99,20 +95,8 @@ function AppRoutes() {
         <Route path="/legal/privacy" element={<PrivacyPolicy />} />
         <Route path="/legal/acceptable-use" element={<AcceptableUse />} />
         <Route
-          path="/head"
-          element={
-            <RoleGuard allowedRoles={['head']}>
-              <Layout><HeadDashboard /></Layout>
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/head/review"
-          element={
-            <RoleGuard allowedRoles={['head']}>
-              <Layout><HeadReview /></Layout>
-            </RoleGuard>
-          }
+          path="/head/*"
+          element={<Navigate to="/login" replace />}
         />
         <Route
           path="/dashboard/*"
@@ -135,14 +119,6 @@ function AppRoutes() {
           element={
             <RoleGuard allowedRoles={['management', 'audit']}>
               <Navigate to="/dashboard/archive" replace />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/head/archive"
-          element={
-            <RoleGuard allowedRoles={['head']}>
-              <Layout><AuditArchive backPath="/head" backLabel="Back to head dashboard" /></Layout>
             </RoleGuard>
           }
         />

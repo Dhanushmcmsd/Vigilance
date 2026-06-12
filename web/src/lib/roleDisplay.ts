@@ -1,7 +1,6 @@
-type Role = 'head' | 'management' | 'admin' | 'officer' | 'audit';
+type Role = 'management' | 'admin' | 'officer' | 'audit';
 
 const ROLE_LABELS: Record<Role, string> = {
-  head: 'Head of Operations',
   management: 'Management',
   admin: 'Administrator',
   officer: 'Field Officer',
@@ -9,7 +8,6 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 
 const ROLE_SUBLABELS: Record<Role, string> = {
-  head: 'Review & approvals',
   management: 'Executive command',
   admin: 'System administration',
   officer: 'Mobile inspections',

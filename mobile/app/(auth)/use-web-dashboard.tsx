@@ -1,10 +1,10 @@
 /**
- * Mobile-not-supported notice for supervisors (head / management / admin).
+ * Mobile-not-supported notice for management / admin web users.
  *
  * The mobile app's surface area is intentionally officer-only — submission,
  * geofence gate, photo capture, offline sync. Supervisory workflows
  * (approval queue, escalations, KPI dashboards, admin CRUD) live on the web
- * dashboard. If a head/management/admin signs in on mobile we land them here
+ * dashboard. If management/admin signs in on mobile we land them here
  * with a clear "use the web dashboard" message and a one-tap sign-out.
  */
 
@@ -45,8 +45,6 @@ export default function UseWebDashboardScreen() {
       ? 'Administrator'
       : userRole === 'management'
       ? 'Management'
-      : userRole === 'head'
-      ? 'Vigilance Head'
       : 'Supervisor';
 
   const onOpenDashboard = async () => {

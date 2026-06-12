@@ -26,7 +26,7 @@ export default function AppIndex() {
       router.replace('/(officer)');
       return;
     }
-    if (userRole === 'head' || userRole === 'management' || userRole === 'admin') {
+    if (userRole === 'management' || userRole === 'admin') {
       router.replace('/(auth)/use-web-dashboard');
       return;
     }

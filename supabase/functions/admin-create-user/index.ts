@@ -54,7 +54,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-const ALLOWED_ROLES = ['officer', 'head', 'management', 'admin', 'audit'] as const;
+const ALLOWED_ROLES = ['officer', 'management', 'admin', 'audit'] as const;
 type AllowedRole = (typeof ALLOWED_ROLES)[number];
 
 const corsHeaders = {

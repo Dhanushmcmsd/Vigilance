@@ -49,15 +49,12 @@ export default function LoginScreen() {
       return;
     }
     haptics.success();
-    // The mobile app is officer-only. Heads, management, and admins authenticate
-    // through the web dashboard. We still sign them in so the auth session is
-    // valid (in case they want to sign out cleanly), but route them to a notice
-    // screen instead of the officer flow.
+    // The mobile app is officer-only. Management and admins use the web dashboard.
     if (role === 'officer') {
       router.replace('/(officer)');
     } else if (role === 'audit') {
       router.replace('/(audit)');
-    } else if (role === 'head' || role === 'management' || role === 'admin') {
+    } else if (role === 'management' || role === 'admin') {
       router.replace('/(auth)/use-web-dashboard');
     } else {
       showError('Your account has no active role. Contact the administrator.');

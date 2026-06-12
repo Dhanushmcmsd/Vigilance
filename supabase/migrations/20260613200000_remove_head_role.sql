@@ -1,5 +1,45 @@
--- SECURITY: Add caller identity checks to PostGIS SECURITY DEFINER RPCs.
+-- Remove the head role from the application entirely.
+-- Migrates any existing head accounts to management and drops head-only policies.
 
+UPDATE public.user_roles
+SET role = 'management'
+WHERE role = 'head';
+
+ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_role_check;
+ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check
+  CHECK (role IN ('officer', 'management', 'admin', 'audit'));
+
+DROP POLICY IF EXISTS "Head update status and comment" ON public.inspections;
+DROP POLICY IF EXISTS "head_can_update_own_district_inspections" ON public.inspections;
+
+-- Re-harden officer_districts without head in elevated roles.
+CREATE OR REPLACE FUNCTION public.officer_districts(uid uuid)
+RETURNS text[]
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+BEGIN
+  IF uid <> auth.uid() AND NOT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid()
+      AND role IN ('management', 'admin')
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: cannot query another user''s districts';
+  END IF;
+
+  RETURN (
+    SELECT COALESCE(ARRAY_AGG(district), ARRAY[]::text[])
+    FROM public.district_assignments
+    WHERE officer_id = (
+      SELECT id FROM public.user_roles WHERE user_id = uid LIMIT 1
+    )
+  );
+END;
+$$;
+
+-- Re-harden branches_within_radius without head role.
 CREATE OR REPLACE FUNCTION public.branches_within_radius(
   lat            numeric,
   lon            numeric,
@@ -51,7 +91,7 @@ BEGIN
 END;
 $$;
 
-
+-- Re-harden was_officer_in_range without head in elevated roles.
 CREATE OR REPLACE FUNCTION public.was_officer_in_range(
   inspection_id uuid
 )
@@ -103,65 +143,3 @@ BEGIN
   );
 END;
 $$;
-
-
--- inspection_ping_trail: only hardened when inspection_location_pings exists on this project.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_name = 'inspection_location_pings'
-  ) THEN
-    EXECUTE $sql$
-      CREATE OR REPLACE FUNCTION public.inspection_ping_trail(
-        p_inspection_id uuid
-      )
-      RETURNS TABLE (
-        recorded_at                  timestamptz,
-        latitude                     numeric,
-        longitude                    numeric,
-        distance_from_branch_metres  numeric
-      )
-      LANGUAGE sql
-      SECURITY DEFINER
-      STABLE
-      SET search_path = public
-      AS $fn$
-        SELECT
-          p.recorded_at,
-          p.latitude,
-          p.longitude,
-          ROUND(
-            ST_Distance(
-              ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
-              b.geom::geography
-            )::numeric,
-            2
-          ) AS distance_from_branch_metres
-        FROM public.inspection_location_pings p
-        JOIN public.inspections i  ON i.id  = p.inspection_id
-        JOIN public.branches     b  ON b.id  = i.branch_id
-        WHERE
-          p.inspection_id = p_inspection_id
-          AND b.geom IS NOT NULL
-          AND (
-            EXISTS (
-              SELECT 1 FROM public.user_roles
-              WHERE user_id = auth.uid()
-                AND role IN ('management', 'admin')
-            )
-            OR EXISTS (
-              SELECT 1
-              FROM public.inspections insp
-              JOIN public.user_roles ur ON ur.id = insp.officer_id
-              WHERE insp.id = p_inspection_id
-                AND ur.user_id = auth.uid()
-            )
-          )
-        ORDER BY p.recorded_at ASC;
-      $fn$;
-    $sql$;
-  END IF;
-END $$;

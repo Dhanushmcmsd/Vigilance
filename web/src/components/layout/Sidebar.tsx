@@ -11,8 +11,6 @@ import {
   LogOut,
   Menu,
   X,
-  Search,
-  FolderArchive,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { roleDisplayLabel, roleDisplaySublabel, roleInitial } from '../../lib/roleDisplay';
@@ -33,19 +31,13 @@ const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
     { label: 'Monthly Archive', path: '/dashboard/archive', icon: Archive },
     { label: 'Vigilance Report', path: '/dashboard/audit-archive', icon: FileText },
   ],
-  head: [
-    { label: 'Dashboard', path: '/head', icon: Home },
-    { label: 'Review Inspections', path: '/head/review', icon: Search },
-    { label: 'Audit Archive', path: '/head/archive', icon: FolderArchive },
-  ],
 };
 
 interface SidebarProps {
   onWidthChange?: (width: number) => void;
-  pendingCount?: number;
 }
 
-export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
+export function Sidebar({ onWidthChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -106,11 +98,6 @@ export function Sidebar({ onWidthChange, pendingCount = 0 }: SidebarProps) {
         >
           <Icon className="w-5 h-5 flex-shrink-0" aria-hidden />
           {(!collapsedView || onClick) && <span className="ml-3 truncate">{item.label}</span>}
-          {!collapsedView && item.label === 'Review Inspections' && pendingCount > 0 && (
-            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
-              {pendingCount}
-            </span>
-          )}
         </Link>
       );
     });

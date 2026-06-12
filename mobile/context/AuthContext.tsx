@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
-type Role = 'officer' | 'head' | 'management' | 'admin' | 'audit' | null;
+type Role = 'officer' | 'management' | 'admin' | 'audit' | null;
 
-const VALID_ROLES: Role[] = ['officer', 'head', 'management', 'admin', 'audit'];
+const VALID_ROLES: Role[] = ['officer', 'management', 'admin', 'audit'];
 
 function parseRole(value: string | null | undefined): Role {
   if (!value) return null;

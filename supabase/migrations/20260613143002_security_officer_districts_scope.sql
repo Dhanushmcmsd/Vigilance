@@ -11,7 +11,7 @@ BEGIN
   IF uid <> auth.uid() AND NOT EXISTS (
     SELECT 1 FROM public.user_roles
     WHERE user_id = auth.uid()
-      AND role IN ('management', 'admin', 'head')
+      AND role IN ('management', 'admin')
   ) THEN
     RAISE EXCEPTION 'Unauthorized: cannot query another user''s districts';
   END IF;

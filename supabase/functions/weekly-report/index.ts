@@ -128,11 +128,11 @@ serve(async (req: Request) => {
   <p style="margin-top:32px;color:#94a3b8;font-size:12px;">This is an automated report from Vigilance Management System. Do not reply to this email.</p>
 </body></html>`;
 
-    // Fetch management + head users
+    // Fetch management users
     const { data: recipients } = await supabase
       .from('user_roles')
       .select('email, name')
-      .in('role', ['head', 'management'])
+      .in('role', ['management'])
       .eq('is_active', true);
 
     for (const r of recipients ?? []) {

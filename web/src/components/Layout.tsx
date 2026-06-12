@@ -2,33 +2,15 @@ import { useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { Sidebar } from './layout/Sidebar';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { supabase } from '../lib/supabase';
 import { resolvePageTitle } from '../lib/pageTitles';
 import { adminTabLabel, parseAdminTab } from '../lib/adminTabs';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { role } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [sidebarWidth, setSidebarWidth] = useState(240);
-
-  const { data: pendingCount = 0 } = useQuery({
-    queryKey: ['pending-count'],
-    queryFn: async () => {
-      if (role !== 'head' && role !== 'admin') return 0;
-      const { count } = await supabase
-        .from('inspections')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'submitted');
-      return count ?? 0;
-    },
-    refetchInterval: 30_000,
-    enabled: role === 'head' || role === 'admin',
-  });
 
   const title =
     location.pathname === '/admin'
@@ -40,7 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       className="flex h-screen overflow-hidden"
       style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
     >
-      <Sidebar onWidthChange={setSidebarWidth} pendingCount={pendingCount} />
+      <Sidebar onWidthChange={setSidebarWidth} />
 
       <div
         className="flex-1 flex flex-col min-w-0 overflow-hidden transition-[margin-left] duration-300"

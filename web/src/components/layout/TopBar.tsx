@@ -1,11 +1,5 @@
 import { Bell } from 'lucide-react';
 
-const BREADCRUMB_TRAIL_STYLE = {
-  textShadow:
-    '0 0 12px rgba(212, 175, 55, 0.15), 0 0 4px rgba(212, 175, 55, 0.10), 0 0 1px rgba(212, 175, 55, 0.20)',
-  transition: 'text-shadow 0.4s ease',
-} as const;
-
 interface TopBarProps {
   breadcrumb: string;
   subtitle?: string;
@@ -29,14 +23,14 @@ export function TopBar({
       }}
     >
       <div className="min-w-0">
-        <div
-          className="flex items-center gap-2 text-sm min-w-0"
-          data-breadcrumb
-          style={BREADCRUMB_TRAIL_STYLE}
-        >
+        <div className="flex items-center gap-2 text-sm min-w-0" data-breadcrumb>
           <span className="text-muted shrink-0 hidden sm:inline truncate">{breadcrumb}</span>
         </div>
-        {subtitle ? <p className="mt-1 text-xs text-muted truncate">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="mt-1 text-xs text-muted truncate" data-live-subtitle>
+            {subtitle}
+          </p>
+        ) : null}
       </div>
 
       <button

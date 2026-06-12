@@ -26,7 +26,10 @@ import {
   type AuditReportRow,
 } from '../../lib/auditReports';
 import { computeDistrictReportSummaries, storeDistrict } from '../../lib/districtCalculations';
+import { sortStoresByRecency } from '../../lib/utils';
 import { BloomGradientPanel } from '../ui/BloomGradientPanel';
+
+type StoreSortKey = 'recent' | 'compliance';
 
 interface BranchSummary {
   id: string;
@@ -36,6 +39,9 @@ interface BranchSummary {
   reportCount: number;
   lastScore: number | null;
   lastDate: string | null;
+  updated_at?: string | null;
+  last_inspection_date?: string | null;
+  created_at?: string | null;
 }
 
 interface ReportDetail {
@@ -109,7 +115,7 @@ function ReportCard({ report, onOpen }: { report: AuditReportRow; onOpen: () => 
   );
 }
 
-function ReportDetailModal({
+export function ReportDetailModal({
   inspectionId,
   branchName,
   onClose,
@@ -364,6 +370,7 @@ export default function ManagementReport() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<View>({ kind: 'districts' });
   const [search, setSearch] = useState('');
+  const [storeSort, setStoreSort] = useState<StoreSortKey>('recent');
   const [selectedReport, setSelectedReport] = useState<{ id: string; branchName: string } | null>(null);
 
   useEffect(() => {
@@ -393,7 +400,7 @@ export default function ManagementReport() {
         .from('branches')
         .select(
           `
-          id, branch_name, city, region,
+          id, branch_name, city, region, created_at,
           inspections!inspections_branch_id_fkey (
             id, inspection_date, compliance_score, status, submitted_at
           )
@@ -408,28 +415,29 @@ export default function ManagementReport() {
         branch_name: string;
         city: string | null;
         region: string | null;
+        created_at: string | null;
         inspections: AuditReportRow[] | null;
-      }[])
-        .map((b) => {
-          const submitted = (b.inspections ?? []).filter((i) => i.status !== 'draft');
-          const sorted = [...submitted].sort(
-            (a, c) =>
-              new Date(c.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
-          );
-          return {
-            id: b.id,
-            branch_name: b.branch_name,
-            city: b.city,
-            region: b.region,
-            reportCount: submitted.length,
-            lastScore: sorted[0]?.compliance_score ?? null,
-            lastDate: sorted[0]?.inspection_date ?? null,
-          };
-        })
-        .sort(
-          (a, b) =>
-            new Date(b.lastDate ?? 0).getTime() - new Date(a.lastDate ?? 0).getTime(),
+      }[]).map((b) => {
+        const submitted = (b.inspections ?? []).filter((i) => i.status !== 'draft');
+        const sorted = [...submitted].sort(
+          (a, c) =>
+            new Date(c.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
         );
+        const latestSubmitted = sorted[0]?.submitted_at ?? null;
+        const latestInspectionDate = sorted[0]?.inspection_date ?? null;
+        return {
+          id: b.id,
+          branch_name: b.branch_name,
+          city: b.city,
+          region: b.region,
+          reportCount: submitted.length,
+          lastScore: sorted[0]?.compliance_score ?? null,
+          lastDate: latestInspectionDate,
+          updated_at: latestSubmitted,
+          last_inspection_date: latestInspectionDate,
+          created_at: b.created_at,
+        };
+      });
     },
   });
 
@@ -444,15 +452,25 @@ export default function ManagementReport() {
     row.district.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const filteredBranches = (branches ?? []).filter((b) => {
-    const matchesSearch =
-      b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
-      (b.city ?? '').toLowerCase().includes(search.toLowerCase());
-    if (view.kind === 'district') {
-      return matchesSearch && storeDistrict(b.region) === view.district;
+  const filteredBranches = useMemo(() => {
+    const list = (branches ?? []).filter((b) => {
+      const matchesSearch =
+        b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
+        (b.city ?? '').toLowerCase().includes(search.toLowerCase());
+      if (view.kind === 'district') {
+        return matchesSearch && storeDistrict(b.region) === view.district;
+      }
+      return matchesSearch;
+    });
+
+    if (view.kind !== 'district') return list;
+
+    if (storeSort === 'compliance') {
+      return [...list].sort((a, b) => (b.lastScore ?? -1) - (a.lastScore ?? -1));
     }
-    return matchesSearch;
-  });
+
+    return sortStoresByRecency(list);
+  }, [branches, search, storeSort, view]);
 
   const { data: storeReports, isLoading: reportsLoading } = useQuery<AuditReportRow[]>({
     queryKey: ['management-report-store', branchId],
@@ -473,8 +491,6 @@ export default function ManagementReport() {
       return (rows ?? []) as unknown as AuditReportRow[];
     },
   });
-
-  const filteredBranchesLegacy = filteredBranches;
 
   const groups = useMemo(() => groupStoreReports(storeReports ?? []), [storeReports]);
 
@@ -558,22 +574,37 @@ export default function ManagementReport() {
 
         {view.kind === 'district' && (
           <>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search stores…"
-                className="bloom-input py-2.5 pl-10"
-              />
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search stores…"
+                  className="bloom-input w-full py-2.5 pl-10"
+                />
+              </div>
+              <select
+                value={storeSort}
+                onChange={(e) => setStoreSort(e.target.value as StoreSortKey)}
+                className="bloom-input min-w-[180px] font-medium normal-case"
+                aria-label="Sort stores"
+              >
+                <option value="recent" className="bg-[#412653] text-white">
+                  Recently Updated
+                </option>
+                <option value="compliance" className="bg-[#412653] text-white">
+                  Compliance %
+                </option>
+              </select>
             </div>
             {branchesLoading ? (
               <p className="py-12 text-center text-white/65">Loading stores…</p>
-            ) : filteredBranchesLegacy.length === 0 ? (
+            ) : filteredBranches.length === 0 ? (
               <p className="py-12 text-center text-white/65">No stores match your search.</p>
             ) : (
               <div className="space-y-3">
-                {filteredBranchesLegacy.map((branch) => {
+                {filteredBranches.map((branch) => {
                   const location = [branch.city, branch.region].filter(Boolean).join(' · ');
                   const scoreColor = auditScoreColor(branch.lastScore);
                   return (

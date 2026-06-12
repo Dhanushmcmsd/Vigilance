@@ -21,6 +21,7 @@ import { KeralaBranchMap } from '../components/admin/KeralaBranchMap';
 import { DistrictOfficersPanel } from '../components/admin/DistrictOfficersPanel';
 import { ChecklistAdminTab } from '../components/admin/ChecklistAdminTab';
 import type { PrefillNewUser } from '../types/accountRequest';
+import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
 
 type Tab = 'users' | 'account-requests' | 'checklists' | 'branches' | 'reports';
 
@@ -827,7 +828,14 @@ function BranchModal({
                   <FormItem>
                     <FormLabel>District</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ernakulam" {...field} value={field.value ?? ''} />
+                      <select className="input w-full" {...field} value={field.value ?? ''}>
+                        <option value="">Select district</option>
+                        {KERALA_DISTRICT_NAMES.map((district) => (
+                          <option key={district} value={district}>
+                            {district}
+                          </option>
+                        ))}
+                      </select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

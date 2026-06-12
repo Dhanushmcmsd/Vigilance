@@ -92,3 +92,41 @@ DO UPDATE SET
   am             = EXCLUDED.am,
   am_number      = EXCLUDED.am_number,
   address        = EXCLUDED.address;
+
+-- Canonical Kerala district per store code (see migrations/20260612_canonical_store_districts.sql)
+UPDATE public.stores s
+SET region = m.district
+FROM (
+  VALUES
+    ('V180', 'Thiruvananthapuram'), ('V124', 'Thiruvananthapuram'), ('V159', 'Thiruvananthapuram'),
+    ('V122', 'Thiruvananthapuram'), ('V158', 'Thiruvananthapuram'), ('V177', 'Thiruvananthapuram'),
+    ('V129', 'Thiruvananthapuram'), ('V136', 'Thiruvananthapuram'), ('V181', 'Thiruvananthapuram'),
+    ('V128', 'Thiruvananthapuram'), ('V148', 'Thiruvananthapuram'),
+    ('V102', 'Kollam'), ('V107', 'Kollam'), ('V105', 'Kollam'), ('V197', 'Kollam'),
+    ('V176', 'Kollam'), ('V101', 'Kollam'), ('V191', 'Kollam'), ('V182', 'Kollam'), ('V121', 'Kollam'),
+    ('V104', 'Pathanamthitta'), ('V175', 'Pathanamthitta'), ('V123', 'Pathanamthitta'),
+    ('V117', 'Pathanamthitta'), ('V125', 'Pathanamthitta'), ('V143', 'Pathanamthitta'),
+    ('V140', 'Alappuzha'), ('V150', 'Alappuzha'), ('V116', 'Alappuzha'), ('V106', 'Alappuzha'),
+    ('V103', 'Alappuzha'), ('V115', 'Alappuzha'), ('V137', 'Alappuzha'), ('V113', 'Alappuzha'),
+    ('V119', 'Alappuzha'), ('V139', 'Alappuzha'), ('V133', 'Alappuzha'), ('V126', 'Alappuzha'),
+    ('V127', 'Alappuzha'), ('V134', 'Alappuzha'),
+    ('V166', 'Kottayam'), ('V179', 'Kottayam'), ('V163', 'Kottayam'), ('V130', 'Kottayam'),
+    ('V164', 'Kottayam'), ('V145', 'Kottayam'), ('V165', 'Kottayam'),
+    ('V189', 'Ernakulam'), ('V112', 'Ernakulam'), ('V138', 'Ernakulam'), ('V153', 'Ernakulam'),
+    ('V190', 'Thrissur'), ('V135', 'Thrissur'), ('V161', 'Thrissur'), ('V109', 'Thrissur'),
+    ('V146', 'Thrissur'), ('V151', 'Thrissur'), ('V108', 'Thrissur'), ('V132', 'Thrissur'),
+    ('V149', 'Thrissur'), ('V144', 'Thrissur'),
+    ('V111', 'Palakkad'), ('V152', 'Palakkad'), ('V167', 'Palakkad'), ('V196', 'Palakkad'),
+    ('V178', 'Palakkad'), ('V147', 'Palakkad'), ('V142', 'Palakkad'), ('V195', 'Palakkad'), ('V168', 'Palakkad'),
+    ('V170', 'Malappuram'), ('V173', 'Malappuram'), ('V169', 'Malappuram'),
+    ('V172', 'Kozhikode'), ('V198', 'Kozhikode'), ('V184', 'Kozhikode'), ('V185', 'Kozhikode'), ('V171', 'Kozhikode'),
+    ('V188', 'Wayanad'),
+    ('V183', 'Kannur')
+) AS m(code, district)
+WHERE s.store_code = m.code;
+
+UPDATE public.branches b
+SET region = s.region
+FROM public.stores s
+WHERE b.store_code = s.store_code
+  AND s.region IS NOT NULL;

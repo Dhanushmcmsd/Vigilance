@@ -54,6 +54,9 @@ interface StoreCard {
   lastInspected: string;
   hasOpenRed: boolean;
   hasOpenYellow: boolean;
+  updated_at?: string | null;
+  last_inspection_date?: string | null;
+  created_at?: string | null;
 }
 
 export function computeCeoMetrics(inspections: ManagementInspection[]): CeoMetrics {
@@ -256,6 +259,7 @@ export function computeStoreCards(inspections: ManagementInspection[]): StoreCar
     total: number;
     violations: number;
     lastInspected: string;
+    lastSubmittedAt: string;
   }>();
 
   inspections.forEach(inspection => {
@@ -269,14 +273,20 @@ export function computeStoreCards(inspections: ManagementInspection[]): StoreCar
         green: 0,
         total: 0,
         violations: 0,
-        lastInspected: inspection.inspection_date
+        lastInspected: inspection.inspection_date,
+        lastSubmittedAt: inspection.submitted_at,
       });
     }
 
     const store = storeMap.get(inspection.branch_id)!;
-    
+
     if (new Date(inspection.inspection_date) > new Date(store.lastInspected)) {
       store.lastInspected = inspection.inspection_date;
+    }
+
+    const submittedAt = inspection.edited_at ?? inspection.submitted_at;
+    if (new Date(submittedAt) > new Date(store.lastSubmittedAt)) {
+      store.lastSubmittedAt = submittedAt;
     }
 
     inspection.responses.forEach(response => {
@@ -311,7 +321,9 @@ export function computeStoreCards(inspections: ManagementInspection[]): StoreCar
       complianceScore,
       lastInspected,
       hasOpenRed: store.red > 0,
-      hasOpenYellow: store.yellow > 0
+      hasOpenYellow: store.yellow > 0,
+      updated_at: store.lastSubmittedAt,
+      last_inspection_date: store.lastInspected,
     };
-  }).sort((a, b) => b.redCount - a.redCount);
+  });
 }

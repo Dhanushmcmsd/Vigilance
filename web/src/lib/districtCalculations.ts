@@ -1,5 +1,6 @@
 import type { ManagementInspection } from './inspectionQueries';
 import { computeCeoMetrics, computeSectionBreakdown } from './ceoDashboardData';
+import { canonicalDistrict, KERALA_DISTRICT_NAMES } from './storeRegions';
 
 export interface StoreCard {
   id: string;
@@ -17,8 +18,7 @@ export interface StoreCard {
 export type HealthStatus = 'healthy' | 'normal' | 'critical';
 
 export function storeDistrict(region: string | null | undefined): string {
-  const value = region?.trim();
-  return value && value.length > 0 ? value : 'Unknown District';
+  return canonicalDistrict(region);
 }
 
 export function groupByDistrict<T>(
@@ -103,7 +103,12 @@ export function computeDistrictCards(storeCards: StoreCard[]): StoreCard[] {
         hasOpenYellow: stores.some((s) => s.hasOpenYellow),
       };
     })
-    .sort((a, b) => b.redCount - a.redCount || a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const order = new Map(KERALA_DISTRICT_NAMES.map((name, idx) => [name, idx]));
+      const orderDiff =
+        (order.get(a.name) ?? 999) - (order.get(b.name) ?? 999);
+      return orderDiff || b.redCount - a.redCount || a.name.localeCompare(b.name);
+    });
 }
 
 export function computeScopedMetrics(
@@ -163,8 +168,8 @@ export function calcMonthlyTrend(
   return points;
 }
 
-export function listDistrictNames(storeCards: StoreCard[]): string[] {
-  return Array.from(new Set(storeCards.map((s) => storeDistrict(s.region)))).sort();
+export function listDistrictNames(_storeCards?: StoreCard[]): string[] {
+  return [...KERALA_DISTRICT_NAMES];
 }
 
 export function calcDistrictDailyTrend(
@@ -238,6 +243,8 @@ export function computeDistrictMonthSummaries(
   const current = groupByDistrict(monthInspections, (i) => storeDistrict(i.region));
   const previous = groupByDistrict(prevMonthInspections, (i) => storeDistrict(i.region));
 
+  const districtOrder = new Map(KERALA_DISTRICT_NAMES.map((name, idx) => [name, idx]));
+
   return Array.from(current.entries())
     .map(([district, rows]) => {
       const prev = previous.get(district) ?? [];
@@ -256,7 +263,11 @@ export function computeDistrictMonthSummaries(
         criticalCount,
       };
     })
-    .sort((a, b) => a.avgCompliance - b.avgCompliance);
+    .sort(
+      (a, b) =>
+        (districtOrder.get(a.district) ?? 999) - (districtOrder.get(b.district) ?? 999) ||
+        a.district.localeCompare(b.district),
+    );
 }
 
 export function countDistrictsWithInspections(inspections: ManagementInspection[]): number {
@@ -281,6 +292,7 @@ export function computeDistrictReportSummaries(
     lastScore: number | null;
   }>,
 ): DistrictReportSummary[] {
+  const districtOrder = new Map(KERALA_DISTRICT_NAMES.map((name, idx) => [name, idx]));
   const grouped = groupByDistrict(branches, (b) => storeDistrict(b.region));
   return Array.from(grouped.entries())
     .map(([district, stores]) => {
@@ -296,7 +308,11 @@ export function computeDistrictReportSummaries(
         storeCount: stores.length,
       };
     })
-    .sort((a, b) => (a.avgCompliance ?? 0) - (b.avgCompliance ?? 0));
+    .sort(
+      (a, b) =>
+        (districtOrder.get(a.district) ?? 999) - (districtOrder.get(b.district) ?? 999) ||
+        a.district.localeCompare(b.district),
+    );
 }
 
 export interface DistrictAttentionRow {

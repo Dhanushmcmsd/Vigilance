@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { isViolationResponse } from './checklistScoring';
+import { canonicalDistrict } from './storeRegions';
 
 export interface InspectionResponseRow {
   id: string;
@@ -118,7 +119,7 @@ function mapInspectionRow(item: Record<string, unknown>): ManagementInspection {
     branch_name: String(branch?.branch_name ?? 'Unknown Branch'),
     branch_type: String(typeName ?? 'Unknown'),
     city: String(branch?.city ?? '—'),
-    region: String(branch?.region ?? '—'),
+    region: canonicalDistrict(branch?.region as string | null | undefined),
     officer_name: String((item.user_roles as { name?: string } | null)?.name ?? 'Unknown Officer'),
     officer_photo_url: ((item.user_roles as { profile_photo_url?: string | null } | null)?.profile_photo_url) ?? null,
     responses,

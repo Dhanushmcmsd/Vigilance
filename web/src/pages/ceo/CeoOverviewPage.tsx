@@ -15,6 +15,7 @@ import {
   filterInspectionsByDistrict,
   storeDistrict,
 } from '../../lib/districtCalculations';
+import { sortStoresByRecency } from '../../lib/utils';
 import { computeAlertFeed } from '../../lib/ceoDashboardData';
 import type { CeoOutletContext } from './CeoDashboardLayout';
 
@@ -47,9 +48,13 @@ export default function CeoOverviewPage() {
     return alerts;
   }, [inspections, redAlerts, selectedDistrict]);
 
-  const gridStores = selectedDistrict
-    ? storeCards.filter((s) => storeDistrict(s.region) === selectedDistrict)
-    : districtCards;
+  const gridStores = useMemo(() => {
+    if (selectedDistrict) {
+      const scoped = storeCards.filter((s) => storeDistrict(s.region) === selectedDistrict);
+      return sortStoresByRecency(scoped);
+    }
+    return districtCards;
+  }, [selectedDistrict, storeCards, districtCards]);
 
   const openDistrict = (district: string) => {
     setSearchParams({ district });

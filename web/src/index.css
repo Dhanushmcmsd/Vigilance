@@ -533,3 +533,30 @@ html.vms-cursor-hover .vms-cursor-ring {
   background: transparent !important;
   border: none !important;
 }
+
+@keyframes goldBreath {
+  0%, 100% {
+    text-shadow:
+      0 0 20px rgba(212, 175, 55, 0.55),
+      0 0 8px rgba(212, 175, 55, 0.40),
+      0 0 2px rgba(212, 175, 55, 0.60);
+  }
+  50% {
+    text-shadow:
+      0 0 28px rgba(212, 175, 55, 0.70),
+      0 0 12px rgba(212, 175, 55, 0.55),
+      0 0 3px rgba(212, 175, 55, 0.75);
+  }
+}
+
+[data-breadcrumb],
+[data-live-subtitle],
+.tab-breadcrumb,
+.tab-subtitle {
+  text-shadow:
+    0 0 20px rgba(212, 175, 55, 0.55),
+    0 0 8px rgba(212, 175, 55, 0.40),
+    0 0 2px rgba(212, 175, 55, 0.60);
+  transition: text-shadow 0.6s ease;
+  animation: goldBreath 3s ease-in-out infinite;
+}

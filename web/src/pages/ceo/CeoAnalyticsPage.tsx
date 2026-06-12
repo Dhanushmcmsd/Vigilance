@@ -66,15 +66,7 @@ export default function CeoAnalyticsPage() {
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6 max-w-7xl">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-50 mb-2">Analytics</h1>
-        <p
-          className="text-sm text-gray-400"
-          data-breadcrumb
-          style={{
-            textShadow:
-              '0 0 12px rgba(212, 175, 55, 0.15), 0 0 4px rgba(212, 175, 55, 0.10), 0 0 1px rgba(212, 175, 55, 0.20)',
-            transition: 'text-shadow 0.4s ease',
-          }}
-        >
+        <p className="text-sm text-gray-400" data-breadcrumb>
           Dashboard / Analytics{activeDistrict ? ` / ${activeDistrict}` : ''}
         </p>
       </div>

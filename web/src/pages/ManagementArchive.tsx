@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronRight } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import ComplianceChart from '../components/ComplianceChart';
-import { ReportDetailModal } from '../components/management/ManagementReport';
 import { BloomGradientPanel, BloomPageHeader } from '../components/ui/BloomGradientPanel';
 import { useManagementInspections } from '../hooks/useManagementInspections';
 import { formatMonthLabel, monthKey } from '../lib/inspectionQueries';
@@ -13,8 +12,6 @@ import { filterInspectionsByDistrict } from '../lib/districtCalculations';
 import {
   complianceScoreColor,
   computeDistrictMonthSummariesV2,
-  computeDistrictReportSummaryBar,
-  computeDistrictReportsList,
   computeMonthlyArchiveStats,
 } from '../lib/managementArchive';
 
@@ -22,7 +19,6 @@ export default function ManagementArchive() {
   const { data = [], isLoading } = useManagementInspections();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedDistrict = searchParams.get('district');
-  const [selectedReport, setSelectedReport] = useState<{ id: string; branchName: string } | null>(null);
 
   const months = useMemo(() => {
     const keys = new Set(data.map((i) => monthKey(i.submitted_at)));
@@ -67,19 +63,6 @@ export default function ManagementArchive() {
   const districtSummaries = useMemo(
     () => computeDistrictMonthSummariesV2(monthInspections, prevMonthInspections),
     [monthInspections, prevMonthInspections],
-  );
-
-  const districtReports = useMemo(
-    () =>
-      selectedDistrict
-        ? computeDistrictReportsList(scopedMonthInspections, selectedDistrict)
-        : [],
-    [scopedMonthInspections, selectedDistrict],
-  );
-
-  const districtSummaryBar = useMemo(
-    () => computeDistrictReportSummaryBar(districtReports),
-    [districtReports],
   );
 
   const onMonthChange = (month: string) => {
@@ -234,67 +217,9 @@ export default function ManagementArchive() {
                 })}
               </div>
             </BloomGradientPanel>
-          ) : (
-            <BloomGradientPanel className="p-6">
-              <h2 className="mb-2 text-lg font-bold text-white">
-                Reports — {formatMonthLabel(activeMonth)} · {selectedDistrict}
-              </h2>
-              <p className="mb-4 text-sm text-white/65">
-                {districtSummaryBar.reportCount} reports | Avg {districtSummaryBar.avgCompliance}% |{' '}
-                {districtSummaryBar.redFlags} red flags | submitted by {districtSummaryBar.officers} officers
-              </p>
-              <div className="space-y-3">
-                {districtReports.length === 0 ? (
-                  <p className="py-8 text-center text-white/65">No report submissions for this district in the selected month.</p>
-                ) : (
-                  districtReports.map((report) => {
-                    const scoreColor = complianceScoreColor(report.complianceScore);
-                    return (
-                      <button
-                        key={report.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedReport({ id: report.id, branchName: report.storeName })
-                        }
-                        className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-white">{report.storeName}</p>
-                          <p className="text-sm text-white/65">
-                            {report.officerName} ·{' '}
-                            {new Date(report.submittedAt).toLocaleString('en-IN', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
-                          <p className="mt-1 text-xs font-medium text-white/50">
-                            {report.redFlags} red · {report.yellowFlags} yellow
-                          </p>
-                        </div>
-                        <span className="text-xl font-black tabular-nums" style={{ color: scoreColor }}>
-                          {report.complianceScore.toFixed(0)}%
-                        </span>
-                        <ChevronRight className="h-5 w-5 shrink-0 text-white/45" />
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </BloomGradientPanel>
-          )}
+          ) : null}
         </>
       )}
-
-      {selectedReport ? (
-        <ReportDetailModal
-          inspectionId={selectedReport.id}
-          branchName={selectedReport.branchName}
-          onClose={() => setSelectedReport(null)}
-        />
-      ) : null}
     </div>
   );
 }

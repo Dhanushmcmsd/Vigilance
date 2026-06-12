@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  BarChart,
   Bar,
-  LineChart,
-  Line,
+  BarChart,
   CartesianGrid,
+  Line,
+  LineChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -20,6 +20,7 @@ import {
   computeScopedSectionData,
   listDistrictNames,
 } from '../../lib/districtCalculations';
+import { computeRiskResolutionTrend } from '../../lib/kpiDetailData';
 
 export default function CeoAnalyticsPage() {
   const { inspections, metrics, storeCards } = useCeoDashboard();
@@ -40,6 +41,11 @@ export default function CeoAnalyticsPage() {
 
   const complianceTrend = useMemo(
     () => calcMonthlyTrend(inspections, activeDistrict),
+    [inspections, activeDistrict],
+  );
+
+  const riskResolutionTrend = useMemo(
+    () => computeRiskResolutionTrend(inspections, activeDistrict),
     [inspections, activeDistrict],
   );
 
@@ -258,6 +264,56 @@ export default function CeoAnalyticsPage() {
               <div className="text-2xl font-bold text-green-400">{metrics.inspectionsToday}</div>
             </div>
           </div>
+        </div>
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <div
+          className="rounded-lg border p-6"
+          style={{
+            backgroundColor: 'var(--bg-card)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
+            Risk Resolution Trend
+          </h3>
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={riskResolutionTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+              <XAxis dataKey="month" stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
+              <YAxis stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                }}
+                labelStyle={{ color: 'var(--text-primary)' }}
+                formatter={(value: number, name: string) => {
+                  if (name === 'Resolution rate') return [`${value}%`, name];
+                  return [value, name];
+                }}
+              />
+              <Legend wrapperStyle={{ paddingTop: '16px' }} />
+              <Line
+                type="monotone"
+                dataKey="newRisks"
+                stroke="#EF4444"
+                strokeWidth={2}
+                dot={{ fill: '#EF4444', r: 4 }}
+                name="New Risks Identified"
+              />
+              <Line
+                type="monotone"
+                dataKey="resolved"
+                stroke="#22C55E"
+                strokeWidth={2}
+                dot={{ fill: '#22C55E', r: 4 }}
+                name="Risks Resolved"
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </motion.div>
     </motion.div>

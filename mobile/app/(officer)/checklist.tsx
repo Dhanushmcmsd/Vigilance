@@ -27,7 +27,7 @@ import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
 import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
-import { isViolationResponse, responseButtonColors } from '../../lib/checklistScoring';
+import { isViolationResponse, isCompliantResponse, responseButtonColors } from '../../lib/checklistScoring';
 import {
   uploadInspectionDocumentFile,
   uploadInspectionImageFile,
@@ -130,6 +130,7 @@ export default function ChecklistScreen() {
   const [pageOpacity] = useState(new Animated.Value(1));
   const [transitioning, setTransitioning] = useState(false);
   const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
+  const [previousRisks, setPreviousRisks] = useState<Set<string>>(new Set());
 
   const [triggeredRedItems, setTriggeredRedItems] = useState<Set<string>>(new Set());
   const [yellowCount, setYellowCount] = useState(0);
@@ -184,6 +185,42 @@ export default function ChecklistScreen() {
       setLoading(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!branchId) return;
+    (async () => {
+      const { data: prevInspection } = await supabase
+        .from('inspections')
+        .select(
+          `id,
+          inspection_responses ( checklist_item_id, response, risk_level, checklist_templates:checklist_item_id ( trigger_on_no ) )`,
+        )
+        .eq('branch_id', branchId)
+        .eq('status', 'submitted')
+        .order('submitted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!prevInspection?.inspection_responses) {
+        setPreviousRisks(new Set());
+        return;
+      }
+
+      const riskIds = new Set<string>();
+      (prevInspection.inspection_responses as Array<{
+        checklist_item_id: string;
+        response: string | null;
+        risk_level?: string | null;
+        checklist_templates?: { trigger_on_no?: boolean | null } | null;
+      }>).forEach((entry) => {
+        const triggerOnNo = entry.checklist_templates?.trigger_on_no ?? true;
+        if (isViolationResponse(entry.response, triggerOnNo)) {
+          riskIds.add(entry.checklist_item_id);
+        }
+      });
+      setPreviousRisks(riskIds);
+    })();
+  }, [branchId]);
 
   const hydrateItems = (rows: ChecklistTemplateRow[]) => {
     const mapped = rows.map((r) => {
@@ -885,12 +922,21 @@ export default function ChecklistScreen() {
               const inspectionId = await ensureInspection();
               if (!inspectionId) throw new Error('Inspection creation failed');
 
-              const responseRows = items.map((item) => ({
-                inspection_id: inspectionId,
-                checklist_item_id: item.id,
-                response: responses[item.id]?.response,
-                remarks: responses[item.id]?.remark || null,
-              }));
+              const responseRows = items.map((item) => {
+                const currentResponse = responses[item.id]?.response ?? null;
+                const wasPreviouslyAtRisk = previousRisks.has(item.id);
+                const resolvedThisInspection =
+                  wasPreviouslyAtRisk &&
+                  isCompliantResponse(currentResponse, item.trigger_on_no ?? true);
+                return {
+                  inspection_id: inspectionId,
+                  checklist_item_id: item.id,
+                  response: currentResponse,
+                  remarks: responses[item.id]?.remark || null,
+                  was_previously_at_risk: wasPreviouslyAtRisk,
+                  resolved_this_inspection: resolvedThisInspection,
+                };
+              });
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
@@ -1151,6 +1197,7 @@ export default function ChecklistScreen() {
                 itemAttachments.length + itemVideoList.length > 0
                   ? ` · ${itemAttachments.length + itemVideoList.length} file(s)`
                   : '';
+              const hadPreviousRisk = previousRisks.has(item.id);
 
               return (
                 <View
@@ -1165,8 +1212,27 @@ export default function ChecklistScreen() {
                     shadowRadius: 8,
                     shadowOffset: { width: 0, height: 4 },
                     elevation: 3,
+                    ...(hadPreviousRisk
+                      ? { borderWidth: 1.5, borderColor: '#ef4444', borderRadius: 8 }
+                      : null),
                   }}
                 >
+                  {hadPreviousRisk ? (
+                    <View
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        borderRadius: 4,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        alignSelf: 'flex-start',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '600' }}>
+                        ⚠ Marked as risk
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View style={{ backgroundColor: badge.backgroundColor, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: badge.color }}>{badge.label}</Text>

@@ -1,0 +1,13 @@
+-- MANUAL ACTION REQUIRED in Supabase Dashboard:
+-- The inspection-files storage bucket currently stores raw iPhone videos (.mov, HEVC/H.265).
+-- These cannot be played natively in most browsers without transcoding.
+--
+-- Option A (Recommended): Install a Supabase Edge Function that uses ffmpeg-wasm
+-- to transcode uploaded videos to H.264 MP4 on the fly after upload.
+-- Trigger: on INSERT to inspection_files where file_type = 'video'
+-- Output: re-upload transcoded file, update file_url to new path.
+--
+-- Option B (Immediate Fix): The VideoPlayer component now shows a download + VLC fallback
+-- when the browser cannot play the format. No storage change needed.
+--
+-- For now Option B is implemented. Implement Option A later.

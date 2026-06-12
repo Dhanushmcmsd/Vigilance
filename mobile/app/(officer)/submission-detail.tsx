@@ -203,7 +203,7 @@ export default function SubmissionDetailScreen() {
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={{ flex: 1, color: '#fff', fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
-          {branchName}
+          Inspection Record — Read Only
         </Text>
       </View>
 
@@ -223,7 +223,7 @@ export default function SubmissionDetailScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', letterSpacing: 1, marginBottom: 12 }}>
-            INSPECTION SUMMARY
+            INSPECTION SUMMARY — {branchName ?? 'Store'}
           </Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
             <View>

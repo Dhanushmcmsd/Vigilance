@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { CursorProvider } from '../../components/cursor/CursorProvider';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
 import { NotificationDrawer } from '../../components/layout/NotificationDrawer';
@@ -78,7 +77,7 @@ function CeoShell() {
   }));
 
   return (
-    <div style={{ backgroundColor: '#0A0A0F', minHeight: '100vh' }}>
+    <div style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100vh' }}>
       <Sidebar onWidthChange={setSidebarWidth} />
       <TopBar
         breadcrumb={breadcrumb}
@@ -147,10 +146,8 @@ export type CeoOutletContext = {
 
 export default function CeoDashboardLayout() {
   return (
-    <CursorProvider>
-      <CeoDashboardProvider>
-        <CeoShell />
-      </CeoDashboardProvider>
-    </CursorProvider>
+    <CeoDashboardProvider>
+      <CeoShell />
+    </CeoDashboardProvider>
   );
 }

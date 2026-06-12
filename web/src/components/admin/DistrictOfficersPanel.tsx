@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import type { DistrictAssignmentRow } from './KeralaBranchMap';
 import { initials } from '../../lib/keralaDistricts';
+import { StoreAssignmentModal } from './StoreAssignmentModal';
 
 interface OfficerOption {
   id: string;
@@ -175,6 +176,12 @@ function ReassignModal({
 export function DistrictOfficersPanel() {
   const qc = useQueryClient();
   const [reassignDistrict, setReassignDistrict] = useState<string | null>(null);
+  const [manageStores, setManageStores] = useState<{
+    district: string;
+    officerId: string;
+    officerName: string;
+    userId: string | null;
+  } | null>(null);
 
   const { data: assignments = [], isLoading } = useQuery<DistrictAssignmentRow[]>({
     queryKey: ['district-assignments'],
@@ -195,6 +202,40 @@ export function DistrictOfficersPanel() {
     },
   });
 
+  const { data: branchAssignments = [] } = useQuery({
+    queryKey: ['branch-officer-assignments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, region, assigned_officer_id')
+        .eq('is_active', true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: officerProfiles = [] } = useQuery({
+    queryKey: ['officer-user-ids'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('id, user_id, name')
+        .eq('role', 'officer')
+        .eq('is_active', true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const countAssignedStores = (district: string, officerRoleId: string | null) => {
+    if (!officerRoleId) return 0;
+    const profile = officerProfiles.find((o) => o.id === officerRoleId);
+    if (!profile?.user_id) return 0;
+    return branchAssignments.filter(
+      (b) => b.region === district && b.assigned_officer_id === profile.user_id,
+    ).length;
+  };
+
   const toggleLeave = async (id: string, isOnLeave: boolean) => {
     await supabase
       .from('district_assignments')
@@ -213,7 +254,7 @@ export function DistrictOfficersPanel() {
           <table className="min-w-full text-sm">
             <thead className="bg-gray-800">
               <tr>
-                {['District', 'Assigned Officer', 'Status', 'Action'].map((h) => (
+                {['District', 'Assigned Officer', 'Status', 'Assigned Stores', 'Action'].map((h) => (
                   <th key={h} className="th">
                     {h}
                   </th>
@@ -223,6 +264,8 @@ export function DistrictOfficersPanel() {
             <tbody className="divide-y divide-gray-700">
               {assignments.map((row) => {
                 const name = row.officer?.name ?? 'Unassigned';
+                const storeCount = countAssignedStores(row.district, row.officer_id);
+                const officerProfile = officerProfiles.find((o) => o.id === row.officer_id);
                 return (
                   <tr key={row.id} className="tr">
                     <td className="td font-medium">{row.district}</td>
@@ -245,6 +288,25 @@ export function DistrictOfficersPanel() {
                       </button>
                     </td>
                     <td className="td">
+                      <span className="badge badge-blue">{storeCount} stores</span>
+                      {row.officer_id ? (
+                        <button
+                          type="button"
+                          className="btn-xs btn-xs-blue ml-2"
+                          onClick={() =>
+                            setManageStores({
+                              district: row.district,
+                              officerId: row.officer_id!,
+                              officerName: name,
+                              userId: officerProfile?.user_id ?? null,
+                            })
+                          }
+                        >
+                          Manage
+                        </button>
+                      ) : null}
+                    </td>
+                    <td className="td">
                       <button
                         type="button"
                         className="btn-xs btn-xs-blue"
@@ -260,6 +322,21 @@ export function DistrictOfficersPanel() {
           </table>
         </div>
       )}
+
+      {manageStores ? (
+        <StoreAssignmentModal
+          district={manageStores.district}
+          officer={{
+            id: manageStores.officerId,
+            name: manageStores.officerName,
+            user_id: manageStores.userId,
+          }}
+          onClose={() => setManageStores(null)}
+          onSaved={() => {
+            void qc.invalidateQueries({ queryKey: ['branch-officer-assignments'] });
+          }}
+        />
+      ) : null}
 
       {reassignDistrict && (
         <ReassignModal

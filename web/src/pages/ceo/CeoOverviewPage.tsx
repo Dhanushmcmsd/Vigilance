@@ -1,31 +1,47 @@
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { StatCard } from '../../components/dashboard/StatCard';
-import { AlertFeed } from '../../components/dashboard/AlertFeed';
 import { SectionRiskChart } from '../../components/dashboard/SectionRiskChart';
 import { StoreGrid } from '../../components/dashboard/StoreGrid';
 import { StoreDetailPanel } from '../../components/dashboard/StoreDetailPanel';
+import { KpiDetailModal } from '../../components/dashboard/KpiDetailModal';
 import { useCeoDashboard } from '../../context/CeoDashboardContext';
 import { staggerContainer, fadeUp } from '../../lib/animations';
 import {
   computeDistrictCards,
   computeScopedMetrics,
   computeScopedSectionData,
-  filterInspectionsByDistrict,
   storeDistrict,
 } from '../../lib/districtCalculations';
 import { sortStoresByRecency } from '../../lib/utils';
-import { computeAlertFeed } from '../../lib/ceoDashboardData';
-import type { CeoOutletContext } from './CeoDashboardLayout';
+import {
+  computeBreachDetails,
+  computeCriticalStoreDetails,
+  computeInspectionsTodayDetails,
+  computeRedFlagDetails,
+  computeRisksResolvedThisMonth,
+  computeYellowWarningDetails,
+} from '../../lib/kpiDetailData';
+
+type KpiModalKey =
+  | 'redFlags'
+  | 'criticalRisk'
+  | 'breaches'
+  | 'yellowWarnings'
+  | 'inspectionsToday'
+  | 'risksResolved'
+  | null;
 
 export default function CeoOverviewPage() {
-  const { setSelectedAlert } = useOutletContext<CeoOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedDistrict = searchParams.get('district');
-  const [selectedStore, setSelectedStore] = useState<ReturnType<typeof useCeoDashboard>['storeCards'][0] | null>(null);
+  const [selectedStore, setSelectedStore] = useState<
+    ReturnType<typeof useCeoDashboard>['storeCards'][0] | null
+  >(null);
+  const [activeKpi, setActiveKpi] = useState<KpiModalKey>(null);
 
-  const { inspections, redAlerts, sectionData, storeCards, isLoading } = useCeoDashboard();
+  const { inspections, sectionData, storeCards, isLoading } = useCeoDashboard();
 
   const districtCards = useMemo(() => computeDistrictCards(storeCards), [storeCards]);
 
@@ -39,14 +55,41 @@ export default function CeoOverviewPage() {
     [inspections, selectedDistrict, sectionData],
   );
 
-  const scopedAlerts = useMemo(() => {
-    const alerts = selectedDistrict
-      ? computeAlertFeed(filterInspectionsByDistrict(inspections, selectedDistrict)).filter(
-          (a) => a.risk === 'RED',
-        )
-      : redAlerts;
-    return alerts;
-  }, [inspections, redAlerts, selectedDistrict]);
+  const risksResolved = useMemo(
+    () => computeRisksResolvedThisMonth(inspections, selectedDistrict),
+    [inspections, selectedDistrict],
+  );
+
+  const kpiModalConfig = useMemo(() => {
+    switch (activeKpi) {
+      case 'redFlags':
+        return {
+          title: 'Open RED Flags',
+          rows: computeRedFlagDetails(inspections, selectedDistrict),
+        };
+      case 'criticalRisk':
+        return {
+          title: 'Stores at Critical Risk',
+          rows: computeCriticalStoreDetails(storeCards, selectedDistrict),
+        };
+      case 'breaches':
+        return { title: 'Breaches', rows: computeBreachDetails(inspections, selectedDistrict) };
+      case 'yellowWarnings':
+        return {
+          title: 'Active Yellow Warnings',
+          rows: computeYellowWarningDetails(inspections, selectedDistrict),
+        };
+      case 'inspectionsToday':
+        return {
+          title: 'Inspections Today',
+          rows: computeInspectionsTodayDetails(inspections, selectedDistrict),
+        };
+      case 'risksResolved':
+        return { title: 'Risks Resolved', rows: risksResolved.rows };
+      default:
+        return { title: '', rows: [] };
+    }
+  }, [activeKpi, inspections, selectedDistrict, storeCards, risksResolved.rows]);
 
   const gridStores = useMemo(() => {
     if (selectedDistrict) {
@@ -71,49 +114,68 @@ export default function CeoOverviewPage() {
         <button
           type="button"
           onClick={goBackToDistricts}
-          className="text-sm text-muted hover:text-text-primary transition-colors min-h-[44px] px-1"
+          className="text-sm transition-colors min-h-[44px] px-1"
+          style={{ color: 'var(--text-muted)' }}
         >
           ← Back to Districts
         </button>
       ) : null}
 
-      <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <StatCard label="Open RED Flags" value={scopedMetrics.openRedFlags} borderColor="critical" loading={isLoading} />
+      <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <StatCard
+          label="Open RED Flags"
+          value={scopedMetrics.openRedFlags}
+          borderColor="critical"
+          loading={isLoading}
+          onClick={() => setActiveKpi('redFlags')}
+        />
         <StatCard
           label="Stores at Critical Risk"
           value={scopedMetrics.storesAtCriticalRisk}
           borderColor="critical"
           loading={isLoading}
+          onClick={() => setActiveKpi('criticalRisk')}
         />
-        <StatCard label="Breaches" value={scopedMetrics.slaBreaches} borderColor="critical" loading={isLoading} />
+        <StatCard
+          label="Breaches"
+          value={scopedMetrics.slaBreaches}
+          borderColor="critical"
+          loading={isLoading}
+          onClick={() => setActiveKpi('breaches')}
+        />
         <StatCard
           label="Active Yellow Warnings"
           value={scopedMetrics.activeYellowWarnings}
           borderColor="warning"
           loading={isLoading}
+          onClick={() => setActiveKpi('yellowWarnings')}
+        />
+        <StatCard
+          label="Risks Resolved"
+          value={risksResolved.count}
+          borderColor="safe"
+          loading={isLoading}
+          onClick={() => setActiveKpi('risksResolved')}
         />
       </motion.div>
 
       <motion.div variants={fadeUp} className="grid grid-cols-1 gap-4">
-        <StatCard label="Inspections Today" value={scopedMetrics.inspectionsToday} loading={isLoading} />
+        <StatCard
+          label="Inspections Today"
+          value={scopedMetrics.inspectionsToday}
+          loading={isLoading}
+          onClick={() => setActiveKpi('inspectionsToday')}
+        />
       </motion.div>
 
-      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <AlertFeed
-            alerts={scopedAlerts}
-            onAlertClick={setSelectedAlert}
-            groupByDistrict={!selectedDistrict}
-          />
-        </div>
-        <div className="lg:col-span-1">
-          <SectionRiskChart data={scopedSectionData} />
-        </div>
+      <motion.div variants={fadeUp}>
+        <SectionRiskChart data={scopedSectionData} />
       </motion.div>
 
       <motion.div variants={fadeUp}>
         <StoreGrid
           stores={gridStores.slice(0, selectedDistrict ? gridStores.length : 9)}
+          showDistrictLabel={!selectedDistrict}
           onStoreClick={(store) => {
             if (selectedDistrict) {
               setSelectedStore(store);
@@ -125,6 +187,13 @@ export default function CeoOverviewPage() {
       </motion.div>
 
       <StoreDetailPanel store={selectedStore} onClose={() => setSelectedStore(null)} />
+
+      <KpiDetailModal
+        open={activeKpi !== null}
+        title={kpiModalConfig.title}
+        rows={kpiModalConfig.rows}
+        onClose={() => setActiveKpi(null)}
+      />
     </motion.div>
   );
 }

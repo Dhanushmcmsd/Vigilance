@@ -26,6 +26,13 @@ interface SubmissionRow {
   risk_level: 'low' | 'medium' | 'high' | 'critical' | null;
   submitted_at: string | null;
   branch: { branch_name: string; branch_type_id: string | null } | null;
+  officer?: { name: string | null } | null;
+}
+
+function scoreColor(score: number) {
+  if (score >= 80) return '#16a34a';
+  if (score >= 60) return '#d97706';
+  return '#dc2626';
 }
 
 export default function SubmissionsScreen() {
@@ -42,7 +49,8 @@ export default function SubmissionsScreen() {
         .select(
           `
           id, inspection_date, status, compliance_score, risk_level, submitted_at,
-          branch:branches!inspections_branch_id_fkey ( branch_name, branch_type_id )
+          branch:branches!inspections_branch_id_fkey ( branch_name, branch_type_id ),
+          officer:user_roles!inspections_officer_id_fkey ( name )
         `,
         )
         .eq('officer_id', userRolesId!)
@@ -54,21 +62,14 @@ export default function SubmissionsScreen() {
     },
   });
 
-  // Pending sync — items submitted while offline that haven't reached the
-  // server yet. Read straight from the MMKV-backed queue so the count is
-  // accurate even if the network is still down.
   const pendingQuery = useQuery<number>({
     queryKey: ['officer-pending-sync'],
     queryFn: async () => (await peekQueue()).length,
-    // Refetch on focus + on every refresh action below.
     refetchInterval: 15_000,
   });
 
   const onRefresh = React.useCallback(async () => {
     haptics.tap();
-    // Trigger an immediate flush attempt before re-reading either source.
-    // If we're offline this is a no-op; if we're online any queued items
-    // become real rows and surface in the next `refetch()`.
     await flushQueue().catch(() => {});
     await Promise.all([refetch(), pendingQuery.refetch()]);
   }, [refetch, pendingQuery]);
@@ -112,7 +113,7 @@ export default function SubmissionsScreen() {
           data={data}
           keyExtractor={(it) => it.id}
           contentContainerStyle={{
-            padding: SPACING.lg,
+            paddingHorizontal: 16,
             paddingBottom: insets.bottom + SPACING.xl,
           }}
           ListHeaderComponent={
@@ -124,120 +125,54 @@ export default function SubmissionsScreen() {
                 }}
                 style={styles.pendingBanner}
                 accessibilityRole="button"
-                accessibilityLabel={`${pendingCount} submission${
-                  pendingCount === 1 ? '' : 's'
-                } pending sync. Tap to view drafts.`}
               >
-                <Ionicons
-                  name="cloud-offline-outline"
-                  size={28}
-                  color="#a16207"
-                />
+                <Ionicons name="cloud-offline-outline" size={28} color="#a16207" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.pendingTitle}>
-                    {pendingCount} pending sync
-                  </Text>
+                  <Text style={styles.pendingTitle}>{pendingCount} pending sync</Text>
                   <Text style={styles.pendingBody}>
-                    These submissions will upload automatically when you're
-                    online. Tap to manage.
+                    These submissions will upload automatically when you're online. Tap to manage.
                   </Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={22}
-                  color="#a16207"
-                />
+                <Ionicons name="chevron-forward" size={22} color="#a16207" />
               </TouchableOpacity>
             ) : null
           }
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />
-          }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => {
-                haptics.tap();
-                router.push({
-                  pathname: '/(officer)/submission-detail',
-                  params: { id: item.id },
-                });
-              }}
-              style={styles.card}
-              accessibilityRole="button"
-              accessibilityLabel={`View submission for ${
-                item.branch?.branch_name ?? 'unknown branch'
-              } on ${item.inspection_date}`}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>
-                  {item.branch?.branch_name ?? 'Unknown branch'}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {item.inspection_date}
-                  {item.submitted_at
-                    ? ` · submitted ${new Date(item.submitted_at).toLocaleDateString('en-IN')}`
-                    : ''}
-                </Text>
-                <View style={styles.pillRow}>
-                  <StatusPill status={item.status} />
-                  {item.compliance_score != null && (
-                    <ScorePill
-                      score={item.compliance_score}
-                      risk={item.risk_level}
-                    />
-                  )}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
+          renderItem={({ item }) => {
+            const storeName = item.branch?.branch_name ?? 'Unknown branch';
+            const score = item.compliance_score;
+            return (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.tap();
+                  router.push({
+                    pathname: '/(officer)/submission-detail',
+                    params: { inspectionId: item.id, branchName: storeName },
+                  });
+                }}
+                style={styles.row}
+                accessibilityRole="button"
+              >
+                <View style={styles.rowMain}>
+                  <Text style={styles.storeName} numberOfLines={1} ellipsizeMode="tail">
+                    {storeName}
+                  </Text>
+                  <Text style={styles.rowMeta} numberOfLines={1}>
+                    {item.inspection_date}
+                    {item.submitted_at
+                      ? ` · ${new Date(item.submitted_at).toLocaleDateString('en-IN')}`
+                      : ''}
+                    {item.officer?.name ? ` · ${item.officer.name}` : ''}
+                  </Text>
                 </View>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={22}
-                color={COLOR.borderStrong}
-              />
-            </TouchableOpacity>
-          )}
+                {score != null ? (
+                  <Text style={[styles.scoreText, { color: scoreColor(score) }]}>{score.toFixed(0)}%</Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
-    </View>
-  );
-}
-
-function StatusPill({ status }: { status: SubmissionRow['status'] }) {
-  const map: Record<SubmissionRow['status'], { fg: string; bg: string }> = {
-    draft: { fg: '#374151', bg: '#e5e7eb' },
-    submitted: { fg: '#1d4ed8', bg: '#dbeafe' },
-    approved: { fg: '#166534', bg: '#dcfce7' },
-    rejected: { fg: '#b91c1c', bg: '#fee2e2' },
-  };
-  const c = map[status];
-  return (
-    <View style={[styles.pill, { backgroundColor: c.bg }]}>
-      <Text style={[styles.pillText, { color: c.fg }]}>{status.toUpperCase()}</Text>
-    </View>
-  );
-}
-
-function ScorePill({
-  score,
-  risk,
-}: {
-  score: number;
-  risk: SubmissionRow['risk_level'];
-}) {
-  const fg =
-    risk === 'critical' || risk === 'high'
-      ? '#b91c1c'
-      : risk === 'medium'
-      ? '#a16207'
-      : '#166534';
-  const bg =
-    risk === 'critical' || risk === 'high'
-      ? '#fee2e2'
-      : risk === 'medium'
-      ? '#fef3c7'
-      : '#dcfce7';
-  return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      <Text style={[styles.pillText, { color: fg }]}>{score.toFixed(0)}%</Text>
     </View>
   );
 }
@@ -289,45 +224,44 @@ const styles = {
     maxWidth: 320,
     lineHeight: 22,
   } as const,
-  card: {
-    backgroundColor: COLOR.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLOR.border,
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLOR.border,
     minHeight: TOUCH.rowHeight,
   } as const,
-  cardTitle: {
+  rowMain: {
+    flex: 1,
+    marginRight: 12,
+  } as const,
+  storeName: {
+    fontSize: FONT.body,
+    fontWeight: '700',
+    color: COLOR.text,
+    textAlign: 'left' as const,
+  },
+  rowMeta: {
+    fontSize: FONT.xs,
+    color: COLOR.textMuted,
+    marginTop: 4,
+    textAlign: 'left' as const,
+  },
+  scoreText: {
     fontSize: FONT.bodyLg,
     fontWeight: '800',
-    color: COLOR.text,
-  } as const,
-  cardMeta: {
-    fontSize: FONT.body,
-    color: COLOR.textMuted,
-    marginTop: SPACING.xs,
-  } as const,
-  pillRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  } as const,
-  pill: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: RADIUS.pill,
-  } as const,
-  pillText: { fontSize: FONT.xs, fontWeight: '800', letterSpacing: 0.5 } as const,
+    textAlign: 'right' as const,
+  },
   pendingBanner: {
     backgroundColor: '#fef3c7',
     borderColor: '#fde68a',
     borderWidth: 1,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
-    marginBottom: SPACING.lg,
+    marginVertical: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,

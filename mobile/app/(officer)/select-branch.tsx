@@ -44,8 +44,7 @@ interface Branch {
   geofence_radius: number;
   store_code?: string | null;
   incharge_name?: string | null;
-  incharge_phone?: string | null;
-  distance_metres?: number; // set only when nearMeActive
+  assigned_officer_id?: string | null;
 }
 
 const SkeletonCard = () => (
@@ -185,7 +184,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
     // Step 2: fetch branches filtered by the resolved branch_type_id
     const { data, error: err } = await supabase
       .from('branches')
-      .select('id, branch_name, location, city, region, latitude, longitude, geofence_radius, store_code, incharge_name, incharge_phone')
+      .select('id, branch_name, location, city, region, latitude, longitude, geofence_radius, store_code, incharge_name, incharge_phone, assigned_officer_id')
       .eq('is_active', true)
       .eq('branch_type_id', typeRow.id)
       .order('branch_name');
@@ -211,6 +210,12 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
 
     if (assignedDistricts.length > 0) {
       safe = safe.filter((b) => b.region && assignedDistricts.includes(b.region));
+    }
+
+    const { data: authData } = await supabase.auth.getUser();
+    const authUserId = authData.user?.id;
+    if (authUserId) {
+      safe = safe.filter((b) => !b.assigned_officer_id || b.assigned_officer_id === authUserId);
     }
 
     setBranches(safe);

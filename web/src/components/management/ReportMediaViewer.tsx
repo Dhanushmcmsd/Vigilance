@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Download } from 'lucide-react';
 import { downloadInspectionMediaFile } from '../../lib/inspectionMedia';
+import { VideoPlayer } from '../VideoPlayer';
 
 export type ReportMediaViewerItem =
   | {
@@ -66,9 +67,7 @@ export function ReportMediaViewer({
           {item.kind === 'image' ? (
             <img src={item.url} alt={item.fileName} className="vms-media-viewer-image" />
           ) : (
-            <video src={item.url} controls autoPlay className="vms-media-viewer-video">
-              <track kind="captions" />
-            </video>
+            <VideoPlayer fileUrl={item.url} fileName={item.fileName} />
           )}
         </div>
       </div>

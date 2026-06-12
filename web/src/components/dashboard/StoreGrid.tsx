@@ -17,9 +17,10 @@ interface StoreCard {
 interface StoreGridProps {
   stores: StoreCard[];
   onStoreClick: (store: StoreCard) => void;
+  showDistrictLabel?: boolean;
 }
 
-export function StoreGrid({ stores, onStoreClick }: StoreGridProps) {
+export function StoreGrid({ stores, onStoreClick, showDistrictLabel = false }: StoreGridProps) {
   const getBorderColor = (store: StoreCard) => {
     if (store.hasOpenRed) return '#C0392B';
     if (store.hasOpenYellow) return '#D97706';
@@ -34,8 +35,8 @@ export function StoreGrid({ stores, onStoreClick }: StoreGridProps) {
 
   return (
     <div>
-      <h2 className="text-sm font-semibold text-text-primary mb-4">
-        Store Health Overview
+      <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
+        District Health Overview
       </h2>
 
       <motion.div
@@ -56,19 +57,33 @@ export function StoreGrid({ stores, onStoreClick }: StoreGridProps) {
               data-cursor="pointer"
               whileHover={{ scale: 1.01 }}
               transition={{ duration: 0.2 }}
-              className="rounded-lg p-5 border cursor-pointer"
+              className="rounded-lg p-5 border cursor-pointer clickable"
               style={{
-                backgroundColor: '#111118',
-                borderColor: 'rgba(255,255,255,0.07)',
+                backgroundColor: 'var(--bg-card)',
+                borderColor: 'var(--border-color)',
                 borderLeftWidth: '3px',
-                borderLeftColor: borderColor
+                borderLeftColor: borderColor,
               }}
             >
               <div className="mb-3">
-                <h3 className="text-sm font-semibold text-text-primary mb-1">
+                <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
                   {store.name}
                 </h3>
-                <p className="text-[11px] text-muted">{store.region}</p>
+                {showDistrictLabel ? (
+                  <span
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide mb-1"
+                    style={{
+                      borderColor: 'var(--border-color)',
+                      backgroundColor: 'var(--bg-surface)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    District
+                  </span>
+                ) : null}
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {store.region}
+                </p>
               </div>
 
               <div className="flex items-center gap-2 mb-3">

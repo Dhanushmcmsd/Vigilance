@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ import { AccountRequestsTab, usePendingAccountRequestCount } from './admin/Accou
 import { KeralaBranchMap } from '../components/admin/KeralaBranchMap';
 import { DistrictOfficersPanel } from '../components/admin/DistrictOfficersPanel';
 import { ChecklistAdminTab } from '../components/admin/ChecklistAdminTab';
+import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
 
@@ -155,6 +156,22 @@ function UsersTab({
     },
   });
 
+  const { data: districtByOfficer = new Map<string, string>() } = useQuery({
+    queryKey: ['admin-officer-districts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('district_assignments')
+        .select('officer_id, district')
+        .eq('is_primary', true);
+      if (error) throw error;
+      const map = new Map<string, string>();
+      (data ?? []).forEach((row: { officer_id: string | null; district: string }) => {
+        if (row.officer_id) map.set(row.officer_id, row.district);
+      });
+      return map;
+    },
+  });
+
   const toggleActive = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       // Soft delete pattern: when deactivating, also stamp deleted_at so we
@@ -170,9 +187,11 @@ function UsersTab({
   });
 
   const filtered = users.filter((u) => {
+    const district = districtByOfficer.get(u.id) ?? '';
     const matchesSearch =
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase());
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      district.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -206,7 +225,7 @@ function UsersTab({
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email, or district..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="input w-64"
@@ -454,7 +473,7 @@ function AddUserModal({
           {error && <p className="text-red-500 text-sm">{error}</p>}
           <div className="flex gap-2 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary flex-1">{loading ? 'Creatingâ€¦' : 'Create User'}</button>
+            <button type="submit" disabled={loading} className="btn-primary flex-1">{loading ? 'Creating…' : 'Create User'}</button>
           </div>
         </form>
       </div>
@@ -568,6 +587,7 @@ function BranchesTab() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [editBranch, setEditBranch] = useState<Branch | null>(null);
+  const [branchSearch, setBranchSearch] = useState('');
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
     queryKey: ['admin-branches'],
@@ -604,10 +624,28 @@ function BranchesTab() {
     onError: (err: Error) => window.alert(err.message || 'Failed to update branch.'),
   });
 
+  const filteredBranches = branches.filter((b) => {
+    const q = branchSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      b.branch_name.toLowerCase().includes(q) ||
+      (b.city ?? '').toLowerCase().includes(q) ||
+      (b.region ?? '').toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-6">
       <KeralaBranchMap onAddBranch={() => setShowAdd(true)} />
       <DistrictOfficersPanel />
+
+      <input
+        type="text"
+        className="input w-full max-w-md"
+        placeholder="Search branches by name, city, or district..."
+        value={branchSearch}
+        onChange={(e) => setBranchSearch(e.target.value)}
+      />
 
       {isLoading ? (
         <p className="text-gray-500">Loading branches...</p>
@@ -622,7 +660,7 @@ function BranchesTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {branches.map((b) => (
+              {filteredBranches.map((b) => (
                 <tr key={b.id} className="tr">
                   <td className="td font-medium">{b.branch_name}</td>
                   <td className="td text-gray-500 max-w-xs truncate">{b.location}</td>
@@ -894,7 +932,7 @@ function BranchModal({
                 Cancel
               </Button>
               <Button type="submit" className="flex-1" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Savingâ€¦' : 'Save'}
+                {form.formState.isSubmitting ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </form>
@@ -914,6 +952,171 @@ function ReportsTab() {
   const [to, setTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [branchType, setBranchType] = useState('all');
   const [status, setStatus] = useState('all');
+  const [showRevisitModal, setShowRevisitModal] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    officerId: '',
+    leaveDate: new Date().toISOString().split('T')[0],
+    leaveType: 'absent',
+  });
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const { data: rangeInspections = [] } = useQuery({
+    queryKey: ['admin-range-inspections', from, to, status],
+    queryFn: async () => {
+      let q = supabase
+        .from('inspections')
+        .select(
+          `id, branch_id, submitted_at,
+          branches:branch_id ( branch_name ),
+          user_roles:officer_id ( name )`,
+        )
+        .gte('submitted_at', `${from}T00:00:00`)
+        .lte('submitted_at', `${to}T23:59:59`);
+      if (status !== 'all') q = q.eq('status', status);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const uniqueStoresVisited = useMemo(
+    () => new Set(rangeInspections.map((r: { branch_id: string }) => r.branch_id)).size,
+    [rangeInspections],
+  );
+  const revisitInspections = Math.max(0, rangeInspections.length - uniqueStoresVisited);
+
+  const revisitRows = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { branchName: string; visits: Array<{ date: string; officer: string }> }
+    >();
+    rangeInspections.forEach((row) => {
+      const entry = row as {
+        branch_id: string;
+        submitted_at: string;
+        branches?: { branch_name?: string } | { branch_name?: string }[] | null;
+        user_roles?: { name?: string } | { name?: string }[] | null;
+      };
+      const branchRel = Array.isArray(entry.branches) ? entry.branches[0] : entry.branches;
+      const officerRel = Array.isArray(entry.user_roles) ? entry.user_roles[0] : entry.user_roles;
+      const list = grouped.get(entry.branch_id) ?? {
+        branchName: branchRel?.branch_name ?? 'Unknown',
+        visits: [],
+      };
+      list.visits.push({
+        date: entry.submitted_at,
+        officer: officerRel?.name ?? 'Unknown',
+      });
+      grouped.set(entry.branch_id, list);
+    });
+    return Array.from(grouped.entries())
+      .filter(([, value]) => value.visits.length > 1)
+      .map(([branchId, value]) => ({
+        id: branchId,
+        primary: value.branchName,
+        secondary: `${value.visits.length} visits`,
+        meta: value.visits
+          .map((v) => `${new Date(v.date).toLocaleDateString('en-IN')} · ${v.officer}`)
+          .join(' | '),
+      }));
+  }, [rangeInspections]);
+
+  const { data: officers = [] } = useQuery({
+    queryKey: ['admin-report-officers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('id, user_id, name')
+        .eq('role', 'officer')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: districtMap = new Map<string, string>() } = useQuery({
+    queryKey: ['admin-report-officer-districts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('district_assignments')
+        .select('officer_id, district')
+        .eq('is_primary', true);
+      if (error) throw error;
+      const map = new Map<string, string>();
+      (data ?? []).forEach((row: { officer_id: string | null; district: string }) => {
+        if (row.officer_id) map.set(row.officer_id, row.district);
+      });
+      return map;
+    },
+  });
+
+  const { data: leaveRows = [], refetch: refetchLeave } = useQuery({
+    queryKey: ['admin-officer-leave', from, to],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('officer_leave_log')
+        .select('id, officer_name, leave_date, leave_type, marked_by, officer_id')
+        .gte('leave_date', from)
+        .lte('leave_date', to)
+        .order('leave_date', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: onLeaveTodayCount = 0 } = useQuery({
+    queryKey: ['admin-leave-today', today],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('officer_leave_log')
+        .select('*', { count: 'exact', head: true })
+        .eq('leave_date', today)
+        .in('leave_type', ['absent', 'leave']);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const onLeaveToday = onLeaveTodayCount;
+
+  const fetchLeaveCsvSection = async () => {
+    const { data, error } = await supabase
+      .from('officer_leave_log')
+      .select('leave_date, officer_name, leave_type')
+      .gte('leave_date', from)
+      .lte('leave_date', to)
+      .order('leave_date');
+    if (error) return ['OFFICER ATTENDANCE', 'date,officer_name,district,leave_type'];
+    const lines = ['OFFICER ATTENDANCE', 'date,officer_name,district,leave_type'];
+    (data ?? []).forEach((row: { leave_date: string; officer_name: string; leave_type: string; officer_id?: string }) => {
+      const district = districtMap.get(row.officer_id ?? '') ?? '';
+      lines.push(`${row.leave_date},${row.officer_name},${district},${row.leave_type}`);
+    });
+    return lines;
+  };
+
+  const addLeaveRecord = async () => {
+    if (!leaveForm.officerId) {
+      window.alert('Select an officer.');
+      return;
+    }
+    const officer = officers.find((o: { id: string }) => o.id === leaveForm.officerId);
+    const { data: authData } = await supabase.auth.getUser();
+    const { error } = await supabase.from('officer_leave_log').insert({
+      officer_id: officer?.user_id ?? null,
+      officer_name: officer?.name ?? 'Unknown',
+      leave_date: leaveForm.leaveDate,
+      leave_type: leaveForm.leaveType,
+      marked_by: authData.user?.id ?? null,
+    });
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    void refetchLeave();
+  };
 
   const { data: stats } = useQuery({
     queryKey: ['admin-stats'],
@@ -1037,7 +1240,7 @@ function ReportsTab() {
         });
       }
     });
-    downloadCSV('vigilance_full_export.csv', rows.join('\n'));
+    downloadCSV('vigilance_full_export.csv', [...rows, ...(await fetchLeaveCsvSection())].join('\n'));
   };
 
   const exportSummaryCSV = async () => {
@@ -1063,7 +1266,7 @@ function ReportsTab() {
         `${r.id},${r.inspection_date ?? ''},${r.branches?.branch_name ?? ''},${r.user_roles?.name ?? ''},${r.compliance_score ?? ''},${r.risk_level ?? ''},${r.status ?? ''}`,
       );
     });
-    downloadCSV('vigilance_summary.csv', rows.join('\n'));
+    downloadCSV('vigilance_summary.csv', [...rows, ...(await fetchLeaveCsvSection())].join('\n'));
   };
 
   return (
@@ -1102,6 +1305,108 @@ function ReportsTab() {
           <button onClick={exportFullCSV} className="btn-primary">Export Full CSV</button>
           <button onClick={exportSummaryCSV} className="btn-secondary">Export Summary CSV</button>
         </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            type="button"
+            className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40"
+          >
+            <p className="text-3xl font-bold text-blue-600">{uniqueStoresVisited}</p>
+            <p className="text-xs text-gray-500 mt-1">Unique Stores Visited</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowRevisitModal(true)}
+            className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40"
+          >
+            <p className="text-3xl font-bold text-amber-600">{revisitInspections}</p>
+            <p className="text-xs text-gray-500 mt-1">Revisit Inspections</p>
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-lg">Officer Attendance</h2>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2">
+            <p className="text-xs text-gray-500">On Leave Today</p>
+            <p className="text-2xl font-bold text-amber-600">{onLeaveToday}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div className="md:col-span-2">
+            <label className="label">Officer</label>
+            <select
+              className="input w-full"
+              value={leaveForm.officerId}
+              onChange={(e) => setLeaveForm((f) => ({ ...f, officerId: e.target.value }))}
+            >
+              <option value="">Select officer…</option>
+              {officers.map((o: { id: string; name: string }) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Date</label>
+            <input
+              type="date"
+              className="input w-full"
+              value={leaveForm.leaveDate}
+              onChange={(e) => setLeaveForm((f) => ({ ...f, leaveDate: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="label">Leave type</label>
+            <select
+              className="input w-full"
+              value={leaveForm.leaveType}
+              onChange={(e) => setLeaveForm((f) => ({ ...f, leaveType: e.target.value }))}
+            >
+              <option value="absent">Absent</option>
+              <option value="leave">Leave</option>
+              <option value="holiday">Holiday</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" onClick={() => void addLeaveRecord()} className="btn-primary">
+          Add Leave
+        </button>
+
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800">
+              <tr>
+                {['Date', 'Officer Name', 'District', 'Leave Type', 'Marked By'].map((h) => (
+                  <th key={h} className="th">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {leaveRows.map((row: { id: string; leave_date: string; officer_name: string; leave_type: string; officer_id?: string; marked_by?: string | null }) => (
+                <tr key={row.id} className="tr">
+                  <td className="td">{row.leave_date}</td>
+                  <td className="td">{row.officer_name}</td>
+                  <td className="td">{districtMap.get(row.officer_id ?? '') ?? '—'}</td>
+                  <td className="td capitalize">{row.leave_type}</td>
+                  <td className="td text-gray-500">{row.marked_by ? 'Admin' : '—'}</td>
+                </tr>
+              ))}
+              {leaveRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="td text-center text-gray-400">
+                    No leave records in selected range.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Section B */}
@@ -1115,13 +1420,13 @@ function ReportsTab() {
             { label: 'Total Files', value: stats?.files },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <p className="text-3xl font-bold text-blue-600">{s.value ?? 'â€”'}</p>
+              <p className="text-3xl font-bold text-blue-600">{s.value ?? '—'}</p>
               <p className="text-xs text-gray-500 mt-1">{s.label}</p>
             </div>
           ))}
         </div>
 
-        <h3 className="font-medium">Last 30 Days â€” Daily Inspection Counts</h3>
+        <h3 className="font-medium">Last 30 Days — Daily Inspection Counts</h3>
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800">
@@ -1144,6 +1449,13 @@ function ReportsTab() {
           </table>
         </div>
       </div>
+
+      <KpiDetailModal
+        open={showRevisitModal}
+        title="Revisit Inspections"
+        rows={revisitRows}
+        onClose={() => setShowRevisitModal(false)}
+      />
     </div>
   );
 }

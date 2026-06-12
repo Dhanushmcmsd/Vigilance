@@ -3,12 +3,19 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Calendar } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import ComplianceChart from '../components/ComplianceChart';
+import UnderperformingTable from '../components/UnderperformingTable';
 import { BloomGradientPanel, BloomPageHeader } from '../components/ui/BloomGradientPanel';
 import { useManagementInspections } from '../hooks/useManagementInspections';
 import { formatMonthLabel, monthKey } from '../lib/inspectionQueries';
-import { computeComplianceTrend } from '../lib/managementAnalytics';
+import { computeUnderperformers } from '../lib/managementAnalytics';
 import { filterByDateRange } from '../lib/dateRanges';
-import { filterInspectionsByDistrict } from '../lib/districtCalculations';
+import {
+  calcDistrictDailyTrend,
+  calcStoreDailyTrend,
+  countDistrictsWithInspections,
+  computeDistrictMonthSummaries,
+  filterInspectionsByDistrict,
+} from '../lib/districtCalculations';
 import { computeMonthlyArchiveStats } from '../lib/managementArchive';
 
 export default function ManagementArchive() {
@@ -51,10 +58,28 @@ export default function ManagementArchive() {
     [monthInspections, prevMonthInspections, selectedDistrict],
   );
 
+  const branchDistrictCount = useMemo(
+    () => countDistrictsWithInspections(scopedMonthInspections),
+    [scopedMonthInspections],
+  );
+
+  const districtSummaries = useMemo(
+    () => computeDistrictMonthSummaries(monthInspections, prevMonthInspections),
+    [monthInspections, prevMonthInspections],
+  );
+
   const trendData = useMemo(() => {
-    const source = selectedDistrict ? scopedMonthInspections : monthInspections;
-    return computeComplianceTrend(source, true);
-  }, [monthInspections, scopedMonthInspections, selectedDistrict]);
+    if (!activeMonth) return [];
+    if (selectedDistrict) {
+      return calcStoreDailyTrend(monthInspections, activeMonth, selectedDistrict);
+    }
+    return calcDistrictDailyTrend(monthInspections, activeMonth);
+  }, [monthInspections, activeMonth, selectedDistrict]);
+
+  const underperformers = useMemo(
+    () => computeUnderperformers(scopedMonthInspections, 80),
+    [scopedMonthInspections],
+  );
 
   const onMonthChange = (month: string) => {
     setSelectedMonth(month);
@@ -65,6 +90,10 @@ export default function ManagementArchive() {
     } else {
       setSearchParams({});
     }
+  };
+
+  const openDistrict = (district: string) => {
+    setSearchParams({ district, month: activeMonth });
   };
 
   return (
@@ -144,9 +173,9 @@ export default function ManagementArchive() {
               surface="bloom"
             />
             <StatCard
-              label="Active Officers"
-              value={stats.activeOfficers.value}
-              trend={{ value: 0, label: `across ${stats.activeOfficers.districtCount} districts` }}
+              label="Branches"
+              value={branchDistrictCount}
+              trend={{ value: 0, label: selectedDistrict ? 'in selected district' : 'districts with inspections' }}
               color="blue"
               loading={isLoading}
               surface="bloom"
@@ -154,6 +183,43 @@ export default function ManagementArchive() {
           </div>
 
           <ComplianceChart data={trendData} surface="bloom" />
+
+          {!selectedDistrict && districtSummaries.length > 0 ? (
+            <BloomGradientPanel>
+              <h3 className="bloom-heading mb-4 text-base font-semibold">District summary</h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {districtSummaries.map((district) => (
+                  <button
+                    key={district.district}
+                    type="button"
+                    onClick={() => openDistrict(district.district)}
+                    className="bloom-panel-nested flex w-full flex-col gap-2 p-4 text-left transition-opacity hover:opacity-90"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-white">{district.district}</span>
+                      <span
+                        className="text-lg font-bold tabular-nums"
+                        style={{ color: district.avgCompliance >= 80 ? '#16A34A' : '#D97706' }}
+                      >
+                        {district.avgCompliance.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/60">
+                      {district.inspectionCount} inspections · {district.criticalCount} critical
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </BloomGradientPanel>
+          ) : null}
+
+          <BloomGradientPanel>
+            <h3 className="bloom-heading mb-4 text-base font-semibold">
+              Underperformers
+              {selectedDistrict ? ` — ${selectedDistrict}` : ''}
+            </h3>
+            <UnderperformingTable rows={underperformers} surface="bloom" />
+          </BloomGradientPanel>
         </>
       )}
     </div>

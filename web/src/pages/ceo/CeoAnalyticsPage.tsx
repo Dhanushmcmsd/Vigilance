@@ -70,15 +70,6 @@ export default function CeoAnalyticsPage() {
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6 max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-heading)' }}>
-          Analytics
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }} data-breadcrumb>
-          Dashboard / Analytics{activeDistrict ? ` / ${activeDistrict}` : ''}
-        </p>
-      </div>
-
       <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricBox label="Critical Issues Not Resolved" value={scopedMetrics.openRedFlags} color="#EF4444" />
         <MetricBox label="Stores Needing Urgent Attention" value={scopedMetrics.storesAtCriticalRisk} color="#F59E0B" />

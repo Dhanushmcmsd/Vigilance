@@ -1,4 +1,4 @@
-/** Canonical Vigilance demo / production login accounts. */
+/** Canonical Vigilance demo / dev login accounts. */
 export const CANONICAL_ACCOUNTS = [
   {
     email: 'admin@vigilance.app',

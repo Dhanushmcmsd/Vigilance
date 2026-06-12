@@ -123,6 +123,22 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/management/audit-archive"
+          element={
+            <RoleGuard allowedRoles={['management', 'audit']}>
+              <Navigate to="/dashboard/audit-archive" replace />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/management/archive"
+          element={
+            <RoleGuard allowedRoles={['management', 'audit']}>
+              <Navigate to="/dashboard/archive" replace />
+            </RoleGuard>
+          }
+        />
+        <Route
           path="/head/archive"
           element={
             <RoleGuard allowedRoles={['head']}>

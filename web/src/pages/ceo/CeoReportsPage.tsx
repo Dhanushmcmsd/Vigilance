@@ -26,18 +26,31 @@ export default function CeoReportsPage() {
     setExportError(null);
 
     try {
-      // Call the export-csv edge function
-      const { data, error } = await supabase.functions.invoke('export-csv', {
-        body: {
-          fromDate,
-          toDate,
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        throw new Error('You must be signed in to export data.');
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !anonKey) {
+        throw new Error('Supabase is not configured.');
+      }
+
+      const params = new URLSearchParams({ from: fromDate, to: toDate });
+      const response = await fetch(`${supabaseUrl}/functions/v1/export-csv?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
         },
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
 
-      // Create download link
-      const csv = data.csv || data;
+      const csv = await response.text();
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');

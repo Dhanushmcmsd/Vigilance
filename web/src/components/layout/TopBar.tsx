@@ -41,7 +41,7 @@ export function TopBar({
           </span>
         </div>
         {subtitle ? (
-          <p className="mt-1 text-xs truncate" data-live-subtitle style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-1 text-xs truncate" data-breadcrumb data-live-subtitle style={{ color: 'var(--text-muted)' }}>
             {subtitle}
           </p>
         ) : null}

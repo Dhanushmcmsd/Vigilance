@@ -4,16 +4,23 @@ import { ArrowLeft, Download } from 'lucide-react';
 import { useManagementInspections } from '../hooks/useManagementInspections';
 import { isViolationResponse } from '../lib/checklistScoring';
 import { formatNonComplianceAlert } from '../lib/alertDescriptions';
+import { filterInspectionsByDistrict } from '../lib/districtCalculations';
 import ManagementReport from '../components/management/ManagementReport';
 import { BloomGradientPanel } from '../components/ui/BloomGradientPanel';
 
 interface AuditArchiveProps {
   backPath?: string;
   backLabel?: string;
+  districtFilter?: string | null;
 }
 
-export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps = {}) {
+export default function AuditArchive({ backPath, backLabel, districtFilter = null }: AuditArchiveProps = {}) {
   const { data = [] } = useManagementInspections();
+
+  const scopedData = useMemo(
+    () => filterInspectionsByDistrict(data, districtFilter),
+    [data, districtFilter],
+  );
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [officerFilter, setOfficerFilter] = useState('');
@@ -24,7 +31,7 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps 
   const filteredRows = useMemo(() => {
     const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
     const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
-    return data
+    return scopedData
       .filter((row) => {
         const submitted = new Date(row.submitted_at);
         if (from && submitted < from) return false;
@@ -40,7 +47,7 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps 
         if (sortKey === 'officer') return a.officer_name.localeCompare(b.officer_name);
         return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
       });
-  }, [data, fromDate, officerFilter, sortKey, statusFilter, storeFilter, toDate]);
+  }, [scopedData, fromDate, officerFilter, sortKey, statusFilter, storeFilter, toDate]);
 
   const formatAuditDate = (value?: string | null) => {
     if (!value) return '—';
@@ -162,6 +169,7 @@ export default function AuditArchive({ backPath, backLabel }: AuditArchiveProps 
       .join('');
 
     const filterLine = [
+      districtFilter ? `District: ${districtFilter}` : null,
       fromDate ? `From ${fromDate}` : null,
       toDate ? `To ${toDate}` : null,
       officerFilter ? `Officer: ${officerFilter}` : null,

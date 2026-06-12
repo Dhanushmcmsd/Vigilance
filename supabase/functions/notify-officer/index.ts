@@ -29,6 +29,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { resolveResendFrom } from '../_shared/resendFrom.ts';
+import { enforceSecurityGuard } from '../_shared/authGuard.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -39,7 +40,7 @@ const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://vigilance-web.ve
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
+    'authorization, x-client-info, apikey, content-type, x-cron-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -93,6 +94,11 @@ serve(async (req) => {
   } catch {
     return jsonResponse({ error: 'invalid JSON body' }, 400);
   }
+
+  // --- SECURITY: Authorization guard ---
+  const authDenied = await enforceSecurityGuard(req);
+  if (authDenied) return authDenied;
+  // --- END security guard ---
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false },

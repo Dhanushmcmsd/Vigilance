@@ -10,6 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { resolveResendFrom } from '../_shared/resendFrom.ts';
+import { enforceSecurityGuard } from '../_shared/authGuard.ts';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://vigilance-web.vercel.app';
@@ -36,7 +37,7 @@ interface RecipientRow {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -49,6 +50,13 @@ serve(async (req: Request) => {
 
   try {
     const body = (await req.json()) as RedAlertPayload;
+
+    // --- SECURITY: Authorization guard (officers may trigger RED/YELLOW alerts) ---
+    const authDenied = await enforceSecurityGuard(req, {
+      allowedRoles: ['management', 'admin', 'head', 'officer'],
+    });
+    if (authDenied) return authDenied;
+    // --- END security guard ---
     const template = body.template ?? 'RED_ALERT';
 
     if (!body.inspection_id) {

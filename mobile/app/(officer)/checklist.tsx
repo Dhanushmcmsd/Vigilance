@@ -882,6 +882,7 @@ export default function ChecklistScreen() {
                 officerLat: officerLat ? parseFloat(officerLat) : null,
                 officerLon: officerLon ? parseFloat(officerLon) : null,
                 inspectionId: activeInspectionId ?? undefined,
+                previousRiskItemIds: Array.from(previousRisks),
               });
               setSubmitting(false);
               showToast('Saved offline — will sync when connected', 'warning');

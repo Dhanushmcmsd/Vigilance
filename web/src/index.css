@@ -1347,3 +1347,11 @@ body {
   background: transparent !important;
   border: none !important;
 }
+
+[data-breadcrumb] {
+  text-shadow:
+    0 0 12px rgba(212, 175, 55, 0.15),
+    0 0 4px  rgba(212, 175, 55, 0.10),
+    0 0 1px  rgba(212, 175, 55, 0.20);
+  transition: text-shadow 0.4s ease;
+}

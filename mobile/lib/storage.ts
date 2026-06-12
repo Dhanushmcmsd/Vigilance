@@ -17,6 +17,8 @@ export interface DraftForm {
   savedAt: string;
   officerLat: number | null;
   officerLon: number | null;
+  /** Checklist item IDs flagged as previously at-risk (offline sync scoring). */
+  previousRiskItemIds?: string[];
 }
 
 const DRAFT_PREFIX = 'draft_';

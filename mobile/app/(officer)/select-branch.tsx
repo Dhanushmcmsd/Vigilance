@@ -45,7 +45,9 @@ interface Branch {
   geofence_radius: number;
   store_code?: string | null;
   incharge_name?: string | null;
+  incharge_phone?: string | null;
   assigned_officer_id?: string | null;
+  distance_metres?: number;
 }
 
 const SkeletonCard = () => (

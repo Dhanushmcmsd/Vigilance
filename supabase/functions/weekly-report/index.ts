@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { resolveResendFrom } from '../_shared/resendFrom.ts';
+import { enforceSecurityGuard } from '../_shared/authGuard.ts';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -10,9 +11,11 @@ const DASHBOARD_URL = Deno.env.get('DASHBOARD_URL') ?? 'https://vigilance-web.ve
 const FROM_ADDR = resolveResendFrom();
 
 serve(async (req: Request) => {
-  const role = req.headers.get('x-role');
-  const jwt = req.headers.get('Authorization');
-  if (!jwt && !role) return new Response('Unauthorized', { status: 401 });
+  // --- SECURITY: Authorization guard ---
+  const authDenied = await enforceSecurityGuard(req);
+  if (authDenied) return authDenied;
+  // --- END security guard ---
+
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

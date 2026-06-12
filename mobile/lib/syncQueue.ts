@@ -21,6 +21,7 @@ import { supabase } from './supabase';
 import { claimBranchInspection } from './branchLocks';
 import { getDeviceAudit } from './deviceInfo';
 import { uploadInspectionFiles } from './uploadInspectionFiles';
+import { isCompliantResponse } from './checklistScoring';
 import type { DraftForm } from './storage';
 
 const normalizeTime = (value: string | null | undefined, fallback: string): string => {
@@ -236,6 +237,7 @@ async function syncOne(item: QueuedInspection): Promise<void> {
     officerLat,
     officerLon,
     inspectionId,
+    previousRiskItemIds,
   } = item;
 
   const { data: userResp } = await supabase.auth.getUser();
@@ -318,14 +320,39 @@ async function syncOne(item: QueuedInspection): Promise<void> {
   }
 
   // Responses (idempotent upsert keyed on inspection + item).
+  const responseItemIds = Object.entries(responses)
+    .filter(([, v]) => v.response != null)
+    .map(([checklist_item_id]) => checklist_item_id);
+
+  const triggerOnNoByItem = new Map<string, boolean>();
+  if (responseItemIds.length > 0) {
+    const { data: templates, error: templateErr } = await supabase
+      .from('checklist_templates')
+      .select('id, trigger_on_no')
+      .in('id', responseItemIds);
+    if (templateErr) throw templateErr;
+    for (const row of templates ?? []) {
+      triggerOnNoByItem.set(row.id, row.trigger_on_no ?? true);
+    }
+  }
+
+  const previousRiskSet = new Set(previousRiskItemIds ?? []);
   const responseRows = Object.entries(responses)
     .filter(([, v]) => v.response != null)
-    .map(([checklist_item_id, v]) => ({
-      inspection_id: resolvedId!,
-      checklist_item_id,
-      response: v.response,
-      remarks: v.remark?.trim() || null,
-    }));
+    .map(([checklist_item_id, v]) => {
+      const wasPreviouslyAtRisk = previousRiskSet.has(checklist_item_id);
+      const triggerOnNo = triggerOnNoByItem.get(checklist_item_id) ?? true;
+      const resolvedThisInspection =
+        wasPreviouslyAtRisk && isCompliantResponse(v.response, triggerOnNo);
+      return {
+        inspection_id: resolvedId!,
+        checklist_item_id,
+        response: v.response,
+        remarks: v.remark?.trim() || null,
+        was_previously_at_risk: wasPreviouslyAtRisk,
+        resolved_this_inspection: resolvedThisInspection,
+      };
+    });
   if (responseRows.length) {
     const { error: rErr } = await supabase
       .from('inspection_responses')

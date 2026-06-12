@@ -8,7 +8,7 @@ import CeoReportsPage from './ceo/CeoReportsPage';
 import CeoSettingsPage from './ceo/CeoSettingsPage';
 
 const ManagementArchive = lazy(() => import('./ManagementArchive'));
-const AuditArchive = lazy(() => import('./AuditArchive'));
+const VigilanceReportPage = lazy(() => import('./ceo/VigilanceReportPage'));
 
 /** CEO / management dashboard with nested routes. */
 export default function CeoDashboard() {
@@ -20,7 +20,7 @@ export default function CeoDashboard() {
         <Route path="map" element={<CeoMapPage />} />
         <Route path="reports" element={<CeoReportsPage />} />
         <Route path="archive" element={<ManagementArchive />} />
-        <Route path="audit-archive" element={<AuditArchive />} />
+        <Route path="audit-archive" element={<VigilanceReportPage />} />
         <Route path="settings" element={<CeoSettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

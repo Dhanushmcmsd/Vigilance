@@ -1,6 +1,7 @@
 import type { ManagementInspection } from './inspectionQueries';
 import { isViolationResponse } from './checklistScoring';
 import { formatNonComplianceAlert } from './alertDescriptions';
+import { storeDistrict } from './districtCalculations';
 
 interface CeoMetrics {
   openRedFlags: number;
@@ -13,6 +14,7 @@ interface CeoMetrics {
 interface AlertItem {
   id: string;
   storeName: string;
+  district: string;
   section: string;
   itemTitle: string;
   risk: 'RED' | 'YELLOW';
@@ -122,6 +124,7 @@ export function computeAlertFeed(inspections: ManagementInspection[]): AlertItem
           const alert: AlertItem = {
             id: `${inspection.id}-${response.id}`,
             storeName: inspection.branch_name,
+            district: storeDistrict(inspection.region),
             section: response.section,
             itemTitle: formatNonComplianceAlert(
               response.item_text,

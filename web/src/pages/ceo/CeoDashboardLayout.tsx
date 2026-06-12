@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CursorProvider } from '../../components/cursor/CursorProvider';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
@@ -17,32 +17,64 @@ const BREADCRUMBS: Record<string, string> = {
   '/dashboard/settings': 'Settings',
 };
 
+const LIVE_SUBTITLE_BASE = 'Live summary of compliance, alerts, and store health.';
+
 const HEADER_SUBTITLES: Record<string, string> = {
-  '/dashboard': 'Live summary of compliance, alerts, and store health.',
-  '/dashboard/analytics': 'Performance trends and risk distribution across stores.',
-  '/dashboard/map': 'Geographic view of store compliance and risk density.',
-  '/dashboard/reports': 'Monthly and custom exports for management reporting.',
-  '/dashboard/audit-archive': 'Audit archive and management reports from field inspections.',
-  '/dashboard/archive': 'Historical monthly compliance records.',
+  '/dashboard': LIVE_SUBTITLE_BASE,
+  '/dashboard/analytics': LIVE_SUBTITLE_BASE,
+  '/dashboard/map': LIVE_SUBTITLE_BASE,
+  '/dashboard/reports': LIVE_SUBTITLE_BASE,
+  '/dashboard/audit-archive': LIVE_SUBTITLE_BASE,
+  '/dashboard/archive': LIVE_SUBTITLE_BASE,
   '/dashboard/settings': 'Configure dashboard preferences and workspace behavior.',
 };
 
 function CeoShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<ReturnType<typeof useCeoDashboard>['alerts'][0] | null>(null);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [alertDistrictFilter, setAlertDistrictFilter] = useState<string | null>(null);
 
-  const { metrics, alerts, notifications, isError, error, refetch } = useCeoDashboard();
+  const { metrics, alerts, isError, error, refetch } = useCeoDashboard();
 
-  const breadcrumb = BREADCRUMBS[location.pathname] ?? 'Overview';
-  const subtitle = HEADER_SUBTITLES[location.pathname] ?? 'Operational intelligence for field compliance.';
+  const districtParam = searchParams.get('district');
+  const monthParam = searchParams.get('month');
+  const baseCrumb = BREADCRUMBS[location.pathname] ?? 'Overview';
 
-  const drawerNotifications = notifications.map((n) => ({
-    ...n,
+  const breadcrumbParts = ['Dashboard', baseCrumb];
+  if (location.pathname === '/dashboard/archive' && monthParam && !districtParam) {
+    breadcrumbParts.push(monthParam);
+  }
+  if (districtParam) {
+    if (location.pathname === '/dashboard/archive' && monthParam) {
+      breadcrumbParts.push(monthParam, districtParam);
+    } else {
+      breadcrumbParts.push(districtParam);
+    }
+  }
+  const breadcrumb = breadcrumbParts.join(' / ');
+
+  const baseSubtitle = HEADER_SUBTITLES[location.pathname] ?? LIVE_SUBTITLE_BASE;
+  const subtitle = districtParam
+    ? `Live summary for ${districtParam} — compliance, alerts, and store health.`
+    : baseSubtitle;
+
+  const filteredAlertsForDrawer = alertDistrictFilter
+    ? alerts.filter((a) => a.district === alertDistrictFilter)
+    : alerts;
+
+  const drawerNotifications = filteredAlertsForDrawer.slice(0, 20).map((n) => ({
+    id: n.id,
+    storeName: n.storeName,
+    itemTitle: n.itemTitle,
+    time: n.timeAgo,
+    risk: n.risk,
     read: readIds.has(n.id),
+    district: n.district,
   }));
 
   return (
@@ -92,7 +124,10 @@ function CeoShell() {
         open={notificationDrawerOpen}
         onClose={() => setNotificationDrawerOpen(false)}
         notifications={drawerNotifications}
-        onMarkAllRead={() => setReadIds(new Set(notifications.map((n) => n.id)))}
+        districtChips={Array.from(new Set(alerts.map((a) => a.district))).sort()}
+        activeDistrict={alertDistrictFilter}
+        onDistrictFilter={setAlertDistrictFilter}
+        onMarkAllRead={() => setReadIds(new Set(alerts.map((n) => n.id)))}
         onSelectNotification={(id) => {
           const match = alerts.find((a) => a.id === id);
           if (match) setSelectedAlert(match);

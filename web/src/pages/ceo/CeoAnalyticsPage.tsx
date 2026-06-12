@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BarChart,
@@ -14,30 +14,43 @@ import {
 } from 'recharts';
 import { useCeoDashboard } from '../../context/CeoDashboardContext';
 import { staggerContainer, fadeUp } from '../../lib/animations';
+import {
+  calcMonthlyTrend,
+  computeScopedMetrics,
+  computeScopedSectionData,
+  listDistrictNames,
+} from '../../lib/districtCalculations';
 
 export default function CeoAnalyticsPage() {
-  const { metrics, sectionData } = useCeoDashboard();
+  const { inspections, metrics, storeCards } = useCeoDashboard();
+  const [districtFilter, setDistrictFilter] = useState<string>('');
 
-  const complianceTrend = useMemo(() => {
-    return [
-      { day: 'Mon', compliant: 85, atRisk: 12, critical: 3 },
-      { day: 'Tue', compliant: 82, atRisk: 14, critical: 4 },
-      { day: 'Wed', compliant: 88, atRisk: 10, critical: 2 },
-      { day: 'Thu', compliant: 90, atRisk: 8, critical: 2 },
-      { day: 'Fri', compliant: 87, atRisk: 11, critical: 2 },
-      { day: 'Sat', compliant: 84, atRisk: 13, critical: 3 },
-      { day: 'Sun', compliant: 80, atRisk: 15, critical: 5 },
-    ];
-  }, []);
+  const districts = useMemo(() => listDistrictNames(storeCards), [storeCards]);
+  const activeDistrict = districtFilter || null;
+
+  const scopedMetrics = useMemo(
+    () => computeScopedMetrics(inspections, storeCards, activeDistrict),
+    [inspections, storeCards, activeDistrict],
+  );
+
+  const scopedSectionData = useMemo(
+    () => computeScopedSectionData(inspections, activeDistrict),
+    [inspections, activeDistrict],
+  );
+
+  const complianceTrend = useMemo(
+    () => calcMonthlyTrend(inspections, activeDistrict),
+    [inspections, activeDistrict],
+  );
 
   const sectionChart = useMemo(() => {
-    return sectionData.map((section) => ({
+    return scopedSectionData.map((section) => ({
       name: section.section,
       compliant: section.green,
       warning: section.yellow,
       critical: section.red,
     }));
-  }, [sectionData]);
+  }, [scopedSectionData]);
 
   const COLORS = {
     compliant: '#22C55E',
@@ -45,24 +58,35 @@ export default function CeoAnalyticsPage() {
     critical: '#EF4444',
   };
 
+  const trendTitle = activeDistrict
+    ? `Monthly Compliance Trend — ${activeDistrict}`
+    : 'Monthly Compliance Trend';
+
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6 max-w-7xl">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-50 mb-2">Analytics</h1>
-        <p className="text-sm text-gray-400">Dashboard / Analytics</p>
+        <p
+          className="text-sm text-gray-400"
+          data-breadcrumb
+          style={{
+            textShadow:
+              '0 0 12px rgba(212, 175, 55, 0.15), 0 0 4px rgba(212, 175, 55, 0.10), 0 0 1px rgba(212, 175, 55, 0.20)',
+            transition: 'text-shadow 0.4s ease',
+          }}
+        >
+          Dashboard / Analytics{activeDistrict ? ` / ${activeDistrict}` : ''}
+        </p>
       </div>
 
-      {/* Key Metrics */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricBox label="Critical Issues Not Resolved" value={metrics.openRedFlags} color="#EF4444" />
-        <MetricBox label="Stores Needing Urgent Attention" value={metrics.storesAtCriticalRisk} color="#F59E0B" />
-        <MetricBox label="Overdue Targets Missed" value={metrics.slaBreaches} color="#EF4444" />
-        <MetricBox label="Stores Flagged for Review" value={metrics.activeYellowWarnings} color="#F59E0B" />
+        <MetricBox label="Critical Issues Not Resolved" value={scopedMetrics.openRedFlags} color="#EF4444" />
+        <MetricBox label="Stores Needing Urgent Attention" value={scopedMetrics.storesAtCriticalRisk} color="#F59E0B" />
+        <MetricBox label="Overdue Targets Missed" value={scopedMetrics.overdueTargetsMissed} color="#EF4444" />
+        <MetricBox label="Stores Flagged for Review" value={scopedMetrics.storesFlaggedForReview} color="#F59E0B" />
       </motion.div>
 
-      {/* Charts Grid - 2 column on desktop, 1 on mobile */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Compliance Trend */}
         <div
           className="rounded-lg border p-6"
           style={{
@@ -70,12 +94,30 @@ export default function CeoAnalyticsPage() {
             borderColor: 'rgba(255,255,255,0.07)',
           }}
         >
-          <h3 className="text-sm font-semibold text-gray-100 mb-4">Weekly Compliance Trend</h3>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-semibold text-gray-100">{trendTitle}</h3>
+            <select
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-xs text-gray-100"
+              style={{
+                backgroundColor: '#111118',
+                borderColor: 'rgba(255,255,255,0.07)',
+              }}
+            >
+              <option value="">All Districts</option>
+              {districts.map((district) => (
+                <option key={district} value={district}>
+                  {district}
+                </option>
+              ))}
+            </select>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={complianceTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} />
-              <YAxis stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} />
+              <XAxis dataKey="month" stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} />
+              <YAxis stroke="rgba(255,255,255,0.5)" style={{ fontSize: '12px' }} domain={[0, 100]} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#1F2937',
@@ -87,33 +129,16 @@ export default function CeoAnalyticsPage() {
               <Legend wrapperStyle={{ paddingTop: '16px' }} />
               <Line
                 type="monotone"
-                dataKey="compliant"
+                dataKey="compliance"
                 stroke={COLORS.compliant}
                 strokeWidth={2}
                 dot={{ fill: COLORS.compliant, r: 4 }}
-                name="Compliant"
-              />
-              <Line
-                type="monotone"
-                dataKey="atRisk"
-                stroke={COLORS.warning}
-                strokeWidth={2}
-                dot={{ fill: COLORS.warning, r: 4 }}
-                name="At Risk"
-              />
-              <Line
-                type="monotone"
-                dataKey="critical"
-                stroke={COLORS.critical}
-                strokeWidth={2}
-                dot={{ fill: COLORS.critical, r: 4 }}
-                name="Critical"
+                name="Avg compliance %"
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Compliance by Section */}
         <div
           className="rounded-lg border p-6"
           style={{
@@ -121,7 +146,25 @@ export default function CeoAnalyticsPage() {
             borderColor: 'rgba(255,255,255,0.07)',
           }}
         >
-          <h3 className="text-sm font-semibold text-gray-100 mb-4">Compliance by Section</h3>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-semibold text-gray-100">Compliance by Section</h3>
+            <select
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-xs text-gray-100"
+              style={{
+                backgroundColor: '#111118',
+                borderColor: 'rgba(255,255,255,0.07)',
+              }}
+            >
+              <option value="">All Districts</option>
+              {districts.map((district) => (
+                <option key={district} value={district}>
+                  {district}
+                </option>
+              ))}
+            </select>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={sectionChart}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -143,7 +186,6 @@ export default function CeoAnalyticsPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Section Risk Breakdown */}
         <div
           className="rounded-lg border p-6"
           style={{
@@ -151,9 +193,27 @@ export default function CeoAnalyticsPage() {
             borderColor: 'rgba(255,255,255,0.07)',
           }}
         >
-          <h3 className="text-sm font-semibold text-gray-100 mb-4">Risk by Section</h3>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-semibold text-gray-100">Risk by Section</h3>
+            <select
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-xs text-gray-100"
+              style={{
+                backgroundColor: '#111118',
+                borderColor: 'rgba(255,255,255,0.07)',
+              }}
+            >
+              <option value="">All Districts</option>
+              {districts.map((district) => (
+                <option key={district} value={district}>
+                  {district}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-3">
-            {sectionData.slice(0, 6).map((section, idx) => {
+            {scopedSectionData.slice(0, 6).map((section, idx) => {
               const totalFlags = section.red + section.yellow + section.green;
               const riskPercent = totalFlags > 0 ? Math.round((section.red / totalFlags) * 100) : 0;
 
@@ -178,7 +238,6 @@ export default function CeoAnalyticsPage() {
           </div>
         </div>
 
-        {/* Summary Stats */}
         <div
           className="rounded-lg border p-6"
           style={{
@@ -191,16 +250,16 @@ export default function CeoAnalyticsPage() {
             <div>
               <div className="text-xs text-gray-400 mb-1">Total Open Issues</div>
               <div className="text-2xl font-bold text-blue-400">
-                {metrics.openRedFlags + metrics.activeYellowWarnings}
+                {scopedMetrics.openRedFlags + scopedMetrics.activeYellowWarnings}
               </div>
             </div>
             <div>
               <div className="text-xs text-gray-400 mb-1">Critical Issues</div>
-              <div className="text-2xl font-bold text-red-400">{metrics.openRedFlags}</div>
+              <div className="text-2xl font-bold text-red-400">{scopedMetrics.openRedFlags}</div>
             </div>
             <div>
               <div className="text-xs text-gray-400 mb-1">Overdue Targets</div>
-              <div className="text-2xl font-bold text-orange-400">{metrics.slaBreaches}</div>
+              <div className="text-2xl font-bold text-orange-400">{scopedMetrics.overdueTargetsMissed}</div>
             </div>
             <div>
               <div className="text-xs text-gray-400 mb-1">Inspections Completed Today</div>

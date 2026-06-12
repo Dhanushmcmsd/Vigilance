@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ import {
   reportsInMonth,
   type AuditReportRow,
 } from '../../lib/auditReports';
+import { computeDistrictReportSummaries, storeDistrict } from '../../lib/districtCalculations';
 import { BloomGradientPanel } from '../ui/BloomGradientPanel';
 
 interface BranchSummary {
@@ -62,9 +64,10 @@ interface ReportDetail {
 }
 
 type View =
-  | { kind: 'stores' }
-  | { kind: 'store'; branchId: string; branchName: string }
-  | { kind: 'month'; branchId: string; branchName: string; yearMonth: string };
+  | { kind: 'districts' }
+  | { kind: 'district'; district: string }
+  | { kind: 'store'; branchId: string; branchName: string; district: string }
+  | { kind: 'month'; branchId: string; branchName: string; district: string; yearMonth: string };
 
 function formatReportTime(value: string | null | undefined): string {
   if (!value?.trim()) return '—';
@@ -358,9 +361,30 @@ function ReportDetailModal({
 }
 
 export default function ManagementReport() {
-  const [view, setView] = useState<View>({ kind: 'stores' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [view, setView] = useState<View>({ kind: 'districts' });
   const [search, setSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<{ id: string; branchName: string } | null>(null);
+
+  useEffect(() => {
+    const district = searchParams.get('district');
+    if (district && view.kind === 'districts') {
+      setView({ kind: 'district', district });
+    }
+    if (!district && view.kind === 'district') {
+      setView({ kind: 'districts' });
+    }
+  }, [searchParams, view.kind]);
+
+  const openDistrict = (district: string) => {
+    setSearchParams({ district });
+    setView({ kind: 'district', district });
+  };
+
+  const backToDistricts = () => {
+    setSearchParams({});
+    setView({ kind: 'districts' });
+  };
 
   const { data: branches, isLoading: branchesLoading } = useQuery<BranchSummary[]>({
     queryKey: ['management-report-branches'],
@@ -409,7 +433,26 @@ export default function ManagementReport() {
     },
   });
 
-  const branchId = view.kind !== 'stores' ? view.branchId : null;
+  const branchId = view.kind === 'store' || view.kind === 'month' ? view.branchId : null;
+
+  const districtSummaries = useMemo(
+    () => computeDistrictReportSummaries(branches ?? []),
+    [branches],
+  );
+
+  const filteredDistricts = districtSummaries.filter((row) =>
+    row.district.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const filteredBranches = (branches ?? []).filter((b) => {
+    const matchesSearch =
+      b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
+      (b.city ?? '').toLowerCase().includes(search.toLowerCase());
+    if (view.kind === 'district') {
+      return matchesSearch && storeDistrict(b.region) === view.district;
+    }
+    return matchesSearch;
+  });
 
   const { data: storeReports, isLoading: reportsLoading } = useQuery<AuditReportRow[]>({
     queryKey: ['management-report-store', branchId],
@@ -431,11 +474,7 @@ export default function ManagementReport() {
     },
   });
 
-  const filteredBranches = (branches ?? []).filter(
-    (b) =>
-      b.branch_name.toLowerCase().includes(search.toLowerCase()) ||
-      (b.city ?? '').toLowerCase().includes(search.toLowerCase()),
-  );
+  const filteredBranchesLegacy = filteredBranches;
 
   const groups = useMemo(() => groupStoreReports(storeReports ?? []), [storeReports]);
 
@@ -444,27 +483,80 @@ export default function ManagementReport() {
 
   return (
     <BloomGradientPanel className="overflow-hidden p-0" noPadding>
-      {view.kind !== 'stores' && (
+      {view.kind !== 'districts' && (
         <div className="flex items-center justify-end border-b border-white/10 px-5 py-3">
           <button
             type="button"
             onClick={() => {
               if (view.kind === 'month') {
-                setView({ kind: 'store', branchId: view.branchId, branchName: view.branchName });
+                setView({ kind: 'store', branchId: view.branchId, branchName: view.branchName, district: view.district });
+              } else if (view.kind === 'store') {
+                setView({ kind: 'district', district: view.district });
+                setSearchParams({ district: view.district });
               } else {
-                setView({ kind: 'stores' });
+                backToDistricts();
               }
             }}
-            className="bloom-btn-ghost"
+            className="bloom-btn-ghost min-h-[44px]"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            {view.kind === 'district' ? 'Back to Districts' : 'Back'}
           </button>
         </div>
       )}
 
       <div className="p-5">
-        {view.kind === 'stores' && (
+        {view.kind === 'districts' && (
+          <>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search districts…"
+                className="bloom-input py-2.5 pl-10"
+              />
+            </div>
+            {branchesLoading ? (
+              <p className="py-12 text-center text-white/65">Loading districts…</p>
+            ) : filteredDistricts.length === 0 ? (
+              <p className="py-12 text-center text-white/65">No districts match your search.</p>
+            ) : (
+              <div className="space-y-3">
+                {filteredDistricts.map((district) => {
+                  const scoreColor = auditScoreColor(district.avgCompliance);
+                  return (
+                    <button
+                      key={district.district}
+                      type="button"
+                      onClick={() => openDistrict(district.district)}
+                      className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                        <Store className="h-5 w-5 text-white/70" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-white">{district.district}</p>
+                        <p className="text-sm text-white/65">{district.location}</p>
+                        <p className="mt-1.5 text-xs font-medium text-white/50">
+                          {district.reportCount} {district.reportCount === 1 ? 'report' : 'reports'}
+                        </p>
+                      </div>
+                      {district.avgCompliance !== null ? (
+                        <span className="text-xl font-black tabular-nums" style={{ color: scoreColor }}>
+                          {district.avgCompliance.toFixed(0)}%
+                        </span>
+                      ) : null}
+                      <ChevronRight className="h-5 w-5 shrink-0 text-white/45" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {view.kind === 'district' && (
           <>
             <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
@@ -477,11 +569,11 @@ export default function ManagementReport() {
             </div>
             {branchesLoading ? (
               <p className="py-12 text-center text-white/65">Loading stores…</p>
-            ) : filteredBranches.length === 0 ? (
+            ) : filteredBranchesLegacy.length === 0 ? (
               <p className="py-12 text-center text-white/65">No stores match your search.</p>
             ) : (
               <div className="space-y-3">
-                {filteredBranches.map((branch) => {
+                {filteredBranchesLegacy.map((branch) => {
                   const location = [branch.city, branch.region].filter(Boolean).join(' · ');
                   const scoreColor = auditScoreColor(branch.lastScore);
                   return (
@@ -489,7 +581,12 @@ export default function ManagementReport() {
                       key={branch.id}
                       type="button"
                       onClick={() =>
-                        setView({ kind: 'store', branchId: branch.id, branchName: branch.branch_name })
+                        setView({
+                          kind: 'store',
+                          branchId: branch.id,
+                          branchName: branch.branch_name,
+                          district: view.district,
+                        })
                       }
                       className="bloom-panel-nested flex w-full items-center gap-4 p-4 text-left"
                     >
@@ -564,6 +661,7 @@ export default function ManagementReport() {
                               kind: 'month',
                               branchId: view.branchId,
                               branchName: view.branchName,
+                              district: view.district,
                               yearMonth: folder.key,
                             })
                           }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet.heat';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../../lib/supabase';
+import { storeDistrict } from '../../lib/districtCalculations';
 
 // Fix Leaflet default marker icon paths broken by Vite bundling
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -17,6 +19,7 @@ interface Branch {
   id: string;
   branch_name: string;
   city: string;
+  region: string | null;
   latitude: number | null;
   longitude: number | null;
 }
@@ -130,7 +133,7 @@ const DEFAULT_ZOOM = 8;
 async function fetchBranches(): Promise<Branch[]> {
   const { data, error } = await supabase
     .from('branches')
-    .select('id, branch_name, city, latitude, longitude')
+    .select('id, branch_name, city, region, latitude, longitude')
     .eq('is_active', true);
   if (error) throw error;
   return (data ?? []) as Branch[];
@@ -158,6 +161,8 @@ async function fetchInspections(): Promise<Inspection[]> {
 }
 
 export default function CeoMapPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedDistrict = searchParams.get('district');
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
@@ -175,8 +180,15 @@ export default function CeoMapPage() {
     queryFn: fetchInspections,
   });
 
+  const branchRegionRef = useRef<Map<string, string>>(new Map());
+
   const heatPoints = useMemo<BranchHeatPoint[]>(() => {
     if (!branches || !inspections) return [];
+
+    branchRegionRef.current.clear();
+    branches.forEach((branch) => {
+      branchRegionRef.current.set(branch.id, storeDistrict(branch.region));
+    });
 
     const branchIdByName = new Map<string, string>();
     branches.forEach((branch) => {
@@ -217,29 +229,82 @@ export default function CeoMapPage() {
       .filter((point) => point.visits > 0);
   }, [branches, inspections]);
 
+  const districtAttention = useMemo(() => {
+    const grouped = new Map<string, BranchHeatPoint[]>();
+    heatPoints.forEach((point) => {
+      const district = branchRegionRef.current.get(point.branchId) ?? 'Unknown District';
+      const list = grouped.get(district) ?? [];
+      list.push(point);
+      grouped.set(district, list);
+    });
+
+    return Array.from(grouped.entries())
+      .map(([district, stores]) => {
+        const avgCompliance =
+          stores.reduce((sum, store) => sum + store.avgScore, 0) / Math.max(stores.length, 1);
+        return { district, avgCompliance, stores };
+      })
+      .sort((a, b) => a.avgCompliance - b.avgCompliance);
+  }, [heatPoints]);
+
+  const panelStores = selectedDistrict
+    ? districtAttention.find((row) => row.district === selectedDistrict)?.stores ?? []
+    : [];
+
   const mapSummary = useMemo(() => {
+    if (selectedDistrict && panelStores.length) {
+      const critical = panelStores.filter((point) => point.avgScore < 70).length;
+      const watch = panelStores.filter((point) => point.avgScore >= 70 && point.avgScore < 85).length;
+      const healthy = panelStores.filter((point) => point.avgScore >= 85).length;
+      const totalVisits = panelStores.reduce((sum, point) => sum + point.visits, 0);
+      const weightedAvg =
+        totalVisits > 0
+          ? panelStores.reduce((sum, point) => sum + point.avgScore * point.visits, 0) / totalVisits
+          : 0;
+      return {
+        inspectedStores: panelStores.length,
+        critical,
+        watch,
+        healthy,
+        totalVisits,
+        weightedAvg,
+      };
+    }
+
     const inspectedStores = heatPoints.length;
-    const critical = heatPoints.filter((point) => point.avgScore < 70).length;
-    const watch = heatPoints.filter((point) => point.avgScore >= 70 && point.avgScore < 85).length;
-    const healthy = heatPoints.filter((point) => point.avgScore >= 85).length;
+    const districtBuckets = districtAttention.reduce(
+      (acc, row) => {
+        if (row.avgCompliance < 70 || row.stores.some((s) => s.avgScore < 70)) acc.critical += 1;
+        else if (row.avgCompliance >= 85 && row.stores.every((s) => s.avgScore >= 85)) acc.healthy += 1;
+        else acc.watch += 1;
+        return acc;
+      },
+      { critical: 0, watch: 0, healthy: 0 },
+    );
     const totalVisits = heatPoints.reduce((sum, point) => sum + point.visits, 0);
     const weightedAvg =
       totalVisits > 0
         ? heatPoints.reduce((sum, point) => sum + point.avgScore * point.visits, 0) / totalVisits
         : 0;
-    const worstStores = [...heatPoints]
-      .sort((a, b) => a.avgScore - b.avgScore || b.visits - a.visits)
-      .slice(0, 4);
 
-    return { inspectedStores, critical, watch, healthy, totalVisits, weightedAvg, worstStores };
-  }, [heatPoints]);
+    return {
+      inspectedStores,
+      critical: districtBuckets.critical,
+      watch: districtBuckets.watch,
+      healthy: districtBuckets.healthy,
+      totalVisits,
+      weightedAvg,
+    };
+  }, [districtAttention, heatPoints, panelStores, selectedDistrict]);
 
-  const zoomToStore = useCallback((branchId: string) => {
+  const zoomToDistrict = useCallback((district: string) => {
     const map = mapInstanceRef.current;
-    const coords = branchCoordsRef.current.get(branchId);
-    if (!map || !coords) return;
-    map.flyTo(coords, 14, { duration: 1.2 });
-  }, []);
+    const row = districtAttention.find((entry) => entry.district === district);
+    if (!map || !row?.stores.length) return;
+    const bounds = L.latLngBounds(row.stores.map((store) => [store.latitude, store.longitude] as L.LatLngTuple));
+    map.flyToBounds(bounds, { padding: [48, 48], duration: 1.2, maxZoom: 12 });
+    setSearchParams({ district });
+  }, [districtAttention, setSearchParams]);
 
   const textureHeatPoints = useMemo<Array<[number, number, number]>>(() => {
     if (!inspections) return [];
@@ -293,7 +358,7 @@ export default function CeoMapPage() {
         if (b.latitude !== null && b.longitude !== null) {
           branchCoordsRef.current.set(b.id, [b.latitude, b.longitude]);
           const marker = L.marker([b.latitude, b.longitude], { icon: BLUE_BRANCH_ICON, zIndexOffset: 250 });
-          marker.bindPopup(`<strong>${b.branch_name}</strong><br/>${b.city}`);
+          marker.bindPopup(`<strong>${b.branch_name}</strong><br/>${b.city}<br/>District: ${storeDistrict(b.region)}`);
           marker.addTo(mapInstanceRef.current!);
           markersRef.current.push(marker);
         }
@@ -353,6 +418,7 @@ export default function CeoMapPage() {
         circle.bindPopup(`
           <div>
             <strong>${point.branchName}</strong><br/>
+            District: ${branchRegionRef.current.get(point.branchId) ?? 'Unknown'}<br/>
             ${point.city}<br/>
             Avg compliance: <strong>${point.avgScore.toFixed(1)}%</strong><br/>
             Heat level: <span style="color:${point.colour};font-weight:700;">${point.label}</span><br/>
@@ -378,6 +444,7 @@ export default function CeoMapPage() {
           const popupText = `
             <div>
               <strong>${insp.branch_name}</strong><br/>
+              District: ${branchRegionRef.current.get(insp.branch_id) ?? 'Unknown'}<br/>
               Officer: ${insp.officer_name}<br/>
               Risk: <span style="color: ${color}; font-weight: bold;">${insp.risk_level ?? 'unknown'}</span><br/>
               Date: ${new Date(insp.inspection_date).toLocaleDateString()}
@@ -427,26 +494,62 @@ export default function CeoMapPage() {
           </div>
         </div>
         <div className="pointer-events-auto absolute right-4 top-4 z-[500] w-64 rounded-xl border border-cyan-400/30 bg-black/55 p-3 backdrop-blur-sm">
-          <p className="text-[11px] uppercase tracking-wider text-cyan-200">Attention stores</p>
-          <div className="mt-2 space-y-1.5 text-xs text-gray-100">
-            {mapSummary.worstStores.length === 0 ? (
-              <p className="text-gray-400">No inspections in selected range.</p>
-            ) : (
-              mapSummary.worstStores.map((store) => (
-                <button
-                  key={store.branchId}
-                  type="button"
-                  onClick={() => zoomToStore(store.branchId)}
-                  className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1 text-left transition hover:bg-white/10"
-                >
-                  <span className="truncate pr-2 underline-offset-2 hover:underline">{store.branchName}</span>
-                  <span style={{ color: store.colour }} className="font-semibold">
-                    {store.avgScore.toFixed(1)}%
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
+          {selectedDistrict ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="mb-2 text-left text-xs text-cyan-200 min-h-[44px]"
+              >
+                ← All Districts
+              </button>
+              <p className="text-[11px] uppercase tracking-wider text-cyan-200">{selectedDistrict}</p>
+              <div className="mt-2 space-y-1.5 text-xs text-gray-100">
+                {panelStores.length === 0 ? (
+                  <p className="text-gray-400">No stores in this district.</p>
+                ) : (
+                  panelStores.map((store) => (
+                    <button
+                      key={store.branchId}
+                      type="button"
+                      onClick={() => {
+                        const map = mapInstanceRef.current;
+                        const coords = branchCoordsRef.current.get(store.branchId);
+                        if (map && coords) map.flyTo(coords, 14, { duration: 1.2 });
+                      }}
+                      className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1 text-left transition hover:bg-white/10"
+                    >
+                      <span className="truncate pr-2 underline-offset-2 hover:underline">{store.branchName}</span>
+                      <span style={{ color: store.colour }} className="font-semibold">
+                        {store.avgScore.toFixed(1)}%
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] uppercase tracking-wider text-cyan-200">Attention stores</p>
+              <div className="mt-2 space-y-1.5 text-xs text-gray-100">
+                {districtAttention.length === 0 ? (
+                  <p className="text-gray-400">No inspections in selected range.</p>
+                ) : (
+                  districtAttention.map((row) => (
+                    <button
+                      key={row.district}
+                      type="button"
+                      onClick={() => zoomToDistrict(row.district)}
+                      className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1 text-left transition hover:bg-white/10"
+                    >
+                      <span className="truncate pr-2 underline-offset-2 hover:underline">{row.district}</span>
+                      <span className="font-semibold text-red-300">{row.avgCompliance.toFixed(1)}%</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </div>
         <div
           ref={mapRef}
@@ -487,15 +590,21 @@ export default function CeoMapPage() {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-200">
-          <p className="font-semibold uppercase tracking-wide">Critical Stores</p>
+          <p className="font-semibold uppercase tracking-wide">
+            {selectedDistrict ? 'Critical Stores' : 'Critical Districts'}
+          </p>
           <p className="mt-1 text-2xl font-bold text-red-300">{mapSummary.critical}</p>
         </div>
         <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-xs text-yellow-100">
-          <p className="font-semibold uppercase tracking-wide">Normal Stores</p>
+          <p className="font-semibold uppercase tracking-wide">
+            {selectedDistrict ? 'Normal Stores' : 'Normal Districts'}
+          </p>
           <p className="mt-1 text-2xl font-bold text-yellow-300">{mapSummary.watch}</p>
         </div>
         <div className="rounded-xl border border-green-500/30 bg-green-950/20 p-3 text-xs text-green-100">
-          <p className="font-semibold uppercase tracking-wide">Healthy Stores</p>
+          <p className="font-semibold uppercase tracking-wide">
+            {selectedDistrict ? 'Healthy Stores' : 'Healthy Districts'}
+          </p>
           <p className="mt-1 text-2xl font-bold text-green-300">{mapSummary.healthy}</p>
         </div>
       </div>

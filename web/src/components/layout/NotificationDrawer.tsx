@@ -8,12 +8,16 @@ interface NotificationItem {
   time: string;
   risk: 'RED' | 'YELLOW';
   read: boolean;
+  district?: string;
 }
 
 interface NotificationDrawerProps {
   open: boolean;
   onClose: () => void;
   notifications: NotificationItem[];
+  districtChips?: string[];
+  activeDistrict?: string | null;
+  onDistrictFilter?: (district: string | null) => void;
   onMarkAllRead: () => void;
   onSelectNotification?: (id: string) => void;
 }
@@ -50,6 +54,9 @@ export function NotificationDrawer({
   open,
   onClose,
   notifications,
+  districtChips = [],
+  activeDistrict = null,
+  onDistrictFilter,
   onMarkAllRead,
   onSelectNotification,
 }: NotificationDrawerProps) {
@@ -96,7 +103,49 @@ export function NotificationDrawer({
               </button>
             </div>
 
+            {districtChips.length > 0 && (
+              <div className="flex flex-wrap gap-2 border-b p-4" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                <button
+                  type="button"
+                  onClick={() => onDistrictFilter?.(null)}
+                  className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                  style={{
+                    backgroundColor: !activeDistrict ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: '#F5F5F0',
+                  }}
+                >
+                  All
+                </button>
+                {districtChips.map((district) => (
+                  <button
+                    key={district}
+                    type="button"
+                    onClick={() => onDistrictFilter?.(district)}
+                    className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                    style={{
+                      backgroundColor:
+                        activeDistrict === district ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                      color: '#F5F5F0',
+                    }}
+                  >
+                    {district}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto">
+              {activeDistrict && (
+                <div className="px-4 pt-4">
+                  <div
+                    className="text-[10px] uppercase tracking-wider font-semibold mb-3"
+                    style={{ color: '#94a3b8' }}
+                  >
+                    {activeDistrict}
+                  </div>
+                </div>
+              )}
+
               {criticalNotifications.length > 0 && (
                 <div className="p-4">
                   <div

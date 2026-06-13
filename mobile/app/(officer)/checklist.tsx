@@ -84,7 +84,7 @@ type ChecklistItem = {
 };
 
 export default function ChecklistScreen() {
-  const { branchId, branchName, branchType, officerLat, officerLon, inspectionId: routeInspectionId, isEdit } =
+  const { branchId, branchName, branchType, officerLat, officerLon, inspectionId: routeInspectionId, isEdit, reopen } =
     useLocalSearchParams<{
       branchId: string;
       branchName: string;
@@ -93,11 +93,13 @@ export default function ChecklistScreen() {
       officerLon: string;
       inspectionId?: string;
       isEdit?: string;
+      reopen?: string;
     }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { userName, userRolesId } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
+  const lastTriggeredRedResponse = useRef<Record<string, string | null>>({});
 
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [responses, setResponses] = useState<Record<string, { response: string | null; remark: string }>>({});
@@ -132,6 +134,54 @@ export default function ChecklistScreen() {
   const [transitioning, setTransitioning] = useState(false);
   const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
   const [previousRisks, setPreviousRisks] = useState<Set<string>>(new Set());
+
+  const resetChecklistState = useCallback(() => {
+    setResponses({});
+    setItemFiles({});
+    setItemVideos({});
+    setGeneralRemark('');
+    setTimeIn(nowTime());
+    setTimeOut('');
+    setCurrentPage(1);
+    setTriggeredRedItems(new Set());
+    setYellowCount(0);
+    setYellowAlertSent(false);
+    setItemRemarkToggles({});
+    setRemarksExpanded(false);
+    setActiveInspectionId(null);
+    setInspectionActive(false);
+    setHighlightedPage(null);
+    lastTriggeredRedResponse.current = {};
+    if (items.length > 0) {
+      const init: Record<string, { response: string | null; remark: string }> = {};
+      items.forEach((i) => {
+        init[i.id] = { response: null, remark: '' };
+      });
+      setResponses(init);
+    }
+  }, [items]);
+
+  const loadInspectionResponses = useCallback(
+    async (inspectionId: string) => {
+      const { data, error } = await supabase
+        .from('inspection_responses')
+        .select('checklist_item_id, response, remarks')
+        .eq('inspection_id', inspectionId);
+      if (error || !data?.length) return;
+      const loaded: Record<string, { response: string | null; remark: string }> = {};
+      items.forEach((i) => {
+        loaded[i.id] = { response: null, remark: '' };
+      });
+      data.forEach((row) => {
+        loaded[row.checklist_item_id] = {
+          response: row.response,
+          remark: row.remarks ?? '',
+        };
+      });
+      setResponses(loaded);
+    },
+    [items],
+  );
 
   const [triggeredRedItems, setTriggeredRedItems] = useState<Set<string>>(new Set());
   const [yellowCount, setYellowCount] = useState(0);
@@ -189,8 +239,14 @@ export default function ChecklistScreen() {
 
   useEffect(() => {
     if (!branchId) return;
+    resetChecklistState();
     void getPreviousRiskItems(branchId).then(setPreviousRisks);
-  }, [branchId]);
+  }, [branchId, resetChecklistState]);
+
+  useEffect(() => {
+    if (!branchId || reopen !== '1' || !routeInspectionId || items.length === 0) return;
+    void loadInspectionResponses(routeInspectionId);
+  }, [branchId, reopen, routeInspectionId, items.length, loadInspectionResponses]);
 
   const hydrateItems = (rows: ChecklistTemplateRow[]) => {
     const mapped = rows.map((r) => {
@@ -222,7 +278,14 @@ export default function ChecklistScreen() {
     loadDraft(branchId, today).then((draft) => {
       if (draft) {
         Alert.alert('Resume Draft?', 'A saved draft was found for this branch today. Resume it?', [
-          { text: 'Start Fresh', style: 'destructive' },
+          {
+            text: 'Start Fresh',
+            style: 'destructive',
+            onPress: () => {
+              void deleteDraft(branchId, today);
+              resetChecklistState();
+            },
+          },
           {
             text: 'Resume', onPress: () => {
               setResponses(draft.responses as Record<string, { response: string | null; remark: string }>);
@@ -235,7 +298,7 @@ export default function ChecklistScreen() {
         ]);
       }
     });
-  }, [branchId]);
+  }, [branchId, resetChecklistState]);
 
   const sections = useMemo(() => {
     const map: Record<string, ChecklistItem[]> = {};
@@ -337,7 +400,7 @@ export default function ChecklistScreen() {
     [ensureInspection, triggeredRedItems, userRolesId, branchId],
   );
 
-  const lastTriggeredRedResponse = useRef<Record<string, string | null>>({});
+
   const handleResponse = useCallback(
     (itemId: string, response: string | null) => {
       setResponses((prev) => {
@@ -851,7 +914,9 @@ export default function ChecklistScreen() {
 
     Alert.alert(
       'Submit Inspection',
-      'Submit this inspection? You cannot edit after submitting.',
+      reopen === '1' || isEdit === '1'
+        ? 'Save changes to this report? You can keep editing for up to 1 hour after the original submission.'
+        : 'Submit this inspection? You will have 1 hour to edit after submitting.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -908,6 +973,15 @@ export default function ChecklistScreen() {
                   resolved_this_inspection: resolvedThisInspection,
                 };
               });
+              const isReopening = reopen === '1' || isEdit === '1';
+              if (isReopening) {
+                const { error: clearRespErr } = await supabase
+                  .from('inspection_responses')
+                  .delete()
+                  .eq('inspection_id', inspectionId);
+                if (clearRespErr) throw new Error(clearRespErr.message);
+              }
+
               const { error: respErr } = await supabase.from('inspection_responses').insert(responseRows);
               if (respErr) throw new Error(respErr.message);
 
@@ -924,6 +998,9 @@ export default function ChecklistScreen() {
                 }
               }
 
+              if (isReopening) {
+                await supabase.from('general_remarks').delete().eq('inspection_id', inspectionId);
+              }
               if (generalRemark.trim()) {
                 await supabase.from('general_remarks').insert({
                   inspection_id: inspectionId,
@@ -933,6 +1010,7 @@ export default function ChecklistScreen() {
 
               const submitAudit = await getDeviceAudit();
               const submittedAt = new Date().toISOString();
+              const editWindowExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
               const { data: submittedRows, error: statusErr } = await supabase
                 .from('inspections')
                 .update({
@@ -940,7 +1018,8 @@ export default function ChecklistScreen() {
                   time_in: effectiveTimeIn,
                   time_out: effectiveTimeOut,
                   submitted_at: submittedAt,
-                  ...(isEdit === '1' ? { edited_at: submittedAt } : {}),
+                  edit_window_expires_at: editWindowExpiresAt,
+                  ...(isReopening ? { edited_at: submittedAt, is_edited: true } : {}),
                   sync_status: 'synced',
                   device_id: submitAudit.deviceId,
                   app_version: submitAudit.appVersion,
@@ -1206,7 +1285,7 @@ export default function ChecklistScreen() {
                     >
                       <Ionicons name="warning-outline" size={12} color="#EF4444" />
                       <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '500' }}>
-                        Marked as risk
+                        Critical risk — verify on this visit
                       </Text>
                     </View>
                   ) : null}

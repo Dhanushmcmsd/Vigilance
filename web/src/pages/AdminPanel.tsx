@@ -34,6 +34,7 @@ import {
   downloadHtmlExcel,
   wrapHtmlDocument,
 } from '../lib/formattedExport';
+import { parseEdgeFunctionError } from '../lib/edgeFunctionError';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface UserRow {
@@ -410,7 +411,7 @@ function AddUserModal({
       onCreated(data.password);
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create user.';
+      const msg = await parseEdgeFunctionError(err);
       setError(msg);
     } finally {
       setLoading(false);
@@ -492,6 +493,11 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () 
   const handleSave = async () => {
     setLoading(true);
     setError('');
+    if (form.password.trim() && form.password.trim().length < 8) {
+      setError('Password must be at least 8 characters.');
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error: invokeErr } = await supabase.functions.invoke<{
         user_id?: string;
@@ -511,7 +517,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRow; onClose: () 
       if (!data?.user_id) throw new Error('User update failed.');
       onSaved();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to update user.');
+      setError(await parseEdgeFunctionError(err));
     } finally {
       setLoading(false);
     }
@@ -736,6 +742,16 @@ function BranchModal({
     },
   });
 
+  const [customDistrict, setCustomDistrict] = useState('');
+  const districtOptions = useMemo(() => {
+    const current = form.watch('region')?.trim();
+    const extra = customDistrict.trim();
+    const names = [...KERALA_DISTRICT_NAMES];
+    if (extra && !names.includes(extra)) names.push(extra);
+    if (current && !names.includes(current)) names.push(current);
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [customDistrict, form]);
+
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const onSubmit = async (values: BranchFormValues) => {
@@ -848,13 +864,31 @@ function BranchModal({
                     <FormControl>
                       <select className="input w-full" {...field} value={field.value ?? ''}>
                         <option value="">Select district</option>
-                        {KERALA_DISTRICT_NAMES.map((district) => (
+                        {districtOptions.map((district) => (
                           <option key={district} value={district}>
                             {district}
                           </option>
                         ))}
                       </select>
                     </FormControl>
+                    <FormDescription>
+                      <input
+                        className="input w-full mt-2"
+                        placeholder="Or type a new district name and press Enter"
+                        value={customDistrict}
+                        onChange={(e) => setCustomDistrict(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const value = customDistrict.trim();
+                            if (value) {
+                              field.onChange(value);
+                              setCustomDistrict('');
+                            }
+                          }
+                        }}
+                      />
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -926,6 +960,7 @@ function BranchModal({
 // TAB 4 â€” REPORTS
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function ReportsTab() {
+  const qc = useQueryClient();
   const [from, setFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0];
   });
@@ -1021,12 +1056,19 @@ function ReportsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('district_assignments')
-        .select('officer_id, district')
+        .select('officer_id, district, user_roles:officer_id ( user_id )')
         .eq('is_primary', true);
       if (error) throw error;
       const map = new Map<string, string>();
-      (data ?? []).forEach((row: { officer_id: string | null; district: string }) => {
-        if (row.officer_id) map.set(row.officer_id, row.district);
+      (data ?? []).forEach((row: {
+        officer_id: string | null;
+        district: string;
+        user_roles?: { user_id?: string | null } | { user_id?: string | null }[] | null;
+      }) => {
+        if (!row.officer_id) return;
+        const rel = Array.isArray(row.user_roles) ? row.user_roles[0] : row.user_roles;
+        if (rel?.user_id) map.set(rel.user_id, row.district);
+        map.set(row.officer_id, row.district);
       });
       return map;
     },
@@ -1098,7 +1140,9 @@ function ReportsTab() {
       window.alert(error.message);
       return;
     }
-    void refetchLeave();
+    void qc.invalidateQueries({ queryKey: ['admin-officer-leave'] });
+    void qc.invalidateQueries({ queryKey: ['admin-leave-today'] });
+    setLeaveForm((f) => ({ ...f, officerId: '' }));
   };
 
   const { data: stats } = useQuery({

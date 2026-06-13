@@ -24,11 +24,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranchLocksRealtime } from '../../hooks/useBranchLocksRealtime';
 import {
   claimBranchInspection,
-  deleteAndResetInspection,
+  canEditSubmittedBranch,
+  canStartNewReportAfterWindow,
+  formatEditWindowCountdown,
   isBranchSelectable,
   isOwnCompletedBranch,
   lockLabel,
   markInspectionAsEdit,
+  reopenInspectionForEdit,
 } from '../../lib/branchLocks';
 import { STORES } from '../../constants/stores';
 import { useOfficerDistricts } from '../../lib/useOfficerDistricts';
@@ -122,7 +125,10 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   const [error, setError] = useState('');
   const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
   const [pendingEditCount, setPendingEditCount] = useState<number | null>(null);
+  const [pendingReopen, setPendingReopen] = useState(false);
+  const [pendingInspectionId, setPendingInspectionId] = useState<string | null>(null);
   const [refilling, setRefilling] = useState(false);
+  const [timerTick, setTimerTick] = useState(0);
   const [officerCoords, setOfficerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // ── Batch 16: Near Me state ──────────────────────────────────────────────
@@ -132,6 +138,15 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   // ─────────────────────────────────────────────────────────────────────────
 
   const { locks } = useBranchLocksRealtime(branchTypeId, userRolesId);
+
+  useEffect(() => {
+    const hasActiveTimers = Object.values(locks).some(
+      (lock) => lock.status === 'completed' && formatEditWindowCountdown(lock.editWindowExpiresAt),
+    );
+    if (!hasActiveTimers) return;
+    const id = setInterval(() => setTimerTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [locks]);
 
   const locationGate = useLocationGate(
     pendingBranch?.latitude ?? null,
@@ -300,20 +315,29 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   const getLockUi = (branchId: string) => {
     const lock = locks[branchId];
     const isOwnCompleted = isOwnCompletedBranch(lock, userRolesId);
+    const canEdit = canEditSubmittedBranch(lock, userRolesId);
+    const canNewReport = canStartNewReportAfterWindow(lock, userRolesId);
     const selectable = isBranchSelectable(lock, true);
     const hasOwnDraft = !!lock?.inspectionId && lock.status === 'available';
     let statusTone: BranchCardStatusTone = 'completed';
     if (lock?.status === 'in_progress') statusTone = 'in_progress';
     else if (hasOwnDraft) statusTone = 'resume';
-    // Own completed branches are visually completed but tappable for refill
+    else if (canEdit) statusTone = 'resume';
     const disabled = !selectable && !isOwnCompleted;
+    void timerTick;
+    const countdown = formatEditWindowCountdown(lock?.editWindowExpiresAt);
     return {
       lock,
       disabled,
-      statusLabel: isOwnCompleted
-        ? 'Completed · Tap to refill'
-        : lockLabel(lock, hasOwnDraft),
+      statusLabel: canEdit
+        ? `Submitted · Edit window ${countdown ?? ''}`
+        : canNewReport
+          ? 'Report completed · New visit available'
+          : lockLabel(lock, hasOwnDraft),
+      timerLabel: canEdit ? countdown : null,
       statusTone,
+      canEdit,
+      canNewReport,
     };
   };
 
@@ -338,38 +362,54 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   };
 
   const handleBranchPress = (item: Branch) => {
-    const { lock, disabled, statusLabel } = getLockUi(item.id);
+    const { lock, disabled, statusLabel, canEdit, canNewReport } = getLockUi(item.id);
     const { incharge } = getInchargeDetails(item);
 
-    // If this is a completed branch that belongs to the current officer, require
-    // an explicit destructive confirmation before clearing the old answers.
-    if (lock?.status === 'completed' && isOwnCompletedBranch(lock, userRolesId)) {
+    if (canEdit && lock?.inspectionId) {
       Alert.alert(
-        'Store Already Completed',
-        'This store has already been submitted today. Do you want to edit the checklist? Warning: This will clear the existing submission data.',
+        'Edit Submitted Report',
+        'You can edit this report within the 1-hour window. Your existing answers will be loaded.',
         [
-          { text: 'Go Back', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Edit Checklist',
-            style: 'destructive',
+            text: 'Edit Report',
             onPress: async () => {
-              if (!lock.inspectionId) {
-                showToast('Inspection ID not found. Please try again.');
-                return;
-              }
               setRefilling(true);
               try {
-                const result = await deleteAndResetInspection(lock.inspectionId);
-                if (!result.success) {
+                const result = await reopenInspectionForEdit(lock.inspectionId!);
+                if (!result.inspectionId) {
                   showToast(result.message);
                   return;
                 }
-                setPendingEditCount(result.nextEditCount ?? 1);
+                setPendingEditCount(null);
+                setPendingInspectionId(result.inspectionId);
                 setPendingBranch(withStoreFallback(item));
+                setPendingReopen(true);
                 locationGate.check();
               } finally {
                 setRefilling(false);
               }
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (canNewReport) {
+      Alert.alert(
+        'New Visit Report',
+        'The edit window has expired. A new report will be submitted for this store.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Start New Report',
+            onPress: () => {
+              setPendingEditCount(null);
+              setPendingReopen(false);
+              setPendingInspectionId(null);
+              setPendingBranch(withStoreFallback(item));
+              locationGate.check();
             },
           },
         ],
@@ -395,6 +435,8 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
           text: 'Enter Store',
           onPress: () => {
             setPendingEditCount(null);
+            setPendingReopen(false);
+            setPendingInspectionId(null);
             setPendingBranch(withStoreFallback(item));
             locationGate.check();
           },
@@ -405,16 +447,33 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
 
   const handleConfirm = async () => {
     if (!pendingBranch) return;
-    const claim = await claimBranchInspection(pendingBranch.id);
-    if (!claim.inspectionId) {
-      showToast(claim.message);
-      setPendingBranch(null);
-      setPendingEditCount(null);
-      return;
+
+    let inspectionId: string | null = null;
+
+    if (pendingReopen && pendingInspectionId) {
+      inspectionId = pendingInspectionId;
+    } else if (pendingReopen) {
+      const lock = locks[pendingBranch.id];
+      if (lock?.inspectionId) {
+        inspectionId = lock.inspectionId;
+      }
+    }
+
+    if (!inspectionId) {
+      const claim = await claimBranchInspection(pendingBranch.id);
+      if (!claim.inspectionId) {
+        showToast(claim.message);
+        setPendingBranch(null);
+        setPendingEditCount(null);
+        setPendingReopen(false);
+        setPendingInspectionId(null);
+        return;
+      }
+      inspectionId = claim.inspectionId;
     }
 
     if (pendingEditCount != null) {
-      const editMark = await markInspectionAsEdit(claim.inspectionId, pendingEditCount);
+      const editMark = await markInspectionAsEdit(inspectionId, pendingEditCount);
       if (!editMark.success) {
         showToast(editMark.message);
       }
@@ -426,14 +485,17 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
         branchId: pendingBranch.id,
         branchName: pendingBranch.branch_name,
         branchType: activeBranchType,
-        inspectionId: claim.inspectionId,
-        isEdit: pendingEditCount != null ? '1' : '0',
+        inspectionId,
+        isEdit: pendingReopen || pendingEditCount != null ? '1' : '0',
+        reopen: pendingReopen ? '1' : '0',
         officerLat: officerCoords?.latitude?.toString() ?? '',
         officerLon: officerCoords?.longitude?.toString() ?? '',
       },
     });
     setPendingBranch(null);
     setPendingEditCount(null);
+    setPendingReopen(false);
+    setPendingInspectionId(null);
     locationGate.reset();
   };
 
@@ -441,6 +503,8 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   const handleCancel = () => {
     setPendingBranch(null);
     setPendingEditCount(null);
+    setPendingReopen(false);
+    setPendingInspectionId(null);
     locationGate.reset();
   };
 
@@ -631,13 +695,15 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
           contentContainerStyle={{ paddingBottom: insets.bottom + 104 }}
           ListHeaderComponent={listHeader}
           renderItem={({ item }) => {
-            const { disabled, statusLabel, statusTone } = getLockUi(item.id);
+            const { disabled, statusLabel, statusTone, timerLabel } = getLockUi(item.id);
             const { incharge, phone } = getInchargeDetails(item);
             const inchargeLine = `Incharge: ${incharge}${phone ? ` · ${phone}` : ''}`;
             const distanceLine =
               nearMeActive && item.distance_metres !== undefined
                 ? `${(item.distance_metres / 1000).toFixed(1)} km away`
                 : null;
+            const timerLine = timerLabel ? `Edit window: ${timerLabel} remaining` : null;
+            const subtitleParts = [inchargeLine, distanceLine, timerLine].filter(Boolean);
             return (
               <View style={{ paddingHorizontal: 16 }}>
                 <BranchCard
@@ -648,7 +714,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
                   disabled={disabled}
                   statusLabel={statusLabel}
                   statusTone={statusTone}
-                  subtitle={distanceLine ? `${inchargeLine} · ${distanceLine}` : inchargeLine}
+                  subtitle={subtitleParts.join(' · ')}
                 />
               </View>
             );

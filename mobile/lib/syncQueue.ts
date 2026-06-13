@@ -262,6 +262,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
 
   let resolvedId = inspectionId;
   if (resolvedId) {
+    const submittedAt = new Date().toISOString();
+    const editWindowExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const { data: submittedRows, error: upErr } = await supabase
       .from('inspections')
       .update({
@@ -270,7 +272,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         time_in: normalizedTimeIn,
         time_out: normalizedTimeOut,
         status: 'submitted',
-        submitted_at: new Date().toISOString(),
+        submitted_at: submittedAt,
+        edit_window_expires_at: editWindowExpiresAt,
         officer_latitude: officerLat,
         officer_longitude: officerLon,
         sync_status: 'synced',
@@ -295,6 +298,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
       throw new Error(claim.message || 'Could not claim inspection');
     }
     resolvedId = claim.inspectionId;
+    const submittedAt = new Date().toISOString();
+    const editWindowExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const { data: submittedRows, error: upErr } = await supabase
       .from('inspections')
       .update({
@@ -303,7 +308,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         time_in: normalizedTimeIn,
         time_out: normalizedTimeOut,
         status: 'submitted',
-        submitted_at: new Date().toISOString(),
+        submitted_at: submittedAt,
+        edit_window_expires_at: editWindowExpiresAt,
         officer_latitude: officerLat,
         officer_longitude: officerLon,
         sync_status: 'synced',

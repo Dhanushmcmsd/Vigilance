@@ -7,6 +7,29 @@ export interface BranchLockInfo {
   officerName?: string;
   inspectionId?: string;
   officerId?: string;
+  submittedAt?: string | null;
+  editWindowExpiresAt?: string | null;
+}
+
+export const EDIT_WINDOW_MS = 60 * 60 * 1000;
+
+export function isEditWindowActive(expiresAt?: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt).getTime() > Date.now();
+}
+
+export function editWindowRemainingMs(expiresAt?: string | null): number {
+  if (!expiresAt) return 0;
+  return Math.max(0, new Date(expiresAt).getTime() - Date.now());
+}
+
+export function formatEditWindowCountdown(expiresAt?: string | null): string | null {
+  const ms = editWindowRemainingMs(expiresAt);
+  if (ms <= 0) return null;
+  const totalSec = Math.ceil(ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
 export type BranchLockMap = Record<string, BranchLockInfo>;
@@ -20,6 +43,8 @@ export function mapLocks(
     officer_id: string;
     officer_name: string;
     inspection_id: string;
+    submitted_at?: string | null;
+    edit_window_expires_at?: string | null;
   }>,
   currentOfficerRolesId: string | null,
 ): BranchLockMap {
@@ -28,13 +53,18 @@ export function mapLocks(
     const isFinal = FINAL_STATUSES.has(row.status);
     const isOwn = row.officer_id === currentOfficerRolesId;
     const existing = map[row.branch_id];
+    const lockMeta = {
+      officerName: row.officer_name,
+      inspectionId: row.inspection_id,
+      officerId: row.officer_id,
+      submittedAt: row.submitted_at ?? null,
+      editWindowExpiresAt: row.edit_window_expires_at ?? null,
+    };
 
     if (isFinal) {
       map[row.branch_id] = {
         status: 'completed',
-        officerName: row.officer_name,
-        inspectionId: row.inspection_id,
-        officerId: row.officer_id,
+        ...lockMeta,
       };
       continue;
     }
@@ -43,9 +73,7 @@ export function mapLocks(
       if (existing?.status !== 'completed') {
         map[row.branch_id] = {
           status: 'in_progress',
-          officerName: row.officer_name,
-          officerId: row.officer_id,
-          inspectionId: row.inspection_id,
+          ...lockMeta,
         };
       }
       continue;
@@ -55,8 +83,7 @@ export function mapLocks(
       if (!existing || existing.status === 'available') {
         map[row.branch_id] = {
           status: 'available',
-          inspectionId: row.inspection_id,
-          officerId: row.officer_id,
+          ...lockMeta,
         };
       }
     }
@@ -171,11 +198,35 @@ export function isOwnCompletedBranch(
   );
 }
 
+export function canEditSubmittedBranch(
+  info: BranchLockInfo | undefined,
+  currentOfficerRolesId: string | null,
+): boolean {
+  return (
+    isOwnCompletedBranch(info, currentOfficerRolesId) &&
+    isEditWindowActive(info?.editWindowExpiresAt)
+  );
+}
+
+export function canStartNewReportAfterWindow(
+  info: BranchLockInfo | undefined,
+  currentOfficerRolesId: string | null,
+): boolean {
+  return (
+    isOwnCompletedBranch(info, currentOfficerRolesId) &&
+    !isEditWindowActive(info?.editWindowExpiresAt)
+  );
+}
+
 export function lockLabel(info?: BranchLockInfo, hasOwnDraft?: boolean): string | undefined {
   if (!info || info.status === 'available') {
     return hasOwnDraft ? 'Resume inspection' : undefined;
   }
-  if (info.status === 'completed') return 'Report completed';
+  if (info.status === 'completed') {
+    const countdown = formatEditWindowCountdown(info.editWindowExpiresAt);
+    if (countdown) return `Submitted · Edit until ${countdown}`;
+    return 'Report completed · New visit available';
+  }
   return info.officerName ? `In progress · ${info.officerName}` : 'Inspection in progress';
 }
 
@@ -186,4 +237,28 @@ export function isBranchSelectable(
   if (!info || info.status === 'available') return true;
   if (info.status === 'completed') return false;
   return allowOwnDraft;
+}
+
+/** Reopen a submitted inspection within the 1-hour edit window (keeps answers). */
+export async function reopenInspectionForEdit(inspectionId: string): Promise<{
+  inspectionId: string | null;
+  errorCode: 'NOT_OWNER' | 'INSPECTION_NOT_FOUND' | 'EDIT_WINDOW_EXPIRED' | 'NOT_EDITABLE' | 'OFFICER_NOT_FOUND' | 'UNKNOWN' | null;
+  message: string;
+}> {
+  const { data, error } = await supabase.rpc('reopen_inspection_for_edit', {
+    p_inspection_id: inspectionId,
+  });
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('NOT_OWNER'))
+      return { inspectionId: null, errorCode: 'NOT_OWNER', message: 'Only the officer who submitted this report can edit it.' };
+    if (msg.includes('INSPECTION_NOT_FOUND'))
+      return { inspectionId: null, errorCode: 'INSPECTION_NOT_FOUND', message: 'Inspection not found.' };
+    if (msg.includes('EDIT_WINDOW_EXPIRED'))
+      return { inspectionId: null, errorCode: 'EDIT_WINDOW_EXPIRED', message: 'Edit window expired. Start a new report instead.' };
+    if (msg.includes('NOT_EDITABLE'))
+      return { inspectionId: null, errorCode: 'NOT_EDITABLE', message: 'This inspection cannot be edited.' };
+    return { inspectionId: null, errorCode: 'UNKNOWN', message: msg || 'Could not reopen inspection.' };
+  }
+  return { inspectionId: data as string, errorCode: null, message: '' };
 }

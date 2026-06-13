@@ -1074,7 +1074,7 @@ function ReportsTab() {
     },
   });
 
-  const { data: leaveRows = [], refetch: refetchLeave } = useQuery({
+  const { data: leaveRows = [] } = useQuery({
     queryKey: ['admin-officer-leave', from, to],
     queryFn: async () => {
       const { data, error } = await supabase

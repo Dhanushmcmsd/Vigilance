@@ -1396,3 +1396,144 @@ body {
     0 0 1px  rgba(212, 175, 55, 0.20);
   transition: text-shadow 0.4s ease;
 }
+
+/* ── Glowing compliance trend (Monthly Archive reference style) ── */
+.glow-trend-chart {
+  width: 100%;
+}
+
+.glow-trend-canvas {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000000;
+  box-shadow:
+    inset 0 0 40px rgba(255, 43, 214, 0.04),
+    inset 0 0 60px rgba(0, 240, 255, 0.03);
+}
+
+.glow-trend-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 280px;
+}
+
+.glow-axis-line {
+  animation: glow-axis-fade 0.8s ease-out forwards;
+}
+
+@keyframes glow-axis-fade {
+  from {
+    opacity: 0;
+    stroke-dasharray: 400;
+    stroke-dashoffset: 400;
+  }
+  to {
+    opacity: 1;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+.glow-trend-line {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation:
+    glow-line-draw 2.4s ease-in-out var(--line-delay, 0s) forwards,
+    glow-line-pulse 3s ease-in-out calc(var(--line-delay, 0s) + 2.4s) infinite;
+}
+
+.glow-trend-line-avg {
+  stroke-width: 3;
+  animation:
+    glow-line-draw 2.8s ease-in-out var(--line-delay, 0s) forwards,
+    glow-line-pulse-avg 2.5s ease-in-out calc(var(--line-delay, 0s) + 2.8s) infinite;
+}
+
+@keyframes glow-line-draw {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 0.35;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes glow-line-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor);
+    opacity: 0.92;
+  }
+  50% {
+    filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 14px currentColor) drop-shadow(0 0 22px currentColor);
+    opacity: 1;
+  }
+}
+
+@keyframes glow-line-pulse-avg {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.glow-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  padding: 12px 16px 14px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.85));
+}
+
+.glow-trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.glow-trend-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.glow-trend-tooltip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  min-width: 140px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 20px rgba(255, 43, 214, 0.15);
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.glow-trend-tooltip-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.glow-trend-tooltip p {
+  margin: 2px 0;
+}

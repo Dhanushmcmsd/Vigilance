@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { BloomGradientPanel } from './ui/BloomGradientPanel';
 import { useTheme } from '../context/ThemeContext';
+import GlowingComplianceTrendChart from './GlowingComplianceTrendChart';
 
 const SERIES_COLORS = ['#0284c7', '#7c3aed', '#16a34a', '#ea580c', '#dc2626', '#4f46e5'];
 
@@ -66,36 +67,46 @@ export default function ComplianceChart({
   const bloomChart = isDark ? BLOOM_CHART_DARK : BLOOM_CHART_LIGHT;
   const hasData = chartData.some((row) => row['Daily avg'] !== null);
 
+  if (isBloom) {
+    return (
+      <BloomGradientPanel className="h-auto overflow-hidden p-0">
+        <div className="p-5 pb-0">
+          <GlowingComplianceTrendChart data={data} />
+        </div>
+      </BloomGradientPanel>
+    );
+  }
+
   const chartBody = (
     <>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className={`text-base font-semibold ${isBloom ? 'bloom-heading' : 'text-gray-900 dark:text-white'}`}>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Compliance Trend
           </h3>
-          <p className={`text-xs ${isBloom ? 'bloom-subtitle' : 'text-gray-500 dark:text-gray-400'}`}>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Daily average compliance (bars) with store/district performance lines for the selected period
           </p>
         </div>
       </div>
       {!hasData ? (
-        <p className={`py-16 text-center text-sm ${isBloom ? 'bloom-subtitle' : 'text-gray-500 dark:text-gray-400'}`}>
+        <p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">
           No inspection activity recorded for this period yet.
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={isBloom ? 280 : '100%'}>
+        <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -16, bottom: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isBloom ? bloomChart.grid : '#33415522'} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#33415522" vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: 11, fill: isBloom ? bloomChart.tick : undefined }}
+              tick={{ fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={[0, 100]}
               tickFormatter={(value) => `${value}%`}
-              tick={{ fontSize: 11, fill: isBloom ? bloomChart.tick : undefined }}
+              tick={{ fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
@@ -104,31 +115,19 @@ export default function ComplianceChart({
                 value != null ? `${Number(value).toFixed(1)}%` : '—',
                 name,
               ]}
-              contentStyle={
-                isBloom
-                  ? {
-                      backgroundColor: bloomChart.tooltipBg,
-                      border: `1px solid ${bloomChart.tooltipBorder}`,
-                      borderRadius: '8px',
-                      color: bloomChart.tooltipText,
-                    }
-                  : undefined
-              }
-              labelStyle={isBloom ? { color: bloomChart.tooltipText } : undefined}
-              itemStyle={isBloom ? { color: bloomChart.tooltipText } : undefined}
             />
-            <Legend wrapperStyle={isBloom ? { color: bloomChart.legend, fontSize: 11 } : { fontSize: 11 }} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
             <ReferenceLine
               y={80}
               stroke="#22c55e"
               strokeDasharray="4 4"
-              label={{ value: '80%', fill: isBloom ? '#86efac' : '#16a34a', fontSize: 10 }}
+              label={{ value: '80%', fill: '#16a34a', fontSize: 10 }}
             />
             <ReferenceLine
               y={60}
               stroke="#f59e0b"
               strokeDasharray="4 4"
-              label={{ value: '60%', fill: isBloom ? '#fcd34d' : '#eab308', fontSize: 10 }}
+              label={{ value: '60%', fill: '#eab308', fontSize: 10 }}
             />
             <Bar
               dataKey="Daily avg"
@@ -159,10 +158,6 @@ export default function ComplianceChart({
       )}
     </>
   );
-
-  if (isBloom) {
-    return <BloomGradientPanel className="h-[360px]">{chartBody}</BloomGradientPanel>;
-  }
 
   return <div className="h-[360px] rounded-xl bg-white p-5 shadow-sm dark:bg-gray-900">{chartBody}</div>;
 }

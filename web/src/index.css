@@ -765,11 +765,11 @@ body {
     flex-direction: column;
     overflow: hidden;
     border-radius: 0.875rem;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 2px solid rgba(99, 102, 241, 0.45);
     background: #15151f;
     box-shadow:
       0 28px 80px rgba(0, 0, 0, 0.62),
-      0 0 0 1px rgba(255, 255, 255, 0.05);
+      0 0 0 1px rgba(99, 102, 241, 0.12);
   }
 
   .vms-report-modal-header {
@@ -778,8 +778,8 @@ body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    background: #1a1a26;
+    border-bottom: 2px solid rgba(99, 102, 241, 0.25);
+    background: linear-gradient(135deg, #1a1a26 0%, #1e293b 100%);
     padding: 1rem 1.25rem;
   }
 
@@ -791,9 +791,17 @@ body {
 
   .vms-report-section {
     overflow: hidden;
-    border-radius: 0.625rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    border: 1.5px solid rgba(99, 102, 241, 0.35);
     background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  .vms-report-meta-chip {
+    border-radius: 0.625rem;
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.18);
+    padding: 0.625rem 0.75rem;
   }
 
   .vms-modal-btn-primary {

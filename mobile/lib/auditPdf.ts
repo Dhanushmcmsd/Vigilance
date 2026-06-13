@@ -5,6 +5,7 @@ import {
   type InspectionAnswerPhoto,
   type InspectionMediaFile,
 } from './inspectionMedia';
+import { REPORT_HTML_CSS, riskTheme, scoreTheme, sectionTheme } from './reportTheme';
 
 export interface AuditPdfChecklistItem {
   item_text: string;
@@ -23,6 +24,7 @@ export interface AuditPdfInspection {
   inspection_date: string;
   status: string;
   compliance_score: number | null;
+  risk_level?: string | null;
   time_in?: string | null;
   time_out?: string | null;
   officer: { name: string } | null;
@@ -40,11 +42,27 @@ const isImageEvidence = (file: NonNullable<AuditPdfInspection['inspection_files'
 };
 
 const formatReportTime = (value: string | null | undefined) => {
-  if (!value) return '-';
+  if (!value) return '—';
   const match = value.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return value;
   return `${match[1].padStart(2, '0')}:${match[2]}`;
 };
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function responseBadgeClass(response: string | null | undefined): string {
+  const value = (response ?? '').trim().toLowerCase();
+  if (value === 'yes') return 'resp-yes';
+  if (value === 'no') return 'resp-no';
+  if (value === 'n/a' || !value) return 'resp-na';
+  return 'resp-other';
+}
 
 /** Resolve private-bucket URLs and merge gallery photos before PDF render. */
 export async function prepareAuditPdfInspection(data: AuditPdfInspection): Promise<AuditPdfInspection> {
@@ -76,44 +94,60 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
     );
   });
 
+  const score = scoreTheme(data.compliance_score);
+  const risk = riskTheme(data.risk_level ?? 'low');
+
   const sectionHtml = Object.entries(sections)
-    .map(
-      ([sec, items]) => `
-    <div class="section">
-      <h3>${sec}</h3>
-      <table>
-        <thead><tr><th>#</th><th>Checklist item</th><th>Response</th><th>Remarks</th></tr></thead>
+    .map(([sec, items]) => {
+      const theme = sectionTheme(sec);
+      return `
+    <div class="section-block">
+      <div class="section-head" style="background:${theme.bg};border-color:${theme.border};color:${theme.text};">
+        ${escapeHtml(sec)}
+      </div>
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th style="width:6%">#</th>
+            <th style="width:58%">Checklist item</th>
+            <th style="width:16%">Response</th>
+            <th style="width:20%">Remarks</th>
+          </tr>
+        </thead>
         <tbody>
           ${items
-            .map(
-              (r, idx) => `
-            <tr class="${r.response === 'No' ? 'no-row' : ''}">
-              <td>${idx + 1}</td>
-              <td>${r.checklist_item?.item_text ?? '—'}</td>
-              <td class="resp resp-${(r.response ?? 'na').toLowerCase().replace('/', '')}">${r.response ?? '—'}</td>
-              <td>${r.remarks ?? ''}</td>
+            .map((r, idx) => {
+              const violation = r.response === 'No';
+              const rowClass = violation ? 'violation' : r.response === 'Yes' ? 'compliant' : '';
+              return `
+            <tr class="${rowClass}">
+              <td style="font-weight:700;color:${theme.accent};">${idx + 1}</td>
+              <td>${escapeHtml(r.checklist_item?.item_text ?? '—')}</td>
+              <td><span class="resp-badge ${responseBadgeClass(r.response)}">${escapeHtml(r.response ?? '—')}</span></td>
+              <td>${escapeHtml(r.remarks ?? '')}</td>
             </tr>
-          `,
-            )
+          `;
+            })
             .join('')}
         </tbody>
       </table>
     </div>
-  `,
-    )
+  `;
+    })
     .join('');
+
   const imageFiles = (data.inspection_files ?? []).filter(isImageEvidence);
   const photoHtml = imageFiles.length
     ? `
-    <div class="section">
-      <h3>Photo Evidence</h3>
+    <div class="section-block">
+      <div class="section-head" style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;">Photo Evidence</div>
       <div class="photos">
         ${imageFiles
           .map(
             (file) => `
           <div class="photo">
             <img src="${file.file_url}" />
-            <p>${file.file_name ?? 'Inspection evidence'}</p>
+            <p>${escapeHtml(file.file_name ?? 'Inspection evidence')}</p>
           </div>
         `,
           )
@@ -123,40 +157,54 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
   `
     : '';
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <style>
-    body { font-family: Helvetica, Arial, sans-serif; padding: 32px; color: #1e293b; font-size: 13px; }
-    h1 { font-size: 22px; color: #1e3a5f; margin-bottom: 4px; }
-    .meta { color: #64748b; font-size: 12px; margin-bottom: 24px; }
-    .score-box { display: inline-block; padding: 8px 20px; border-radius: 8px; background: #f0fdf4; color: #16a34a; font-size: 24px; font-weight: 900; margin-bottom: 24px; }
-    .section { margin-bottom: 28px; }
-    h3 { font-size: 14px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; font-size: 11px; color: #64748b; padding: 6px 8px; background: #f8fafc; }
-    td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
-    .resp { font-weight: 700; }
-    .resp-yes { color: #16a34a; }
-    .resp-no { color: #dc2626; }
-    .resp-na { color: #6b7280; }
-    .no-row { background: #fef2f2; }
-    .photos { display: flex; flex-wrap: wrap; gap: 12px; }
-    .photo { width: 150px; }
-    .photo img { width: 150px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .photo p { margin: 4px 0 0; font-size: 10px; color: #64748b; word-break: break-word; }
-    .footer { margin-top: 40px; font-size: 11px; color: #94a3b8; text-align: center; }
-  </style>
-  </head><body>
-  <h1>Field Inspection Report — ${branchName}</h1>
-  <p class="meta">Date: ${data.inspection_date} | Officer: ${data.officer?.name ?? '—'} | Status: ${(data.status ?? '').toUpperCase()}</p>
-  <div class="score-box">${data.compliance_score?.toFixed(0) ?? '—'}% Compliance</div>
-  ${sectionHtml}
-  ${photoHtml}
-  ${
+  const remarksHtml =
     data.general_remarks?.length
-      ? `<div class="section"><h3>General Remarks</h3><p>${data.general_remarks.map((r) => r.remark_text).join('<br>')}</p></div>`
-      : ''
-  }
-  <p class="footer">Vigilance Management System · Field officer checklist · ${new Date().toLocaleString('en-IN')}</p>
+      ? `<div class="section-block">
+          <div class="section-head" style="background:#fdf2f8;border-color:#f9a8d4;color:#be185d;">General Remarks</div>
+          <div style="padding:12px 14px;">${data.general_remarks.map((r) => `<p style="margin:0 0 8px;">${escapeHtml(r.remark_text)}</p>`).join('')}</div>
+        </div>`
+      : '';
+
+  const timeLine =
+    data.time_in || data.time_out
+      ? `<div class="report-time">Inspection Time: ${formatReportTime(data.time_in)} – ${formatReportTime(data.time_out)}</div>`
+      : '';
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${REPORT_HTML_CSS}</style></head><body>
+  <div class="report-shell">
+    <div class="report-hero">
+      <h1>STORE INSPECTION REPORT</h1>
+      <p>Official Field Inspection Document</p>
+    </div>
+
+    <div class="report-meta-grid">
+      <div class="meta-card"><div class="meta-label">Location</div><div class="meta-value">${escapeHtml(branchName)}</div></div>
+      <div class="meta-card"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(data.inspection_date)}</div></div>
+      <div class="meta-card"><div class="meta-label">Officer</div><div class="meta-value">${escapeHtml(data.officer?.name ?? '—')}</div></div>
+      <div class="meta-card accent-status"><div class="meta-label">Status</div><div class="meta-value">${escapeHtml((data.status ?? '').toUpperCase())}</div></div>
+      <div class="meta-card accent-score" style="border-color:${score.border};background:${score.bg};"><div class="meta-label">Compliance</div><div class="meta-value" style="color:${score.text};">${data.compliance_score?.toFixed(1) ?? '—'}%</div></div>
+      <div class="meta-card accent-risk" style="border-color:${risk.border};background:${risk.bg};"><div class="meta-label">Risk Level</div><div class="meta-value" style="color:${risk.text};">${escapeHtml((data.risk_level ?? 'LOW').toString().toUpperCase())}</div></div>
+    </div>
+
+    ${timeLine}
+
+    <div class="report-body">
+      ${sectionHtml}
+      ${photoHtml}
+      ${remarksHtml}
+      <div class="summary-strip">
+        <span>Overall Compliance: ${data.compliance_score?.toFixed(1) ?? '—'}%</span>
+        <span>Risk Level: ${escapeHtml((data.risk_level ?? 'LOW').toString().toUpperCase())}</span>
+        <span>Inspector: ${escapeHtml(data.officer?.name ?? '—')}</span>
+      </div>
+    </div>
+
+    <div class="report-footer">
+      This report is an official field inspection document. Generated on ${escapeHtml(data.inspection_date)} |
+      ${escapeHtml(branchName)} Store | Officer: ${escapeHtml(data.officer?.name ?? '—')} |
+      System: Store Monitoring Division
+    </div>
+  </div>
   </body></html>`;
 }
 

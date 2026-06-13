@@ -10,110 +10,168 @@ import {
 } from '@react-pdf/renderer';
 import { isCompliantResponse } from '../lib/checklistScoring';
 import { resolveInspectionMediaUrl } from '../lib/inspectionMedia';
+import { REPORT_BRAND, riskTheme, scoreTheme, sectionTheme } from '../lib/reportTheme';
 
 Font.registerHyphenationCallback((word) => [word]);
 
-const BRAND = '#1e3a5f';
-const MUTED = '#64748b';
-const BORDER = '#e2e8f0';
-
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 44,
-    paddingBottom: 56,
-    paddingHorizontal: 40,
+    paddingTop: 0,
+    paddingBottom: 48,
+    paddingHorizontal: 0,
     fontSize: 9,
     fontFamily: 'Helvetica',
     color: '#0f172a',
-  },
-  coverBand: {
-    backgroundColor: BRAND,
-    marginHorizontal: -40,
-    marginTop: -44,
-    paddingHorizontal: 40,
-    paddingTop: 36,
-    paddingBottom: 28,
-    marginBottom: 20,
-  },
-  coverTitle: { fontSize: 22, fontWeight: 700, color: '#ffffff', letterSpacing: 0.5 },
-  coverSubtitle: { fontSize: 11, color: '#cbd5e1', marginTop: 6 },
-  coverMeta: { fontSize: 9, color: '#e2e8f0', marginTop: 14, lineHeight: 1.5 },
-  docRef: {
-    fontSize: 8,
-    color: MUTED,
-    textAlign: 'right',
-    marginBottom: 12,
-    letterSpacing: 0.3,
-  },
-  executiveBox: {
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 4,
-    padding: 12,
-    marginBottom: 16,
     backgroundColor: '#f8fafc',
   },
-  executiveTitle: { fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
-  kpiRow: { flexDirection: 'row' },
-  kpi: { flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: 8, backgroundColor: '#ffffff' },
-  kpiLabel: { fontSize: 7, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8 },
-  kpiValue: { fontSize: 14, fontWeight: 700, marginTop: 4, color: BRAND },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: BRAND,
-    marginTop: 14,
+  pageInner: {
+    marginHorizontal: 32,
+    marginTop: 0,
+    marginBottom: 16,
+  },
+  shell: {
+    borderWidth: 2,
+    borderColor: REPORT_BRAND.navy,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  coverBand: {
+    backgroundColor: REPORT_BRAND.navy,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+  },
+  coverTitle: { fontSize: 20, fontWeight: 700, color: '#ffffff', letterSpacing: 0.6 },
+  coverSubtitle: { fontSize: 10, color: '#dbeafe', marginTop: 5 },
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 14,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 2,
+    borderBottomColor: '#dbeafe',
+  },
+  metaCard: {
+    width: '31%',
+    marginRight: '2%',
     marginBottom: 8,
-    paddingBottom: 4,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: '#ffffff',
+    minHeight: 46,
+  },
+  metaLabel: { fontSize: 7, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 700 },
+  metaValue: { fontSize: 11, fontWeight: 700, color: '#0f172a', marginTop: 3 },
+  timeLine: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: '#e2e8f0',
+    fontSize: 9,
+    fontWeight: 600,
+    color: '#334155',
   },
-  itemCard: {
+  bodyPad: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
+  sectionBlock: {
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  sectionHead: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 9,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    borderBottomWidth: 1.5,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  tableHeaderCell: { fontSize: 7, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  tableRowFail: { backgroundColor: '#fef2f2' },
+  tableRowPass: { backgroundColor: '#f8fffb' },
+  colNum: { width: '6%' },
+  colItem: { width: '52%', paddingRight: 6 },
+  colResp: { width: '16%' },
+  colRemark: { width: '26%' },
+  itemText: { fontSize: 8.5, lineHeight: 1.35 },
+  respPill: {
+    fontSize: 7.5,
+    fontWeight: 700,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 4,
-    padding: 10,
-    marginBottom: 8,
+    textAlign: 'center',
   },
-  itemCardFail: { borderColor: '#fecaca', backgroundColor: '#fffbfb' },
-  itemCardPass: { borderColor: '#bbf7d0', backgroundColor: '#fafdfa' },
-  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  itemText: { fontSize: 9, fontWeight: 600, flex: 1, paddingRight: 8, lineHeight: 1.4 },
-  statusPill: { fontSize: 8, fontWeight: 700, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
-  pillPass: { backgroundColor: '#dcfce7', color: '#166534' },
-  pillFail: { backgroundColor: '#fee2e2', color: '#b91c1c' },
-  pillNa: { backgroundColor: '#f1f5f9', color: '#475569' },
-  remark: { fontSize: 8, color: MUTED, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 },
-  evidenceLabel: { fontSize: 7, color: MUTED, marginTop: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 },
-  photoRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  photo: { width: 120, height: 86, objectFit: 'cover', borderRadius: 3, borderWidth: 1, borderColor: BORDER },
-  docChip: { fontSize: 7, color: '#334155', backgroundColor: '#f1f5f9', padding: 4, borderRadius: 3, marginTop: 4 },
-  footer: {
-    position: 'absolute',
-    bottom: 22,
-    left: 40,
-    right: 40,
+  remark: { fontSize: 7.5, color: '#64748b', lineHeight: 1.35 },
+  summaryStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    marginTop: 6,
+    padding: 10,
+    borderWidth: 1.5,
+    borderColor: '#93c5fd',
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+  },
+  summaryText: { fontSize: 8.5, fontWeight: 700, color: REPORT_BRAND.navy },
+  photoSection: { padding: 12 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  photo: {
+    width: 110,
+    height: 78,
+    objectFit: 'cover',
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 16,
+    left: 32,
+    right: 32,
+    borderTopWidth: 2,
+    borderTopColor: '#dbeafe',
+    paddingTop: 8,
     fontSize: 7,
-    color: '#94a3b8',
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-    paddingTop: 6,
+    color: '#64748b',
+    textAlign: 'center',
+    backgroundColor: '#f8fafc',
   },
-  h2: { fontSize: 10, fontWeight: 700, marginTop: 10, marginBottom: 4, color: '#334155' },
+  h2: { fontSize: 10, fontWeight: 700, marginTop: 8, marginBottom: 4, color: '#334155' },
   body: { fontSize: 9, lineHeight: 1.5, color: '#334155' },
-  chartRow: { marginBottom: 10 },
-  chartLabel: { fontSize: 8, fontWeight: 600, color: '#334155', marginBottom: 3 },
-  chartTrack: {
-    height: 10,
-    backgroundColor: '#fee2e2',
-    borderRadius: 5,
-    overflow: 'hidden',
-    width: 360,
+  noteBox: {
+    marginBottom: 10,
+    padding: 10,
+    borderWidth: 1.5,
+    borderColor: '#f9a8d4',
+    borderRadius: 8,
+    backgroundColor: '#fdf2f8',
   },
-  chartFill: { height: 10, backgroundColor: '#22c55e', borderRadius: 5 },
-  chartMeta: { fontSize: 7, color: MUTED, marginTop: 2 },
 });
 
 export interface InspectionPdfAttachment {
@@ -181,24 +239,84 @@ function computeSectionChartData(responses: InspectionPdfResponse[]) {
   });
 }
 
-function PdfSectionChart({ responses }: { responses: InspectionPdfResponse[] }) {
-  const rows = computeSectionChartData(responses);
-  if (!rows.length) return null;
+function responsePillStyle(status: 'pass' | 'fail' | 'na') {
+  if (status === 'pass') return { backgroundColor: '#dcfce7', color: '#166534', borderColor: '#86efac' };
+  if (status === 'fail') return { backgroundColor: '#fee2e2', color: '#b91c1c', borderColor: '#fca5a5' };
+  return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' };
+}
+
+function ReportMetaGrid({ data }: { data: InspectionPdfData }) {
+  const score = scoreTheme(data.complianceScore);
+  const risk = riskTheme(data.riskLevel);
+  const cards = [
+    { label: 'Location', value: data.branchName, style: {} },
+    { label: 'Date', value: data.inspectionDate, style: {} },
+    { label: 'Officer', value: data.officerName, style: {} },
+    { label: 'Status', value: data.status.toUpperCase(), style: { borderColor: '#93c5fd', backgroundColor: '#eff6ff' } },
+    {
+      label: 'Compliance',
+      value: `${data.complianceScore.toFixed(1)}%`,
+      style: { borderColor: score.border, backgroundColor: score.bg },
+      valueColor: score.text,
+    },
+    {
+      label: 'Risk Level',
+      value: data.riskLevel.toUpperCase(),
+      style: { borderColor: risk.border, backgroundColor: risk.bg },
+      valueColor: risk.text,
+    },
+  ];
 
   return (
-    <View style={{ marginTop: 12, marginBottom: 8 }}>
-      <Text style={styles.sectionTitle}>Section compliance overview</Text>
-      {rows.map((row) => {
-        const fillWidth = Math.max(0, Math.min(360, (row.compliance / 100) * 360));
+    <View style={styles.metaGrid}>
+      {cards.map((card) => (
+        <View key={card.label} style={[styles.metaCard, card.style]}>
+          <Text style={styles.metaLabel}>{card.label}</Text>
+          <Text style={[styles.metaValue, card.valueColor ? { color: card.valueColor } : {}]}>{card.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function SectionTable({
+  section,
+  items,
+}: {
+  section: string;
+  items: InspectionPdfResponse[];
+}) {
+  const theme = sectionTheme(section);
+  return (
+    <View style={styles.sectionBlock} wrap={false}>
+      <View style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
+        <Text style={{ color: theme.text }}>{section}</Text>
+      </View>
+      <View style={styles.tableHeader}>
+        <Text style={[styles.tableHeaderCell, styles.colNum]}>#</Text>
+        <Text style={[styles.tableHeaderCell, styles.colItem]}>Checklist item</Text>
+        <Text style={[styles.tableHeaderCell, styles.colResp]}>Response</Text>
+        <Text style={[styles.tableHeaderCell, styles.colRemark]}>Remarks</Text>
+      </View>
+      {items.map((r, idx) => {
+        const status = statusForItem(r);
+        const pill = responsePillStyle(status);
         return (
-          <View key={row.section} style={styles.chartRow}>
-            <Text style={styles.chartLabel}>{row.section}</Text>
-            <View style={styles.chartTrack}>
-              <View style={[styles.chartFill, { width: fillWidth }]} />
+          <View
+            key={`${section}-${idx}`}
+            style={[
+              styles.tableRow,
+              status === 'fail' ? styles.tableRowFail : status === 'pass' ? styles.tableRowPass : {},
+            ]}
+          >
+            <Text style={[styles.itemText, styles.colNum, { color: theme.accent, fontWeight: 700 }]}>{idx + 1}</Text>
+            <Text style={[styles.itemText, styles.colItem]}>{r.item_text}</Text>
+            <View style={styles.colResp}>
+              <Text style={[styles.respPill, { backgroundColor: pill.backgroundColor, color: pill.color, borderColor: pill.borderColor }]}>
+                {r.response}
+              </Text>
             </View>
-            <Text style={styles.chartMeta}>
-              {row.compliance}% compliant · {row.pass} OK · {row.fail} NC · {row.na} N/A
-            </Text>
+            <Text style={[styles.remark, styles.colRemark]}>{r.remarks ?? ''}</Text>
           </View>
         );
       })}
@@ -206,8 +324,35 @@ function PdfSectionChart({ responses }: { responses: InspectionPdfResponse[] }) 
   );
 }
 
-function formatRef(id: string, date: string) {
-  return `VMS-AUD-${date.replace(/-/g, '')}-${id.slice(0, 8).toUpperCase()}`;
+function PdfSectionChart({ responses }: { responses: InspectionPdfResponse[] }) {
+  const rows = computeSectionChartData(responses);
+  if (!rows.length) return null;
+  const theme = sectionTheme('Section compliance overview');
+
+  return (
+    <View style={[styles.sectionBlock, { marginBottom: 10 }]}>
+      <View style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
+        <Text style={{ color: theme.text }}>Section compliance overview</Text>
+      </View>
+      <View style={{ padding: 10 }}>
+        {rows.map((row) => {
+          const pct = row.compliance;
+          const barColor = pct >= 80 ? '#059669' : pct >= 60 ? '#d97706' : '#dc2626';
+          return (
+            <View key={row.section} style={{ marginBottom: 8 }}>
+              <Text style={{ fontSize: 8, fontWeight: 700, color: '#334155', marginBottom: 3 }}>{row.section}</Text>
+              <View style={{ height: 10, backgroundColor: '#e2e8f0', borderRadius: 5, overflow: 'hidden', width: '100%' }}>
+                <View style={{ height: 10, backgroundColor: barColor, borderRadius: 5, width: `${pct}%` }} />
+              </View>
+              <Text style={{ fontSize: 7, color: '#64748b', marginTop: 2 }}>
+                {row.compliance}% compliant · {row.pass} OK · {row.fail} NC · {row.na} N/A
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 function sanitizePdfText(value: unknown): string {
@@ -246,9 +391,11 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
     grouped.get(r.section)!.push(r);
   }
 
-  const failCount = data.responses.filter((r) => statusForItem(r) === 'fail').length;
-  const passCount = data.responses.filter((r) => statusForItem(r) === 'pass').length;
   const hasAnyEvidence = data.responses.some((r) => (r.attachments?.length ?? 0) > 0);
+  const timeLine =
+    data.timeIn || data.timeOut
+      ? `Inspection Time: ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}`
+      : null;
 
   return (
     <Document
@@ -256,153 +403,66 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
       author="Vigilance Management System"
     >
       <Page size="A4" style={styles.page} wrap>
-        <View style={styles.coverBand}>
-          <Text style={styles.coverTitle}>STORE COMPLIANCE AUDIT REPORT</Text>
-          <Text style={styles.coverSubtitle}>Vigilance Management System · Confidential</Text>
-          <Text style={styles.coverMeta}>
-            {data.branchName}
-            {data.city ? ` · ${data.city}` : ''}
-            {'\n'}
-            {data.branchType} · Officer: {data.officerName}
-            {'\n'}
-            Inspection date: {data.inspectionDate}
-            {data.timeIn || data.timeOut ? ` · ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}` : ''}
-            {data.submittedAt ? `\nSubmitted: ${new Date(data.submittedAt).toLocaleString('en-IN')}` : ''}
-          </Text>
-        </View>
-
-        <Text style={styles.docRef}>{formatRef(data.id, data.inspectionDate)}</Text>
-
-        <View style={styles.executiveBox}>
-          <Text style={styles.executiveTitle}>Executive summary</Text>
-          <View style={styles.kpiRow}>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Compliance score</Text>
-              <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
+        <View style={[styles.pageInner, { marginTop: 24 }]}>
+          <View style={styles.shell}>
+            <View style={styles.coverBand}>
+              <Text style={styles.coverTitle}>STORE INSPECTION REPORT</Text>
+              <Text style={styles.coverSubtitle}>Official Field Inspection Document</Text>
             </View>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Overall risk</Text>
-              <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
-            </View>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Findings</Text>
-              <Text style={styles.kpiValue}>
-                {failCount} NC · {passCount} OK
-              </Text>
-            </View>
-            <View style={styles.kpi}>
-              <Text style={styles.kpiLabel}>Status</Text>
-              <Text style={styles.kpiValue}>{data.status.toUpperCase()}</Text>
-            </View>
-          </View>
-          <Text style={[styles.body, { marginTop: 8 }]}>
-            This report documents a structured field audit of retail operations, statutory controls,
-            and store security. Non-conformances (NC) are derived from each question's expected
-            compliant answer. Photographic evidence is shown inline where provided by the inspecting officer.
-          </Text>
-        </View>
 
-        <PdfSectionChart responses={data.responses} />
+            <ReportMetaGrid data={data} />
+            {timeLine ? <Text style={styles.timeLine}>{timeLine}</Text> : null}
 
-        {data.headComment ? (
-          <View>
-            <Text style={styles.h2}>Supervisor review</Text>
-            <Text style={styles.body}>{data.headComment}</Text>
-          </View>
-        ) : null}
+            <View style={styles.bodyPad}>
+              <PdfSectionChart responses={data.responses} />
 
-        {data.generalRemark ? (
-          <View>
-            <Text style={styles.h2}>General observations</Text>
-            <Text style={styles.body}>{data.generalRemark}</Text>
-          </View>
-        ) : null}
-
-        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Detailed audit findings</Text>
-
-        {Array.from(grouped.entries()).map(([section, items]) => (
-          <View key={section}>
-            <Text style={styles.sectionTitle}>{section}</Text>
-            {items.map((r, i) => {
-              const status = statusForItem(r);
-              const images = (r.attachments ?? []).filter(
-                (a) => a.type !== 'document' && /\.(jpe?g|png|webp|gif)$/i.test(a.url),
-              );
-              const docs = (r.attachments ?? []).filter((a) => a.type === 'document' || !/\.(jpe?g|png|webp|gif)$/i.test(a.url));
-
-              return (
-                <View
-                  key={`${section}-${i}`}
-                  style={[
-                    styles.itemCard,
-                    status === 'fail' ? styles.itemCardFail : status === 'pass' ? styles.itemCardPass : {},
-                  ]}
-                  wrap={false}
-                >
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemText}>{r.item_text}</Text>
-                    <Text
-                      style={[
-                        styles.statusPill,
-                        status === 'pass' ? styles.pillPass : status === 'fail' ? styles.pillFail : styles.pillNa,
-                      ]}
-                    >
-                      {status === 'pass'
-                        ? 'COMPLIANT'
-                        : status === 'fail'
-                          ? 'NON-CONFORMANCE'
-                          : 'N/A'}
-                      {' · '}
-                      {r.response}
-                    </Text>
-                  </View>
-                  {r.risk_level ? (
-                    <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>
-                      Risk classification: {r.risk_level}
-                    </Text>
-                  ) : null}
-                  {r.remarks ? <Text style={styles.remark}>Officer remark: {r.remarks}</Text> : null}
-                  {images.length > 0 && (
-                    <View>
-                      <Text style={styles.evidenceLabel}>Photographic evidence</Text>
-                      <View style={styles.photoRow}>
-                        {images.map((p, pi) => (
-                          <Image key={pi} src={p.url} style={[styles.photo, { marginRight: 6, marginBottom: 6 }]} />
-                        ))}
-                      </View>
-                    </View>
-                  )}
-                  {docs.length > 0 && (
-                    <View>
-                      <Text style={styles.evidenceLabel}>Supporting documents</Text>
-                      {docs.map((d, di) => (
-                        <Text key={di} style={styles.docChip}>
-                          {d.name ?? `Document ${di + 1}`}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
+              {data.headComment ? (
+                <View style={styles.noteBox}>
+                  <Text style={styles.h2}>Supervisor review</Text>
+                  <Text style={styles.body}>{data.headComment}</Text>
                 </View>
-              );
-            })}
+              ) : null}
+
+              {data.generalRemark ? (
+                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]}>
+                  <Text style={styles.h2}>General observations</Text>
+                  <Text style={styles.body}>{data.generalRemark}</Text>
+                </View>
+              ) : null}
+
+              {Array.from(grouped.entries()).map(([section, items]) => (
+                <SectionTable key={section} section={section} items={items} />
+              ))}
+
+              <View style={styles.summaryStrip}>
+                <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
+                <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
+                <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+              </View>
+            </View>
           </View>
-        ))}
+        </View>
 
         {!hasAnyEvidence && data.photos && data.photos.length > 0 && (
-          <View break>
-            <Text style={styles.sectionTitle}>Unassigned attachments</Text>
-            <View style={styles.photoRow}>
-              {data.photos.slice(0, 12).map((p, i) => (
-                <Image key={i} src={p.url} style={[styles.photo, { marginRight: 6, marginBottom: 6 }]} />
-              ))}
+          <View style={[styles.pageInner, { marginTop: 16 }]} break>
+            <View style={styles.shell}>
+              <View style={[styles.sectionHead, { backgroundColor: '#eff6ff', borderBottomColor: '#93c5fd', padding: 12 }]}>
+                <Text style={{ color: '#1d4ed8' }}>Photo Evidence</Text>
+              </View>
+              <View style={styles.photoSection}>
+                <View style={styles.photoRow}>
+                  {data.photos.slice(0, 12).map((p, i) => (
+                    <Image key={i} src={p.url} style={styles.photo} />
+                  ))}
+                </View>
+              </View>
             </View>
           </View>
         )}
 
-        <View style={styles.footer} fixed>
-          <Text>Vigilance Management System · CONFIDENTIAL · For internal audit use only</Text>
-          <Text>Page 1</Text>
-        </View>
+        <Text style={styles.footer} fixed>
+          This report is an official field inspection document. Generated on {data.inspectionDate} · {data.branchName} Store · Officer: {data.officerName} · System: Store Monitoring Division
+        </Text>
       </Page>
     </Document>
   );
@@ -410,7 +470,7 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
 
 function BrowserInspectionReportDoc({
   data,
-  documentTitle = 'STORE COMPLIANCE AUDIT REPORT',
+  documentTitle = 'STORE INSPECTION REPORT',
 }: {
   data: InspectionPdfData;
   documentTitle?: string;
@@ -422,162 +482,112 @@ function BrowserInspectionReportDoc({
     grouped.get(section)!.push(r);
   }
 
-  const failCount = data.responses.filter((r) => statusForItem(r) === 'fail').length;
-  const passCount = data.responses.filter((r) => statusForItem(r) === 'pass').length;
   const photoEvidence = data.photos ?? [];
+  const timeLine =
+    data.timeIn || data.timeOut
+      ? `Inspection Time: ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}`
+      : null;
 
   return (
     <Document
       title={`${documentTitle} — ${data.branchName} — ${data.inspectionDate}`}
       author="Vigilance Management System"
     >
-      <Page size="A4" style={styles.page}>
-        <View style={styles.coverBand}>
-          <Text style={styles.coverTitle}>{documentTitle}</Text>
-          <Text style={styles.coverSubtitle}>Vigilance Management System · Confidential</Text>
-          <Text style={styles.coverMeta}>
-            {data.branchName}
-            {data.city ? ` · ${data.city}` : ''}
-            {'\n'}
-            {data.branchType} · Officer: {data.officerName}
-            {'\n'}
-            Inspection date: {data.inspectionDate}
-            {data.timeIn || data.timeOut ? ` · ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}` : ''}
-            {data.submittedAt ? `\nSubmitted: ${new Date(data.submittedAt).toLocaleString('en-IN')}` : ''}
-          </Text>
-        </View>
-
-        <Text style={styles.docRef}>{formatRef(data.id, data.inspectionDate)}</Text>
-
-        <View style={styles.executiveBox}>
-          <Text style={styles.executiveTitle}>Executive summary</Text>
-          <View style={styles.kpiRow}>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Compliance score</Text>
-              <Text style={styles.kpiValue}>{data.complianceScore.toFixed(1)}%</Text>
+      <Page size="A4" style={styles.page} wrap>
+        <View style={[styles.pageInner, { marginTop: 24 }]}>
+          <View style={styles.shell}>
+            <View style={styles.coverBand}>
+              <Text style={styles.coverTitle}>{documentTitle}</Text>
+              <Text style={styles.coverSubtitle}>Official Field Inspection Document</Text>
             </View>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Overall risk</Text>
-              <Text style={styles.kpiValue}>{data.riskLevel.toUpperCase()}</Text>
-            </View>
-            <View style={[styles.kpi, { marginRight: 8 }]}>
-              <Text style={styles.kpiLabel}>Findings</Text>
-              <Text style={styles.kpiValue}>
-                {failCount} NC · {passCount} OK
-              </Text>
-            </View>
-            <View style={styles.kpi}>
-              <Text style={styles.kpiLabel}>Status</Text>
-              <Text style={styles.kpiValue}>{data.status.toUpperCase()}</Text>
-            </View>
-          </View>
-        </View>
 
-        <PdfSectionChart responses={data.responses} />
+            <ReportMetaGrid data={data} />
+            {timeLine ? <Text style={styles.timeLine}>{timeLine}</Text> : null}
 
-        {data.headComment ? (
-          <View>
-            <Text style={styles.h2}>Supervisor review</Text>
-            <Text style={styles.body}>{data.headComment}</Text>
-          </View>
-        ) : null}
+            <View style={styles.bodyPad}>
+              <PdfSectionChart responses={data.responses} />
 
-        {data.generalRemark ? (
-          <View>
-            <Text style={styles.h2}>General observations</Text>
-            <Text style={styles.body}>{data.generalRemark}</Text>
-          </View>
-        ) : null}
-      </Page>
-
-      {Array.from(grouped.entries()).map(([section, items]) => (
-        <Page key={section} size="A4" style={styles.page}>
-          <Text style={styles.sectionTitle}>{section}</Text>
-          {items.map((r, index) => {
-            const status = statusForItem(r);
-            return (
-              <View
-                key={`${section}-${index}`}
-                style={[
-                  styles.itemCard,
-                  status === 'fail' ? styles.itemCardFail : status === 'pass' ? styles.itemCardPass : {},
-                ]}
-              >
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemText}>{r.item_text}</Text>
-                  <Text
-                    style={[
-                      styles.statusPill,
-                      status === 'pass' ? styles.pillPass : status === 'fail' ? styles.pillFail : styles.pillNa,
-                    ]}
-                  >
-                    {r.response}
-                  </Text>
+              {data.headComment ? (
+                <View style={styles.noteBox}>
+                  <Text style={styles.h2}>Supervisor review</Text>
+                  <Text style={styles.body}>{data.headComment}</Text>
                 </View>
-                {r.remarks ? <Text style={styles.remark}>Officer remark: {r.remarks}</Text> : null}
-              </View>
-            );
-          })}
-          <View style={styles.footer} fixed>
-            <Text>Vigilance Management System · CONFIDENTIAL</Text>
-            <Text>{section}</Text>
-          </View>
-        </Page>
-      ))}
+              ) : null}
 
-      {photoEvidence.length > 0 ? (
-        <Page size="A4" style={styles.page}>
-          <Text style={styles.sectionTitle}>Photo evidence</Text>
-          <View style={styles.photoRow}>
-            {photoEvidence.map((photo, index) => (
-              <Image
-                key={`${photo.url.slice(0, 48)}-${index}`}
-                src={photo.url}
-                style={[styles.photo, { marginRight: 6, marginBottom: 6 }]}
-              />
-            ))}
+              {data.generalRemark ? (
+                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]}>
+                  <Text style={styles.h2}>General observations</Text>
+                  <Text style={styles.body}>{data.generalRemark}</Text>
+                </View>
+              ) : null}
+
+              {Array.from(grouped.entries()).map(([section, items]) => (
+                <SectionTable key={section} section={section} items={items} />
+              ))}
+
+              <View style={styles.summaryStrip}>
+                <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
+                <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
+                <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.footer} fixed>
-            <Text>Vigilance Management System · CONFIDENTIAL</Text>
-            <Text>Photo evidence</Text>
+        </View>
+
+        {photoEvidence.length > 0 ? (
+          <View style={[styles.pageInner, { marginTop: 16 }]} break>
+            <View style={styles.shell}>
+              <View style={[styles.sectionHead, { backgroundColor: '#eff6ff', borderBottomColor: '#93c5fd', padding: 12 }]}>
+                <Text style={{ color: '#1d4ed8' }}>Photo Evidence</Text>
+              </View>
+              <View style={styles.photoSection}>
+                <View style={styles.photoRow}>
+                  {photoEvidence.map((photo, index) => (
+                    <Image
+                      key={`${photo.url.slice(0, 48)}-${index}`}
+                      src={photo.url}
+                      style={styles.photo}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
           </View>
-        </Page>
-      ) : null}
+        ) : null}
+
+        <Text style={styles.footer} fixed>
+          This report is an official field inspection document. Generated on {data.inspectionDate} · {data.branchName} Store · Officer: {data.officerName} · System: Store Monitoring Division
+        </Text>
+      </Page>
     </Document>
   );
 }
 
 function MinimalInspectionReportDoc({ data }: { data: InspectionPdfData }) {
+  const grouped = new Map<string, InspectionPdfResponse[]>();
+  for (const r of data.responses) {
+    const section = r.section || 'General';
+    if (!grouped.has(section)) grouped.set(section, []);
+    grouped.get(section)!.push(r);
+  }
+
   return (
     <Document title={`Audit Report - ${data.branchName}`}>
-      <Page size="A4" style={{ padding: 24, fontSize: 10, fontFamily: 'Helvetica', color: '#0f172a' }}>
-        <Text style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Store Compliance Audit Report</Text>
-        <Text>Store: {data.branchName}</Text>
-        <Text>Branch Type: {data.branchType}</Text>
-        <Text>Officer: {data.officerName}</Text>
-        <Text>Inspection Date: {data.inspectionDate}</Text>
-        <Text>Submitted At: {data.submittedAt ?? '-'}</Text>
-        <Text>Compliance Score: {data.complianceScore.toFixed(1)}%</Text>
-        <Text>Overall Risk: {data.riskLevel}</Text>
-        <Text>Status: {data.status}</Text>
-
-        <View style={{ marginTop: 14 }}>
-          <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Checklist Summary</Text>
-          {data.responses.slice(0, 120).map((response, index) => (
-            <View key={`${response.section}-${index}`} style={{ marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <Text>{response.section || 'General'} - {response.item_text || 'Checklist item'}</Text>
-              <Text>Response: {response.response || '-'}</Text>
-              {response.remarks ? <Text>Remark: {response.remarks}</Text> : null}
+      <Page size="A4" style={styles.page} wrap>
+        <View style={[styles.pageInner, { marginTop: 24 }]}>
+          <View style={styles.shell}>
+            <View style={styles.coverBand}>
+              <Text style={styles.coverTitle}>STORE INSPECTION REPORT</Text>
+              <Text style={styles.coverSubtitle}>Official Field Inspection Document</Text>
             </View>
-          ))}
-        </View>
-
-        {data.generalRemark ? (
-          <View style={{ marginTop: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>General Remark</Text>
-            <Text>{data.generalRemark}</Text>
+            <ReportMetaGrid data={data} />
+            <View style={styles.bodyPad}>
+              {Array.from(grouped.entries()).map(([section, items]) => (
+                <SectionTable key={section} section={section} items={items} />
+              ))}
+            </View>
           </View>
-        ) : null}
+        </View>
       </Page>
     </Document>
   );

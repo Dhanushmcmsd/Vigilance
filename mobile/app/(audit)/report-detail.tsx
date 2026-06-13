@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { RADIUS, SPACING } from '../../lib/a11y';
 import { AUDIT, auditScoreColor } from '../../lib/auditTheme';
 import { buildAuditPdfHtml, prepareAuditPdfInspection } from '../../lib/auditPdf';
+import { responseTheme, sectionTheme } from '../../lib/reportTheme';
 import { isViolationResponse, type ChecklistResponse } from '../../lib/checklistScoring';
 import {
   collectInspectionImageFiles,
@@ -417,32 +418,35 @@ export default function AuditReportDetailScreen() {
         </View>
 
         {/* Checklist sections */}
-        {Object.entries(sections).map(([section, items]) => (
+        {Object.entries(sections).map(([section, items]) => {
+          const theme = sectionTheme(section);
+          return (
           <View
             key={section}
             style={{
               backgroundColor: AUDIT.surface,
               borderRadius: RADIUS.xl,
               marginBottom: SPACING.md,
-              borderWidth: 1,
-              borderColor: AUDIT.border,
+              borderWidth: 1.5,
+              borderColor: theme.border,
               overflow: 'hidden',
             }}
           >
             <View
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: theme.bg,
                 padding: SPACING.md,
-                borderBottomWidth: 1,
-                borderBottomColor: AUDIT.border,
+                borderBottomWidth: 1.5,
+                borderBottomColor: theme.border,
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: AUDIT.accent, letterSpacing: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.text, letterSpacing: 1 }}>
                 {section.toUpperCase()}
               </Text>
             </View>
             {items.map((r, idx) => {
               const violation = isViolationResponse(r.response, r.checklist_item?.trigger_on_no ?? true);
+              const resp = responseTheme(r.response, violation);
               const linkedEvidence = itemEvidenceMap.get(r.checklist_item_id) ?? [];
               return (
                 <View
@@ -452,7 +456,7 @@ export default function AuditReportDetailScreen() {
                     padding: SPACING.md,
                     borderBottomWidth: idx < items.length - 1 ? 1 : 0,
                     borderBottomColor: AUDIT.border,
-                    backgroundColor: violation ? 'rgba(239,68,68,0.06)' : 'transparent',
+                    backgroundColor: violation ? `${resp.bg}88` : r.response === 'Yes' ? 'rgba(16,185,129,0.08)' : 'transparent',
                   }}
                 >
                   <View style={{ flex: 1 }}>
@@ -460,20 +464,21 @@ export default function AuditReportDetailScreen() {
                       <Text style={{ flex: 1, color: AUDIT.text, fontSize: 13 }}>
                         {r.checklist_item?.item_text ?? '-'}
                       </Text>
-                      <Text
+                      <View
                         style={{
-                          fontWeight: '800',
-                          fontSize: 13,
                           marginLeft: 8,
-                          color: violation
-                            ? AUDIT.danger
-                            : r.response === 'Yes'
-                            ? AUDIT.success
-                            : AUDIT.textMuted,
+                          borderWidth: 1.5,
+                          borderColor: resp.border,
+                          backgroundColor: resp.pill,
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
                         }}
                       >
-                        {r.response}
-                      </Text>
+                        <Text style={{ fontWeight: '800', fontSize: 11, color: resp.text }}>
+                          {r.response}
+                        </Text>
+                      </View>
                     </View>
                     {r.remarks ? (
                       <Text style={{ marginTop: 6, color: AUDIT.textMuted, fontSize: 12, lineHeight: 18 }}>
@@ -507,7 +512,8 @@ export default function AuditReportDetailScreen() {
               );
             })}
           </View>
-        ))}
+          );
+        })}
 
         {/* General Remarks */}
         {(data.general_remarks ?? []).length > 0 && (

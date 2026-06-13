@@ -1,6 +1,7 @@
 import { pdf, Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { ManagementInspection } from './inspectionQueries';
 import type { ExecutiveStats } from './managementAnalytics';
+import { REPORT_BRAND } from './reportTheme';
 
 export interface DashboardExportPayload {
   rangeLabel: string;
@@ -92,15 +93,56 @@ export function downloadDashboardCsv(payload: DashboardExportPayload) {
 }
 
 const pdfStyles = StyleSheet.create({
-  page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica' },
-  title: { fontSize: 18, marginBottom: 4, fontWeight: 'bold' },
-  subtitle: { fontSize: 10, color: '#64748b', marginBottom: 20 },
-  sectionTitle: { fontSize: 12, fontWeight: 'bold', marginTop: 16, marginBottom: 8 },
-  row: { flexDirection: 'row', borderBottom: '1px solid #e2e8f0', paddingVertical: 4 },
-  cellLabel: { width: '45%' },
-  cellValue: { width: '55%', fontWeight: 'bold' },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f1f5f9', padding: 6, fontWeight: 'bold' },
-  tableRow: { flexDirection: 'row', padding: 6, borderBottom: '1px solid #f1f5f9' },
+  page: { padding: 0, fontSize: 10, fontFamily: 'Helvetica', backgroundColor: '#f8fafc' },
+  shell: {
+    margin: 28,
+    borderWidth: 2,
+    borderColor: REPORT_BRAND.navy,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  hero: { backgroundColor: REPORT_BRAND.navy, padding: 22, color: '#ffffff' },
+  title: { fontSize: 18, marginBottom: 4, fontWeight: 'bold', color: '#ffffff' },
+  subtitle: { fontSize: 10, color: '#dbeafe', marginBottom: 0 },
+  body: { padding: 18 },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 8,
+    backgroundColor: '#eef2ff',
+    borderWidth: 1.5,
+    borderColor: '#6366f1',
+    borderRadius: 6,
+    color: '#3730a3',
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+  },
+  cellLabel: { width: '45%', color: '#334155' },
+  cellValue: { width: '55%', fontWeight: 'bold', color: '#0f172a' },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#4f46e5',
+    padding: 7,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    padding: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+  },
+  tableRowAlt: { backgroundColor: '#f8fafc' },
   colBranch: { width: '28%' },
   colType: { width: '12%' },
   colCity: { width: '18%' },
@@ -115,59 +157,65 @@ function DashboardPdfDocument({ payload }: { payload: DashboardExportPayload }) 
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
-        <Text style={pdfStyles.title}>Vigilance Executive Dashboard</Text>
-        <Text style={pdfStyles.subtitle}>
-          {rangeLabel} · Generated {generatedAt.toLocaleString('en-IN')}
-        </Text>
-
-        <Text style={pdfStyles.sectionTitle}>Network overview</Text>
-        {[
-          ['Total inspections', stats.total.value],
-          ['Network compliance', `${stats.compliance.value.toFixed(1)}%`],
-          ['Non-conformances', stats.violations.value],
-          ['Critical visits', stats.critical.value],
-          ['Pending review', stats.pending.value],
-          ['Branches covered', stats.branchesCovered.value],
-          ['CFC compliance', `${stats.cfc.value.toFixed(1)}%`],
-          ['Store compliance', `${stats.store.value.toFixed(1)}%`],
-        ].map(([label, value]) => (
-          <View key={label} style={pdfStyles.row}>
-            <Text style={pdfStyles.cellLabel}>{label}</Text>
-            <Text style={pdfStyles.cellValue}>{value}</Text>
-          </View>
-        ))}
-
-        <Text style={pdfStyles.sectionTitle}>Top non-conformances</Text>
-        {topIssues.slice(0, 8).map((issue) => (
-          <View key={`${issue.section}-${issue.item}`} style={pdfStyles.row}>
-            <Text style={pdfStyles.cellLabel}>
-              {issue.rank}. {issue.item}
-            </Text>
-            <Text style={pdfStyles.cellValue}>
-              {issue.section} · {issue.count} ({issue.percentage.toFixed(1)}%)
+        <View style={pdfStyles.shell}>
+          <View style={pdfStyles.hero}>
+            <Text style={pdfStyles.title}>Vigilance Executive Dashboard</Text>
+            <Text style={pdfStyles.subtitle}>
+              {rangeLabel} · Generated {generatedAt.toLocaleString('en-IN')}
             </Text>
           </View>
-        ))}
 
-        <Text style={pdfStyles.sectionTitle}>Branch performance</Text>
-        <View style={pdfStyles.tableHeader}>
-          <Text style={pdfStyles.colBranch}>Branch</Text>
-          <Text style={pdfStyles.colType}>Type</Text>
-          <Text style={pdfStyles.colCity}>City</Text>
-          <Text style={pdfStyles.colScore}>Compliance</Text>
-          <Text style={pdfStyles.colRisk}>Risk</Text>
-          <Text style={pdfStyles.colDate}>Last visit</Text>
+          <View style={pdfStyles.body}>
+            <Text style={pdfStyles.sectionTitle}>Network overview</Text>
+            {[
+              ['Total inspections', stats.total.value],
+              ['Network compliance', `${stats.compliance.value.toFixed(1)}%`],
+              ['Non-conformances', stats.violations.value],
+              ['Critical visits', stats.critical.value],
+              ['Pending review', stats.pending.value],
+              ['Branches covered', stats.branchesCovered.value],
+              ['CFC compliance', `${stats.cfc.value.toFixed(1)}%`],
+              ['Store compliance', `${stats.store.value.toFixed(1)}%`],
+            ].map(([label, value]) => (
+              <View key={label} style={pdfStyles.row}>
+                <Text style={pdfStyles.cellLabel}>{label}</Text>
+                <Text style={pdfStyles.cellValue}>{value}</Text>
+              </View>
+            ))}
+
+            <Text style={pdfStyles.sectionTitle}>Top non-conformances</Text>
+            {topIssues.slice(0, 8).map((issue) => (
+              <View key={`${issue.section}-${issue.item}`} style={pdfStyles.row}>
+                <Text style={pdfStyles.cellLabel}>
+                  {issue.rank}. {issue.item}
+                </Text>
+                <Text style={pdfStyles.cellValue}>
+                  {issue.section} · {issue.count} ({issue.percentage.toFixed(1)}%)
+                </Text>
+              </View>
+            ))}
+
+            <Text style={pdfStyles.sectionTitle}>Branch performance</Text>
+            <View style={pdfStyles.tableHeader}>
+              <Text style={pdfStyles.colBranch}>Branch</Text>
+              <Text style={pdfStyles.colType}>Type</Text>
+              <Text style={pdfStyles.colCity}>City</Text>
+              <Text style={pdfStyles.colScore}>Compliance</Text>
+              <Text style={pdfStyles.colRisk}>Risk</Text>
+              <Text style={pdfStyles.colDate}>Last visit</Text>
+            </View>
+            {branchRows.slice(0, 15).map((row, index) => (
+              <View key={row.branchName} style={[pdfStyles.tableRow, index % 2 ? pdfStyles.tableRowAlt : {}]}>
+                <Text style={pdfStyles.colBranch}>{row.branchName}</Text>
+                <Text style={pdfStyles.colType}>{row.type}</Text>
+                <Text style={pdfStyles.colCity}>{row.city}</Text>
+                <Text style={pdfStyles.colScore}>{row.avgCompliance.toFixed(1)}%</Text>
+                <Text style={pdfStyles.colRisk}>{row.riskLevel}</Text>
+                <Text style={pdfStyles.colDate}>{row.lastInspected}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-        {branchRows.slice(0, 15).map((row) => (
-          <View key={row.branchName} style={pdfStyles.tableRow}>
-            <Text style={pdfStyles.colBranch}>{row.branchName}</Text>
-            <Text style={pdfStyles.colType}>{row.type}</Text>
-            <Text style={pdfStyles.colCity}>{row.city}</Text>
-            <Text style={pdfStyles.colScore}>{row.avgCompliance.toFixed(1)}%</Text>
-            <Text style={pdfStyles.colRisk}>{row.riskLevel}</Text>
-            <Text style={pdfStyles.colDate}>{row.lastInspected}</Text>
-          </View>
-        ))}
       </Page>
     </Document>
   );

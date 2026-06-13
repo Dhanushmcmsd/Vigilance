@@ -133,6 +133,26 @@ function generatePassword(): string {
   return out.slice(0, symPos) + symbol[bytes[0] % symbol.length] + out.slice(symPos);
 }
 
+type AdminClient = ReturnType<typeof createClient>;
+
+/** listUsers() ignores email filters — scan pages for an exact match. */
+async function findAuthUserByEmail(admin: AdminClient, email: string) {
+  let page = 1;
+  const perPage = 200;
+  while (page <= 20) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error('[admin-create-user] listUsers failed', error);
+      return null;
+    }
+    const match = data.users.find((u) => u.email?.toLowerCase() === email);
+    if (match) return match;
+    if (data.users.length < perPage) break;
+    page += 1;
+  }
+  return null;
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -203,18 +223,55 @@ serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Pre-flight: surface a clean 409 instead of the cryptic Supabase auth
-  // error. listUsers with a query filter is paginated; we only need to know
-  // if any row exists, so page 1 / per_page 1 is enough.
-  // (Supabase ignores `filter` for non-admin keys; we're using the service role.)
-  // deno-lint-ignore no-explicit-any
-  const { data: existing } = await (admin.auth.admin as any).listUsers({
-    page: 1,
-    perPage: 1,
-    filter: `email.eq.${email}`,
-  });
-  if (existing?.users?.length) {
+  // Pre-flight: check user_roles (what the admin UI lists) and auth.users.
+  const { data: existingRole, error: roleLookupErr } = await admin
+    .from('user_roles')
+    .select('id, user_id, email')
+    .ilike('email', email)
+    .maybeSingle();
+
+  if (roleLookupErr) {
+    console.error('[admin-create-user] user_roles lookup failed', roleLookupErr);
+    return json({ error: 'Could not verify existing accounts.' }, 500);
+  }
+
+  if (existingRole) {
     return json({ error: 'An account with this email already exists.' }, 409);
+  }
+
+  const orphanAuthUser = await findAuthUserByEmail(admin, email);
+  if (orphanAuthUser) {
+    const { error: linkOrphanErr } = await admin.from('user_roles').insert({
+      user_id: orphanAuthUser.id,
+      email,
+      name,
+      role,
+      phone: phone ?? null,
+      is_active: true,
+    });
+    if (linkOrphanErr) {
+      console.error('[admin-create-user] orphan link failed', linkOrphanErr);
+      return json({ error: `Could not link existing auth user: ${linkOrphanErr.message}` }, 500);
+    }
+
+    const { error: pwdErr } = await admin.auth.admin.updateUserById(orphanAuthUser.id, {
+      password,
+      user_metadata: { name, role },
+    });
+    if (pwdErr) {
+      console.error('[admin-create-user] orphan password update failed', pwdErr);
+      return json({ error: pwdErr.message }, 500);
+    }
+
+    return json(
+      {
+        user_id: orphanAuthUser.id,
+        password,
+        generated,
+        recovered_orphan: true,
+      },
+      200,
+    );
   }
 
   // ── 6. Create auth user ────────────────────────────────────────────────────

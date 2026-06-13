@@ -128,7 +128,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.claim_branch_inspection(
   p_branch_id uuid,
   p_inspection_date date DEFAULT CURRENT_DATE,
-  p_time_in text DEFAULT NULL
+  p_time_in time DEFAULT NULL
 )
 RETURNS uuid
 LANGUAGE plpgsql

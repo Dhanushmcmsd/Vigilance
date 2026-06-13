@@ -587,6 +587,7 @@ function BranchesTab() {
            geofence_radius, is_active,
            branch_types:branch_type_id ( type_name )`,
         )
+        .is('deleted_at', null)
         .order('branch_name');
       if (error) throw error;
       return (data ?? []).map((row) => {
@@ -604,13 +605,35 @@ function BranchesTab() {
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const { error } = await supabase
         .from('branches')
-        .update({ is_active, deleted_at: is_active ? null : new Date().toISOString() })
+        .update({ is_active })
         .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-branches'] }),
     onError: (err: Error) => window.alert(err.message || 'Failed to update branch.'),
   });
+
+  const deleteBranch = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('branches')
+        .update({ is_active: false, deleted_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setEditBranch(null);
+      qc.invalidateQueries({ queryKey: ['admin-branches'] });
+    },
+    onError: (err: Error) => window.alert(err.message || 'Failed to delete branch.'),
+  });
+
+  const handleDeleteBranch = (branch: Branch) => {
+    const confirmed = window.confirm(
+      `Delete "${branch.branch_name}"?\n\nThis removes the branch from the list and officer pickers. Past inspections are kept.`,
+    );
+    if (confirmed) deleteBranch.mutate(branch.id);
+  };
 
   const filteredBranches = branches.filter((b) => {
     const q = branchSearch.trim().toLowerCase();
@@ -660,7 +683,7 @@ function BranchesTab() {
                     </span>
                   </td>
                   <td className="td">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button type="button" onClick={() => setEditBranch(b)} className="btn-xs">Edit</button>
                       <button
                         type="button"
@@ -668,6 +691,14 @@ function BranchesTab() {
                         className={`btn-xs ${b.is_active ? 'btn-xs-red' : 'btn-xs-green'}`}
                       >
                         {b.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBranch(b)}
+                        disabled={deleteBranch.isPending}
+                        className="btn-xs btn-xs-red"
+                      >
+                        Delete
                       </button>
                     </div>
                   </td>

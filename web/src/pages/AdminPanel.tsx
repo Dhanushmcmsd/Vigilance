@@ -59,6 +59,7 @@ interface Branch {
   city: string;
   region: string;
   is_active: boolean;
+  deleted_at?: string | null;
   latitude: number | null;
   longitude: number | null;
   geofence_radius: number;
@@ -576,19 +577,23 @@ function BranchesTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editBranch, setEditBranch] = useState<Branch | null>(null);
   const [branchSearch, setBranchSearch] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
-    queryKey: ['admin-branches'],
+    queryKey: ['admin-branches', showDeleted],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('branches')
         .select(
           `id, branch_name, branch_type_id, location, city, region, latitude, longitude,
-           geofence_radius, is_active,
+           geofence_radius, is_active, deleted_at,
            branch_types:branch_type_id ( type_name )`,
         )
-        .is('deleted_at', null)
         .order('branch_name');
+      if (!showDeleted) {
+        query = query.is('deleted_at', null);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []).map((row) => {
         const typeRel = (row as { branch_types?: { type_name?: string } | { type_name?: string }[] | null }).branch_types;
@@ -628,6 +633,18 @@ function BranchesTab() {
     onError: (err: Error) => window.alert(err.message || 'Failed to delete branch.'),
   });
 
+  const restoreBranch = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('branches')
+        .update({ is_active: true, deleted_at: null })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-branches'] }),
+    onError: (err: Error) => window.alert(err.message || 'Failed to restore branch.'),
+  });
+
   const handleDeleteBranch = (branch: Branch) => {
     const confirmed = window.confirm(
       `Delete "${branch.branch_name}"?\n\nThis removes the branch from the list and officer pickers. Past inspections are kept.`,
@@ -640,23 +657,36 @@ function BranchesTab() {
     if (!q) return true;
     return (
       b.branch_name.toLowerCase().includes(q) ||
+      (b.location ?? '').toLowerCase().includes(q) ||
       (b.city ?? '').toLowerCase().includes(q) ||
       (b.region ?? '').toLowerCase().includes(q)
     );
   });
+
+  const isDeletedBranch = (b: Branch) => !!b.deleted_at;
 
   return (
     <div className="space-y-6">
       <KeralaBranchMap onAddBranch={() => setShowAdd(true)} />
       <DistrictOfficersPanel />
 
-      <input
-        type="text"
-        className="input w-full max-w-md"
-        placeholder="Search branches by name, city, or district..."
-        value={branchSearch}
-        onChange={(e) => setBranchSearch(e.target.value)}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          className="input w-full max-w-md"
+          placeholder="Search branches by name, city, or district..."
+          value={branchSearch}
+          onChange={(e) => setBranchSearch(e.target.value)}
+        />
+        <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showDeleted}
+            onChange={(e) => setShowDeleted(e.target.checked)}
+          />
+          Show deleted branches
+        </label>
+      </div>
 
       {isLoading ? (
         <p className="text-gray-500">Loading branches...</p>
@@ -671,6 +701,17 @@ function BranchesTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {!isLoading && filteredBranches.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="td text-center text-gray-400 py-8">
+                    {branchSearch.trim()
+                      ? `No branches match "${branchSearch.trim()}".${showDeleted ? '' : ' Try enabling "Show deleted branches".'}`
+                      : showDeleted
+                        ? 'No deleted branches.'
+                        : 'No branches found.'}
+                  </td>
+                </tr>
+              )}
               {filteredBranches.map((b) => (
                 <tr key={b.id} className="tr">
                   <td className="td font-medium">{b.branch_name}</td>
@@ -678,28 +719,45 @@ function BranchesTab() {
                   <td className="td">{b.city}</td>
                   <td className="td">{b.region}</td>
                   <td className="td">
-                    <span className={`badge ${b.is_active ? 'badge-green' : 'badge-red'}`}>
-                      {b.is_active ? 'Active' : 'Inactive'}
+                    <span
+                      className={`badge ${
+                        isDeletedBranch(b) ? 'badge-red' : b.is_active ? 'badge-green' : 'badge-red'
+                      }`}
+                    >
+                      {isDeletedBranch(b) ? 'Deleted' : b.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="td">
                     <div className="flex gap-2 flex-wrap">
-                      <button type="button" onClick={() => setEditBranch(b)} className="btn-xs">Edit</button>
-                      <button
-                        type="button"
-                        onClick={() => toggleBranch.mutate({ id: b.id, is_active: !b.is_active })}
-                        className={`btn-xs ${b.is_active ? 'btn-xs-red' : 'btn-xs-green'}`}
-                      >
-                        {b.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteBranch(b)}
-                        disabled={deleteBranch.isPending}
-                        className="btn-xs btn-xs-red"
-                      >
-                        Delete
-                      </button>
+                      {isDeletedBranch(b) ? (
+                        <button
+                          type="button"
+                          onClick={() => restoreBranch.mutate(b.id)}
+                          disabled={restoreBranch.isPending}
+                          className="btn-xs btn-xs-green"
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => setEditBranch(b)} className="btn-xs">Edit</button>
+                          <button
+                            type="button"
+                            onClick={() => toggleBranch.mutate({ id: b.id, is_active: !b.is_active })}
+                            className={`btn-xs ${b.is_active ? 'btn-xs-red' : 'btn-xs-green'}`}
+                          >
+                            {b.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBranch(b)}
+                            disabled={deleteBranch.isPending}
+                            className="btn-xs btn-xs-red"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

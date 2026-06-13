@@ -35,7 +35,6 @@ import {
 import { computeDistrictReportSummaries, storeDistrict } from '../../lib/districtCalculations';
 import { sortStoresByRecency } from '../../lib/utils';
 import { BloomGradientPanel } from '../ui/BloomGradientPanel';
-import { responseTheme, riskTheme, scoreTheme, sectionTheme } from '../../lib/reportTheme';
 
 type StoreSortKey = 'recent' | 'compliance';
 
@@ -376,78 +375,48 @@ export function ReportDetailModal({
           {!isLoading && !data && <p className="py-10 text-center text-slate-400">Report not found.</p>}
           {data && (
             <div className="space-y-4">
-              <div
-                className="vms-report-section p-4"
-                style={{
-                  borderColor: scoreTheme(data.compliance_score).border,
-                  background: `linear-gradient(135deg, ${scoreTheme(data.compliance_score).bg}22, rgba(255,255,255,0.04))`,
-                }}
-              >
+              <div className="vms-report-section p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Inspection Summary</p>
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="vms-report-meta-chip">
+                <div className="mt-3 flex flex-wrap gap-6 text-sm">
+                  <div>
                     <p className="text-xs text-white/55">Time In</p>
                     <p className="font-semibold text-white">{formatReportTime(data.time_in)}</p>
                   </div>
-                  <div className="vms-report-meta-chip">
+                  <div>
                     <p className="text-xs text-white/55">Time Out</p>
                     <p className="font-semibold text-white">{formatReportTime(data.time_out)}</p>
                   </div>
-                  <div
-                    className="vms-report-meta-chip"
-                    style={{ borderColor: '#93c5fd', background: 'rgba(59,130,246,0.12)' }}
-                  >
+                  <div>
                     <p className="text-xs text-white/55">Status</p>
-                    <p className="font-semibold capitalize text-sky-200">{data.status}</p>
+                    <p className="font-semibold capitalize text-emerald-300">{data.status}</p>
                   </div>
-                  <div
-                    className="vms-report-meta-chip"
-                    style={{
-                      borderColor: riskTheme(data.risk_level).border,
-                      background: `${riskTheme(data.risk_level).bg}33`,
-                    }}
-                  >
+                  <div>
                     <p className="text-xs text-white/55">Risk Level</p>
-                    <p className="font-semibold" style={{ color: riskTheme(data.risk_level).text }}>
-                      {(data.risk_level ?? 'low').toUpperCase()}
-                    </p>
+                    <p className="font-semibold uppercase text-white/85">{(data.risk_level ?? 'low')}</p>
                   </div>
                 </div>
                 {data.head_comment && (
-                  <p className="mt-3 rounded-lg border border-pink-400/30 bg-pink-950/25 p-3 text-sm text-white/85">
+                  <p className="mt-3 rounded-lg bg-black/25 p-3 text-sm text-white/85">
                     {data.head_comment}
                   </p>
                 )}
               </div>
 
-              {Object.entries(sections).map(([section, items]) => {
-                const theme = sectionTheme(section);
-                return (
-                <div
-                  key={section}
-                  className="vms-report-section overflow-hidden p-0"
-                  style={{ borderColor: theme.border }}
-                >
-                  <div
-                    className="border-b px-4 py-2.5"
-                    style={{ borderColor: theme.border, background: `${theme.bg}33` }}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: theme.text }}>
-                      {section}
-                    </p>
+              {Object.entries(sections).map(([section, items]) => (
+                <div key={section} className="vms-report-section overflow-hidden p-0">
+                  <div className="border-b border-white/10 bg-white/[0.03] px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{section}</p>
                   </div>
                   {items.map((r) => {
                     const triggerOnNo = r.checklist_item?.trigger_on_no ?? true;
                     const violation = isViolationResponse(r.response, triggerOnNo);
                     const itemText = r.checklist_item?.item_text ?? '—';
-                    const resp = responseTheme(r.response, violation);
                     return (
                       <div
                         key={r.id}
-                        className="flex gap-3 border-b border-white/8 px-4 py-3 last:border-0"
-                        style={{
-                          background: violation ? `${resp.bg}44` : r.response === 'Yes' ? 'rgba(16,185,129,0.06)' : 'transparent',
-                        }}
+                        className={`flex gap-3 border-b border-white/8 px-4 py-3 last:border-0 ${
+                          violation ? 'bg-red-950/30' : ''
+                        }`}
                       >
                         <div className="flex-1">
                           <p className="text-sm text-white">{itemText}</p>
@@ -461,12 +430,9 @@ export function ReportDetailModal({
                           )}
                         </div>
                         <span
-                          className="shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold"
-                          style={{
-                            color: resp.text,
-                            background: resp.pill,
-                            borderColor: resp.border,
-                          }}
+                          className={`shrink-0 text-sm font-bold ${
+                            violation ? 'text-red-300' : r.response === 'Yes' ? 'text-emerald-300' : 'text-white/55'
+                          }`}
                         >
                           {r.response}
                         </span>
@@ -474,8 +440,7 @@ export function ReportDetailModal({
                     );
                   })}
                 </div>
-              );
-              })}
+              ))}
 
               {(data.general_remarks ?? []).length > 0 && (
                 <div className="vms-report-section p-4">

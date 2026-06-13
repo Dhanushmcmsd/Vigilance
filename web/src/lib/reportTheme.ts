@@ -240,31 +240,24 @@ export const REPORT_HTML_CSS = `
     font-weight: 700;
     color: #1e3a8a;
   }
-  .report-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 12px 18px 0;
-    background: #f8fafc;
-    border-bottom: 2px solid #dbeafe;
+  .report-part {
+    margin-bottom: 20px;
+    padding-top: 4px;
   }
-  .report-tab {
-    display: inline-block;
-    padding: 8px 14px;
-    border-radius: 10px 10px 0 0;
-    border: 1.5px solid #cbd5e1;
-    border-bottom: none;
-    background: #ffffff;
-    color: #64748b;
-    font-size: 10px;
+  .report-part-title {
+    margin: 0 0 12px;
+    padding: 0 0 8px 12px;
+    border-left: 4px solid #1e3a8a;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
+    color: #1e3a8a;
   }
-  .report-tab.active {
-    background: linear-gradient(135deg, #1e3a8a, #4f46e5);
-    color: #ffffff;
-    border-color: #4f46e5;
+  .section-head-board {
+    background: #1e3a8a !important;
+    border-bottom-color: #1e3a8a !important;
+    color: #ffffff !important;
   }
   .chart-panel {
     margin-bottom: 16px;

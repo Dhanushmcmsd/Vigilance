@@ -24,6 +24,7 @@ import { ChecklistAdminTab } from '../components/admin/ChecklistAdminTab';
 import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
+import { geocodeAddress } from '../lib/geocodeAddress';
 import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
 import {
   buildHtmlBarChart,
@@ -743,6 +744,8 @@ function BranchModal({
   });
 
   const [customDistrict, setCustomDistrict] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const districtOptions = useMemo(() => {
     const current = form.watch('region')?.trim();
     const extra = customDistrict.trim();
@@ -753,6 +756,38 @@ function BranchModal({
   }, [customDistrict, form]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleAddressGeocode = async (address: string) => {
+    const trimmed = address.trim();
+    if (trimmed.length < 10) return;
+
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const result = await geocodeAddress(trimmed);
+      form.setValue('location', trimmed);
+      if (result.city) form.setValue('city', result.city);
+      if (result.district) form.setValue('region', result.district);
+      if (result.latitude != null && !Number.isNaN(result.latitude)) {
+        form.setValue('latitude', result.latitude);
+      }
+      if (result.longitude != null && !Number.isNaN(result.longitude)) {
+        form.setValue('longitude', result.longitude);
+      }
+      if (
+        !result.city &&
+        !result.district &&
+        result.latitude == null &&
+        result.longitude == null
+      ) {
+        setGeocodeError('Could not detect location. Fill city and coordinates manually.');
+      }
+    } catch {
+      setGeocodeError('Address lookup failed. Fill fields manually.');
+    } finally {
+      setGeocoding(false);
+    }
+  };
 
   const onSubmit = async (values: BranchFormValues) => {
     if (!storeTypeId) {
@@ -834,8 +869,35 @@ function BranchModal({
                   <FormItem className="sm:col-span-2">
                     <FormLabel>Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="Door #, street, landmark" {...field} value={field.value ?? ''} />
+                      <Input
+                        placeholder="Paste full address from Google Maps…"
+                        {...field}
+                        value={field.value ?? ''}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData('text').trim();
+                          if (pasted.length >= 10) {
+                            window.setTimeout(() => void handleAddressGeocode(pasted), 0);
+                          }
+                        }}
+                        onBlur={(e) => {
+                          field.onBlur();
+                          const value = e.target.value.trim();
+                          if (value.length >= 20 && !form.getValues('latitude')) {
+                            void handleAddressGeocode(value);
+                          }
+                        }}
+                      />
                     </FormControl>
+                    {geocoding ? (
+                      <FormDescription>Detecting city, district, and coordinates…</FormDescription>
+                    ) : (
+                      <FormDescription>
+                        Paste an address to auto-fill city, district, latitude, and longitude.
+                      </FormDescription>
+                    )}
+                    {geocodeError ? (
+                      <p className="text-amber-600 text-xs mt-1">{geocodeError}</p>
+                    ) : null}
                     <FormMessage />
                   </FormItem>
                 )}

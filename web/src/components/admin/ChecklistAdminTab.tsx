@@ -19,7 +19,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { supabase } from '../../lib/supabase';
 
-type ChecklistSubTab = 'Store' | 'Common';
 type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
 
 interface BranchTypeRow {
@@ -129,7 +128,6 @@ function SortableSectionHeader({
 function ChecklistItemModal({
   mode,
   item,
-  defaultType,
   sections,
   storeTypeId,
   onClose,
@@ -137,15 +135,11 @@ function ChecklistItemModal({
 }: {
   mode: 'add' | 'edit';
   item?: ChecklistItem;
-  defaultType: ChecklistSubTab;
   sections: string[];
   storeTypeId: string | undefined;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [checklistType, setChecklistType] = useState<ChecklistSubTab>(
-    item?.branch_type_id ? 'Store' : item ? 'Common' : defaultType,
-  );
   const [section, setSection] = useState(item?.section ?? sections[0] ?? '');
   const [sectionInput, setSectionInput] = useState(item?.section ?? '');
   const [itemText, setItemText] = useState(item?.item_text ?? '');
@@ -182,7 +176,7 @@ function ChecklistItemModal({
     setLoading(true);
     setError('');
     try {
-      const branchTypeId = checklistType === 'Common' ? null : storeTypeId ?? null;
+      const branchTypeId = storeTypeId ?? null;
 
       if (mode === 'edit' && item) {
         const { error: itemErr } = await supabase
@@ -241,18 +235,6 @@ function ChecklistItemModal({
         <h3 className="font-bold text-lg">
           {mode === 'add' ? 'Add Checklist Item' : 'Edit Checklist Item'}
         </h3>
-
-        <div>
-          <label className="label">Type</label>
-          <select
-            className="input w-full"
-            value={checklistType}
-            onChange={(e) => setChecklistType(e.target.value as ChecklistSubTab)}
-          >
-            <option value="Store">Store</option>
-            <option value="Common">Common</option>
-          </select>
-        </div>
 
         <div>
           <label className="label">Section</label>
@@ -411,7 +393,6 @@ function ChecklistItemModal({
 
 export function ChecklistAdminTab() {
   const qc = useQueryClient();
-  const [subTab, setSubTab] = useState<ChecklistSubTab>('Store');
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
@@ -435,10 +416,10 @@ export function ChecklistAdminTab() {
   const storeTypeId = branchTypes.find((bt) => bt.type_name === 'Store')?.id;
 
   const { data: items = [] } = useQuery<ChecklistItem[]>({
-    queryKey: ['admin-checklist', subTab, storeTypeId],
-    enabled: branchTypes.length > 0,
+    queryKey: ['admin-checklist', storeTypeId],
+    enabled: !!storeTypeId,
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from('checklist_templates')
         .select(
           `id, section, item_text, item_order, branch_type_id, is_active, options,
@@ -447,13 +428,8 @@ export function ChecklistAdminTab() {
           )`,
         )
         .eq('is_active', true)
-        .is('deleted_at', null);
-
-      if (subTab === 'Common') {
-        query = query.is('branch_type_id', null);
-      } else if (storeTypeId) {
-        query = query.eq('branch_type_id', storeTypeId);
-      }
+        .is('deleted_at', null)
+        .eq('branch_type_id', storeTypeId!);
 
       const { data, error } = await query
         .order('section', { ascending: true })
@@ -551,19 +527,7 @@ export function ChecklistAdminTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          {(['Store', 'Common'] as ChecklistSubTab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setSubTab(t)}
-              className={`btn-xs ${subTab === t ? 'bg-blue-600 text-white' : ''}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center justify-end">
         <button type="button" onClick={() => setShowAdd(true)} className="btn-primary">
           + Add Item
         </button>
@@ -644,7 +608,6 @@ export function ChecklistAdminTab() {
       {showAdd && (
         <ChecklistItemModal
           mode="add"
-          defaultType={subTab}
           sections={orderedSections}
           storeTypeId={storeTypeId}
           onClose={() => setShowAdd(false)}
@@ -659,7 +622,6 @@ export function ChecklistAdminTab() {
         <ChecklistItemModal
           mode="edit"
           item={editingItem}
-          defaultType={subTab}
           sections={orderedSections}
           storeTypeId={storeTypeId}
           onClose={() => setEditingItem(null)}

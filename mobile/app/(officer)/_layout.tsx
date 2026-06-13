@@ -73,7 +73,6 @@ export default function OfficerLayout() {
         <Tabs.Screen name="select-branch" options={{ href: null }} />
         <Tabs.Screen name="checklist" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="confirm" options={{ href: null }} />
-        <Tabs.Screen name="submission-detail" options={{ href: null }} />
       </Tabs>
     </AuthGuard>
   );

@@ -14,93 +14,59 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { isViolationResponse } from '../../lib/checklistScoring';
 import { COLOR, FONT, RADIUS, SPACING } from '../../lib/a11y';
 import { haptics } from '../../lib/haptics';
 import { peekQueue, flushQueue } from '../../lib/syncQueue';
 import { OfficerTabHeader } from '../../components/OfficerTabHeader';
-
-interface ResponseRow {
-  response: string | null;
-  checklist_item?: { trigger_on_no?: boolean | null; risk_level?: string | null } | null;
-}
+import {
+  formatEditWindowCountdown,
+  isEditWindowActive,
+} from '../../lib/branchLocks';
 
 interface SubmissionRow {
   id: string;
-  inspection_date: string;
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  compliance_score: number | null;
-  risk_level: 'low' | 'medium' | 'high' | 'critical' | null;
   submitted_at: string | null;
-  branch: { branch_name: string; branch_type_id: string | null } | null;
-  officer?: { name: string | null } | null;
-  inspection_responses?: ResponseRow[];
+  edit_window_expires_at: string | null;
+  branch: { branch_name: string } | null;
 }
 
-function scoreColor(score: number) {
-  if (score >= 80) return '#22C55E';
-  if (score >= 60) return '#F59E0B';
-  return '#EF4444';
-}
-
-function countBadges(responses: ResponseRow[] = []) {
-  let red = 0;
-  let yellow = 0;
-  let green = 0;
-
-  responses.forEach((entry) => {
-    const triggerOnNo = entry.checklist_item?.trigger_on_no ?? true;
-    const level = entry.checklist_item?.risk_level?.toUpperCase();
-    if (isViolationResponse(entry.response, triggerOnNo)) {
-      if (level === 'YELLOW') yellow += 1;
-      else red += 1;
-    } else if (entry.response && entry.response !== 'N/A') {
-      green += 1;
-    }
+function formatSubmittedAt(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
   });
-
-  return { red, yellow, green };
 }
 
-function SubmissionCard({ item, onPress }: { item: SubmissionRow; onPress: () => void }) {
+function SubmissionCard({
+  item,
+  timerTick,
+}: {
+  item: SubmissionRow;
+  timerTick: number;
+}) {
+  void timerTick;
   const storeName = item.branch?.branch_name ?? 'Unknown branch';
-  const score = item.compliance_score;
-  const dateLabel = item.submitted_at
-    ? new Date(item.submitted_at).toLocaleDateString('en-IN')
-    : item.inspection_date;
-  const { red, yellow, green } = countBadges(item.inspection_responses);
+  const submittedLabel = formatSubmittedAt(item.submitted_at);
+  const editActive = isEditWindowActive(item.edit_window_expires_at);
+  const countdown = editActive ? formatEditWindowCountdown(item.edit_window_expires_at) : null;
 
   return (
-    <TouchableOpacity onPress={onPress} style={styles.card} accessibilityRole="button">
+    <View style={styles.card} accessibilityRole="text">
       <View style={styles.cardTopRow}>
         <Text style={styles.storeName} numberOfLines={2}>
           {storeName}
         </Text>
-        <Text style={styles.dateText}>{dateLabel}</Text>
       </View>
-
-      {score != null ? (
-        <Text style={[styles.scoreText, { color: scoreColor(score) }]}>{score.toFixed(0)}%</Text>
+      <Text style={styles.submittedText}>Submitted {submittedLabel}</Text>
+      {countdown ? (
+        <Text style={styles.editWindowText}>Edit window: {countdown} remaining</Text>
       ) : null}
-
-      <View style={styles.badgeRow}>
-        {red > 0 ? (
-          <View style={[styles.badge, styles.badgeRed]}>
-            <Text style={[styles.badgeText, { color: '#EF4444' }]}>RED {red}</Text>
-          </View>
-        ) : null}
-        {yellow > 0 ? (
-          <View style={[styles.badge, styles.badgeYellow]}>
-            <Text style={[styles.badgeText, { color: '#F59E0B' }]}>YELLOW {yellow}</Text>
-          </View>
-        ) : null}
-        {green > 0 ? (
-          <View style={[styles.badge, styles.badgeGreen]}>
-            <Text style={[styles.badgeText, { color: '#22C55E' }]}>GREEN {green}</Text>
-          </View>
-        ) : null}
-      </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -108,6 +74,7 @@ export default function SubmissionsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { userRolesId } = useAuth();
+  const [timerTick, setTimerTick] = React.useState(0);
 
   const { data, isLoading, refetch, isRefetching, error, isError } = useQuery<SubmissionRow[]>({
     queryKey: ['officer-submissions', userRolesId],
@@ -117,16 +84,8 @@ export default function SubmissionsScreen() {
         .from('inspections')
         .select(
           `
-          id, inspection_date, status, compliance_score, risk_level, submitted_at,
-          branch:branches!inspections_branch_id_fkey ( branch_name, branch_type_id ),
-          officer:user_roles!inspections_officer_id_fkey ( name ),
-          inspection_responses (
-            response,
-            checklist_item:checklist_templates!inspection_responses_checklist_item_id_fkey (
-              trigger_on_no,
-              risk_level
-            )
-          )
+          id, submitted_at, edit_window_expires_at,
+          branch:branches!inspections_branch_id_fkey ( branch_name )
         `,
         )
         .eq('officer_id', userRolesId!)
@@ -137,6 +96,15 @@ export default function SubmissionsScreen() {
       return ((rows ?? []) as unknown) as SubmissionRow[];
     },
   });
+
+  React.useEffect(() => {
+    const hasActiveEditWindow = (data ?? []).some((row) =>
+      isEditWindowActive(row.edit_window_expires_at),
+    );
+    if (!hasActiveEditWindow) return;
+    const id = setInterval(() => setTimerTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [data]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -163,7 +131,7 @@ export default function SubmissionsScreen() {
     <>
       <OfficerTabHeader
         title="Submissions"
-        subtitle="Your completed inspections and compliance scores."
+        subtitle="Your submitted inspections."
       />
       {pendingCount > 0 ? (
         <TouchableOpacity
@@ -272,21 +240,7 @@ export default function SubmissionsScreen() {
           gap: 12,
         }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
-        renderItem={({ item }) => (
-          <SubmissionCard
-            item={item}
-            onPress={() => {
-              haptics.tap();
-              router.push({
-                pathname: '/(officer)/submission-detail',
-                params: {
-                  inspectionId: item.id,
-                  branchName: item.branch?.branch_name ?? 'Store',
-                },
-              });
-            }}
-          />
-        )}
+        renderItem={({ item }) => <SubmissionCard item={item} timerTick={timerTick} />}
         showsVerticalScrollIndicator={false}
       />
     </View>
@@ -328,7 +282,7 @@ const styles = {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 6,
+    marginBottom: 4,
   } as const,
   storeName: {
     fontSize: 15,
@@ -336,39 +290,16 @@ const styles = {
     flex: 1,
     color: COLOR.text,
   } as const,
-  dateText: {
-    fontSize: 12,
+  submittedText: {
+    fontSize: 13,
     color: COLOR.textMuted,
-    marginLeft: 8,
+    marginTop: 2,
   } as const,
-  scoreText: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 6,
-  } as const,
-  badgeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-    marginTop: 4,
-  } as const,
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 99,
-  } as const,
-  badgeRed: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
-  } as const,
-  badgeYellow: {
-    backgroundColor: 'rgba(245,158,11,0.12)',
-  } as const,
-  badgeGreen: {
-    backgroundColor: 'rgba(34,197,94,0.12)',
-  } as const,
-  badgeText: {
-    fontSize: 11,
+  editWindowText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#0f766e',
+    marginTop: 6,
   } as const,
   pendingBanner: {
     backgroundColor: '#fef3c7',

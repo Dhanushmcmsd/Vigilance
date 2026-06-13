@@ -25,6 +25,7 @@ import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
 import { geocodeAddress } from '../lib/geocodeAddress';
+import { resolvePrimaryStoreBranchTypeId } from '../lib/branchTypes';
 import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
 import {
   buildHtmlBarChart,
@@ -716,17 +717,21 @@ function BranchModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { data: storeTypeId } = useQuery({
+  const {
+    data: storeTypeId,
+    isLoading: storeTypeLoading,
+    isError: storeTypeQueryError,
+  } = useQuery({
     queryKey: ['admin-store-branch-type-id'],
     staleTime: 30 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('branch_types')
-        .select('id')
-        .eq('type_name', 'Store')
-        .single();
+      const { data, error } = await supabase.from('branch_types').select('id, type_name');
       if (error) throw error;
-      return data.id as string;
+      const id = resolvePrimaryStoreBranchTypeId(data ?? []);
+      if (!id) {
+        throw new Error('Store branch type not found. Expected "Ideal Store" or "Store".');
+      }
+      return id;
     },
   });
 
@@ -791,7 +796,13 @@ function BranchModal({
 
   const onSubmit = async (values: BranchFormValues) => {
     if (!storeTypeId) {
-      setSubmitError('Store branch type not loaded yet.');
+      setSubmitError(
+        storeTypeLoading
+          ? 'Loading store branch type…'
+          : storeTypeQueryError
+            ? 'Could not load store branch type. Refresh and try again.'
+            : 'Store branch type not found.',
+      );
       return;
     }
     setSubmitError(null);
@@ -1007,8 +1018,12 @@ function BranchModal({
               <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Saving…' : 'Save'}
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={form.formState.isSubmitting || storeTypeLoading || !storeTypeId}
+              >
+                {form.formState.isSubmitting ? 'Saving…' : storeTypeLoading ? 'Loading…' : 'Save'}
               </Button>
             </div>
           </form>

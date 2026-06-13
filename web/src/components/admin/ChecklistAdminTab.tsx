@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { supabase } from '../../lib/supabase';
+import { resolvePrimaryStoreBranchTypeId } from '../../lib/branchTypes';
 
 type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
 
@@ -413,7 +414,7 @@ export function ChecklistAdminTab() {
     },
   });
 
-  const storeTypeId = branchTypes.find((bt) => bt.type_name === 'Store')?.id;
+  const storeTypeId = resolvePrimaryStoreBranchTypeId(branchTypes);
 
   const { data: items = [] } = useQuery<ChecklistItem[]>({
     queryKey: ['admin-checklist', storeTypeId],

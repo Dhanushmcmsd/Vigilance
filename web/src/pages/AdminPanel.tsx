@@ -27,15 +27,7 @@ import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
 import { geocodeAddress } from '../lib/geocodeAddress';
 import { resolvePrimaryStoreBranchTypeId } from '../lib/branchTypes';
 import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
-import {
-  buildHtmlBarChart,
-  buildHtmlTable,
-  buildReportHeader,
-  buildSection,
-  buildSummaryTable,
-  downloadHtmlExcel,
-  wrapHtmlDocument,
-} from '../lib/formattedExport';
+import { downloadAdminUnifiedReport } from '../lib/adminReportExport';
 import { parseEdgeFunctionError } from '../lib/edgeFunctionError';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1346,7 +1338,7 @@ function ReportsTab() {
     },
   });
 
-  const exportFullCSV = async () => {
+  const exportUnifiedReport = async () => {
     let q = supabase
       .from('inspections')
       .select(
@@ -1389,8 +1381,12 @@ function ReportsTab() {
     };
 
     const detailRows: string[][] = [];
+    const summaryRows: string[][] = [];
     let submittedCount = 0;
     const branchCounts = new Map<string, number>();
+    let avgSum = 0;
+    let scoredCount = 0;
+    const riskCounts = { low: 0, medium: 0, critical: 0, other: 0 };
 
     (exportRows as ExportRow[]).forEach((insp) => {
       const branch = insp.branches;
@@ -1400,6 +1396,29 @@ function ReportsTab() {
       if (insp.status === 'submitted' || insp.status === 'approved') submittedCount += 1;
       const branchLabel = branch?.branch_name ?? 'Unknown';
       branchCounts.set(branchLabel, (branchCounts.get(branchLabel) ?? 0) + 1);
+
+      if (typeof insp.compliance_score === 'number') {
+        avgSum += insp.compliance_score;
+        scoredCount += 1;
+      }
+      const risk = (insp.risk_level ?? '').toLowerCase();
+      if (risk === 'low') riskCounts.low += 1;
+      else if (risk === 'medium') riskCounts.medium += 1;
+      else if (risk === 'critical') riskCounts.critical += 1;
+      else riskCounts.other += 1;
+
+      summaryRows.push([
+        insp.id,
+        insp.inspection_date ?? '',
+        insp.submitted_at ? new Date(insp.submitted_at).toLocaleString('en-IN') : '',
+        branchLabel,
+        branch?.city ?? '',
+        typeName ?? '',
+        insp.user_roles?.name ?? '',
+        typeof insp.compliance_score === 'number' ? `${insp.compliance_score.toFixed(1)}%` : '—',
+        insp.risk_level ?? '',
+        insp.status ?? '',
+      ]);
 
       const fileUrls = (insp.inspection_files ?? []).map((f) => f.file_url).filter(Boolean);
       const answerUrls = (insp.inspection_answers ?? []).map((a) => a.photo_url).filter(Boolean);
@@ -1446,184 +1465,19 @@ function ReportsTab() {
     });
 
     const leaveSection = await fetchLeaveCsvSection();
-    const filterLine = `Period ${from} to ${to} · Branch type: ${branchType} · Status: ${status}`;
-    const summary = buildSummaryTable([
-      ['Report period', `${from} to ${to}`],
-      ['Branch type filter', branchType],
-      ['Status filter', status],
-      ['Total inspection rows', String(detailRows.length)],
-      ['Submitted / approved visits', String(submittedCount)],
-      ['Unique branches', String(branchCounts.size)],
-      ['Officer leave records', String(leaveSection.rows.length)],
-    ]);
-    const branchChart = buildHtmlBarChart(
-      Array.from(branchCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
-        .map(([label, value]) => ({ label, value, color: '#6366f1' })),
-      'Inspections by branch',
-    );
-    const detailTable = buildHtmlTable(
-      [
-        'Inspection ID',
-        'Inspection date',
-        'Submitted at',
-        'Officer',
-        'Branch',
-        'Branch type',
-        'City',
-        'Section',
-        'Checklist item',
-        'Response',
-        'Remarks',
-        'Compliance %',
-        'Risk level',
-        'Status',
-        'Evidence files',
-      ],
+    const avgCompliance = scoredCount ? `${(avgSum / scoredCount).toFixed(1)}%` : '—';
+
+    downloadAdminUnifiedReport({
+      filters: { from, to, branchType, status },
       detailRows,
-    );
-
-    const html = wrapHtmlDocument(
-      'Vigilance Inspection Detail Export',
-      [
-        buildReportHeader(
-          'Vigilance Inspection Detail Export',
-          `Generated ${new Date().toLocaleString('en-IN')} · ${filterLine}`,
-        ),
-        buildSection('Executive summary', summary),
-        buildSection('Branch activity', branchChart),
-        buildSection('Inspection checklist detail', detailTable),
-        buildSection('Officer attendance & leave', buildHtmlTable(leaveSection.headers, leaveSection.rows)),
-      ].join(''),
-    );
-
-    downloadHtmlExcel(
-      html,
-      `vigilance-inspection-detail-export-${from}-to-${to}.xls`,
-    );
-  };
-
-  const exportSummaryCSV = async () => {
-    let q = supabase
-      .from('inspections')
-      .select(
-        `id, inspection_date, submitted_at, compliance_score, risk_level, status,
-        user_roles:officer_id ( name ),
-        branches:branch_id ( branch_name, city, branch_types:branch_type_id ( type_name ) )`,
-      )
-      .gte('inspection_date', from)
-      .lte('inspection_date', to);
-    if (status !== 'all') q = q.eq('status', status);
-    const { data: exportRows, error } = await q;
-    if (error || !exportRows) {
-      window.alert(error?.message || 'Export failed.');
-      return;
-    }
-
-    type SummaryRow = {
-      id: string;
-      inspection_date?: string;
-      submitted_at?: string | null;
-      compliance_score?: number;
-      risk_level?: string;
-      status?: string;
-      user_roles?: { name?: string } | null;
-      branches?: {
-        branch_name?: string;
-        city?: string;
-        branch_types?: { type_name?: string } | { type_name?: string }[] | null;
-      } | null;
-    };
-
-    const rows: string[][] = [];
-    let avgSum = 0;
-    let scoredCount = 0;
-    const riskCounts = { low: 0, medium: 0, critical: 0, other: 0 };
-
-    (exportRows as SummaryRow[]).forEach((r) => {
-      const typeRel = r.branches?.branch_types;
-      const typeName = Array.isArray(typeRel) ? typeRel[0]?.type_name : typeRel?.type_name;
-      if (branchType !== 'all' && typeName !== branchType) return;
-
-      if (typeof r.compliance_score === 'number') {
-        avgSum += r.compliance_score;
-        scoredCount += 1;
-      }
-      const risk = (r.risk_level ?? '').toLowerCase();
-      if (risk === 'low') riskCounts.low += 1;
-      else if (risk === 'medium') riskCounts.medium += 1;
-      else if (risk === 'critical') riskCounts.critical += 1;
-      else riskCounts.other += 1;
-
-      rows.push([
-        r.id,
-        r.inspection_date ?? '',
-        r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN') : '',
-        r.branches?.branch_name ?? '',
-        r.branches?.city ?? '',
-        typeName ?? '',
-        r.user_roles?.name ?? '',
-        typeof r.compliance_score === 'number' ? `${r.compliance_score.toFixed(1)}%` : '—',
-        r.risk_level ?? '',
-        r.status ?? '',
-      ]);
+      summaryRows,
+      submittedCount,
+      branchCounts,
+      riskCounts,
+      avgCompliance,
+      leaveHeaders: leaveSection.headers,
+      leaveRows: leaveSection.rows,
     });
-
-    const leaveSection = await fetchLeaveCsvSection();
-    const avgCompliance = scoredCount ? (avgSum / scoredCount).toFixed(1) : '—';
-    const summary = buildSummaryTable([
-      ['Report period', `${from} to ${to}`],
-      ['Branch type filter', branchType],
-      ['Status filter', status],
-      ['Total inspections', String(rows.length)],
-      ['Average compliance', scoredCount ? `${avgCompliance}%` : '—'],
-      ['Low risk visits', String(riskCounts.low)],
-      ['Medium risk visits', String(riskCounts.medium)],
-      ['Critical risk visits', String(riskCounts.critical)],
-      ['Officer leave records', String(leaveSection.rows.length)],
-    ]);
-    const riskChart = buildHtmlBarChart(
-      [
-        { label: 'Low', value: riskCounts.low, color: '#22c55e' },
-        { label: 'Medium', value: riskCounts.medium, color: '#f59e0b' },
-        { label: 'Critical', value: riskCounts.critical, color: '#ef4444' },
-        { label: 'Other', value: riskCounts.other, color: '#94a3b8' },
-      ],
-      'Risk level distribution',
-    );
-    const html = wrapHtmlDocument(
-      'Vigilance Inspection Summary',
-      [
-        buildReportHeader(
-          'Vigilance Inspection Summary',
-          `Generated ${new Date().toLocaleString('en-IN')} · Period ${from} to ${to}`,
-        ),
-        buildSection('Executive summary', summary),
-        buildSection('Risk distribution', riskChart),
-        buildSection(
-          'Inspection summary',
-          buildHtmlTable(
-            [
-              'Inspection ID',
-              'Inspection date',
-              'Submitted at',
-              'Branch',
-              'City',
-              'Branch type',
-              'Officer',
-              'Compliance',
-              'Risk level',
-              'Status',
-            ],
-            rows,
-          ),
-        ),
-        buildSection('Officer attendance & leave', buildHtmlTable(leaveSection.headers, leaveSection.rows)),
-      ].join(''),
-    );
-
-    downloadHtmlExcel(html, `vigilance-inspection-summary-${from}-to-${to}.xls`);
   };
 
   return (
@@ -1659,9 +1513,13 @@ function ReportsTab() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={exportFullCSV} className="btn-primary">Export Detail Report</button>
-          <button onClick={exportSummaryCSV} className="btn-secondary">Export Summary Report</button>
+          <button onClick={exportUnifiedReport} className="btn-primary">
+            Download Full Report
+          </button>
         </div>
+        <p className="text-xs text-gray-500">
+          One file with executive summary, charts, all inspections, checklist detail, and officer leave data.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button

@@ -11,6 +11,8 @@ import {
 import { isCompliantResponse } from '../lib/checklistScoring';
 import { resolveInspectionMediaUrl } from '../lib/inspectionMedia';
 import { REPORT_BRAND, riskTheme, scoreTheme, sectionTheme } from '../lib/reportTheme';
+import { buildStoreInspectionReportHtml } from '../lib/storeInspectionReportHtml';
+import { renderHtmlDocumentToPdfBlob } from '../lib/htmlToPdf';
 
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -652,10 +654,6 @@ async function embedImagesForPdf(data: InspectionPdfData): Promise<InspectionPdf
   return { ...data, photos: embeddedPhotos, responses };
 }
 
-function dataUrlImageFormat(dataUrl: string): 'PNG' | 'JPEG' {
-  return dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
-}
-
 async function renderPdfBlob(
   data: InspectionPdfData,
   options?: GenerateInspectionPdfOptions,
@@ -665,91 +663,6 @@ async function renderPdfBlob(
 
 async function renderMinimalPdfBlob(data: InspectionPdfData): Promise<Blob> {
   return pdf(<MinimalInspectionReportDoc data={data} />).toBlob();
-}
-
-async function renderJsPdfBlob(
-  data: InspectionPdfData,
-  options?: GenerateInspectionPdfOptions,
-): Promise<Blob> {
-  const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const margin = 40;
-  const maxWidth = 515;
-  let y = 48;
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const title = options?.documentTitle ?? 'STORE COMPLIANCE AUDIT REPORT';
-
-  const ensureSpace = (height = 16) => {
-    if (y + height > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
-  };
-
-  const writeLine = (text: string, options?: { bold?: boolean; size?: number; gap?: number }) => {
-    const size = options?.size ?? 10;
-    const gap = options?.gap ?? size + 4;
-    doc.setFont('helvetica', options?.bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    const lines = doc.splitTextToSize(text, maxWidth) as string[];
-    for (const line of lines) {
-      ensureSpace(gap);
-      doc.text(line, margin, y);
-      y += gap;
-    }
-  };
-
-  writeLine(title, { bold: true, size: 16, gap: 20 });
-  writeLine(`${data.branchName} · ${data.inspectionDate}`, { bold: true, size: 12, gap: 16 });
-  writeLine(`Officer: ${data.officerName} · Status: ${data.status}`);
-  writeLine(`Compliance: ${data.complianceScore.toFixed(1)}% · Risk: ${data.riskLevel.toUpperCase()}`);
-  if (data.timeIn || data.timeOut) writeLine(`Time: ${data.timeIn ?? '—'} – ${data.timeOut ?? '—'}`);
-  if (data.headComment) {
-    y += 6;
-    writeLine('Supervisor review', { bold: true, size: 11, gap: 14 });
-    writeLine(data.headComment);
-  }
-  if (data.generalRemark) {
-    y += 6;
-    writeLine('General observations', { bold: true, size: 11, gap: 14 });
-    writeLine(data.generalRemark);
-  }
-
-  const grouped = new Map<string, InspectionPdfResponse[]>();
-  for (const r of data.responses) {
-    const section = r.section || 'General';
-    if (!grouped.has(section)) grouped.set(section, []);
-    grouped.get(section)!.push(r);
-  }
-
-  for (const [section, items] of grouped.entries()) {
-    y += 8;
-    writeLine(section.toUpperCase(), { bold: true, size: 11, gap: 14 });
-    for (const item of items) {
-      const remark = item.remarks ? ` — ${item.remarks}` : '';
-      writeLine(`• ${item.item_text}: ${item.response}${remark}`, { gap: 12 });
-    }
-  }
-
-  const photos = data.photos ?? [];
-  if (photos.length > 0) {
-    doc.addPage();
-    y = margin;
-    writeLine('PHOTO EVIDENCE', { bold: true, size: 11, gap: 16 });
-    for (const photo of photos) {
-      if (!photo.url.startsWith('data:')) continue;
-      ensureSpace(130);
-      try {
-        doc.addImage(photo.url, dataUrlImageFormat(photo.url), margin, y, 170, 120);
-        y += 130;
-        if (photo.name) writeLine(photo.name, { gap: 10 });
-      } catch {
-        writeLine(photo.name ? `Photo: ${photo.name}` : 'Photo attachment', { gap: 12 });
-      }
-    }
-  }
-
-  return doc.output('blob');
 }
 
 function downloadBlob(
@@ -787,11 +700,27 @@ export async function generateInspectionPdf(
   }
 
   const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
+    {
+      label: 'html-color-layout-with-images',
+      run: async () => {
+        const html = buildStoreInspectionReportHtml(withImages, {
+          documentTitle: options?.documentTitle ?? 'STORE INSPECTION REPORT',
+        });
+        return renderHtmlDocumentToPdfBlob(html);
+      },
+    },
+    {
+      label: 'html-color-layout-text-only',
+      run: async () => {
+        const html = buildStoreInspectionReportHtml(withoutImageEvidence(sanitized), {
+          documentTitle: options?.documentTitle ?? 'STORE INSPECTION REPORT',
+        });
+        return renderHtmlDocumentToPdfBlob(html);
+      },
+    },
     { label: 'browser-layout-with-images', run: () => renderPdfBlob(withImages, options) },
     { label: 'browser-layout-text-only', run: () => renderPdfBlob(withoutImageEvidence(sanitized), options) },
     { label: 'minimal-layout-text-only', run: () => renderMinimalPdfBlob(withoutImageEvidence(sanitized)) },
-    { label: 'jspdf-with-images', run: () => renderJsPdfBlob(withImages, options) },
-    { label: 'jspdf-text-only', run: () => renderJsPdfBlob(withoutImageEvidence(sanitized), options) },
   ];
 
   let lastError: unknown;

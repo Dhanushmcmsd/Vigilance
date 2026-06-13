@@ -97,6 +97,49 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
   const score = scoreTheme(data.compliance_score);
   const risk = riskTheme(data.risk_level ?? 'low');
 
+  const sectionStats: { section: string; pass: number; fail: number; compliance: number }[] = [];
+  const statsMap = new Map<string, { pass: number; fail: number }>();
+  (data.inspection_responses ?? []).forEach((r) => {
+    const sec = r.checklist_item?.section ?? 'General';
+    const bucket = statsMap.get(sec) ?? { pass: 0, fail: 0 };
+    if (r.response === 'Yes') bucket.pass += 1;
+    else if (r.response === 'No') bucket.fail += 1;
+    statsMap.set(sec, bucket);
+  });
+  statsMap.forEach((counts, section) => {
+    const scored = counts.pass + counts.fail;
+    sectionStats.push({
+      section,
+      ...counts,
+      compliance: scored ? Math.round((counts.pass / scored) * 100) : 0,
+    });
+  });
+
+  const chartHtml = sectionStats.length
+    ? `<div class="chart-panel">
+        <p class="chart-panel-title">Section Compliance Overview</p>
+        ${sectionStats
+          .map((row) => {
+            const color = row.compliance >= 80 ? '#059669' : row.compliance >= 60 ? '#d97706' : '#dc2626';
+            return `<div class="chart-row">
+              <div class="chart-label">${escapeHtml(row.section)}</div>
+              <div class="chart-track"><div class="chart-fill" style="width:${row.compliance}%;background:${color};"></div></div>
+              <div class="chart-value">${row.compliance}%</div>
+            </div>`;
+          })
+          .join('')}
+      </div>`
+    : '';
+
+  const failCount = (data.inspection_responses ?? []).filter((r) => r.response === 'No').length;
+  const passCount = (data.inspection_responses ?? []).filter((r) => r.response === 'Yes').length;
+  const kpiHtml = `<div class="kpi-grid">
+    <div class="kpi-box" style="border-color:#6ee7b7;background:#ecfdf5;"><div class="kpi-box-label">Compliance</div><div class="kpi-box-value" style="color:${score.text};">${data.compliance_score?.toFixed(1) ?? '—'}%</div></div>
+    <div class="kpi-box" style="border-color:#fcd34d;background:#fffbeb;"><div class="kpi-box-label">Risk</div><div class="kpi-box-value" style="color:${risk.text};font-size:14px;">${escapeHtml((data.risk_level ?? 'LOW').toString().toUpperCase())}</div></div>
+    <div class="kpi-box" style="border-color:#86efac;background:#f0fdf4;"><div class="kpi-box-label">Compliant</div><div class="kpi-box-value" style="color:#166534;">${passCount}</div></div>
+    <div class="kpi-box" style="border-color:#fca5a5;background:#fef2f2;"><div class="kpi-box-label">NC</div><div class="kpi-box-value" style="color:#b91c1c;">${failCount}</div></div>
+  </div>`;
+
   const sectionHtml = Object.entries(sections)
     .map(([sec, items]) => {
       const theme = sectionTheme(sec);
@@ -177,6 +220,13 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
       <p>Official Field Inspection Document</p>
     </div>
 
+    <div class="report-tabs">
+      <span class="report-tab active">Overview</span>
+      <span class="report-tab">Compliance Chart</span>
+      <span class="report-tab">Checklist Detail</span>
+      <span class="report-tab">Evidence</span>
+    </div>
+
     <div class="report-meta-grid">
       <div class="meta-card"><div class="meta-label">Location</div><div class="meta-value">${escapeHtml(branchName)}</div></div>
       <div class="meta-card"><div class="meta-label">Date</div><div class="meta-value">${escapeHtml(data.inspection_date)}</div></div>
@@ -189,6 +239,8 @@ export function buildAuditPdfHtml(data: AuditPdfInspection, branchName: string):
     ${timeLine}
 
     <div class="report-body">
+      ${kpiHtml}
+      ${chartHtml}
       ${sectionHtml}
       ${photoHtml}
       ${remarksHtml}

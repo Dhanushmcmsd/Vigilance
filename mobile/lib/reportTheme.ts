@@ -224,4 +224,105 @@ export const REPORT_HTML_CSS = `
     font-weight: 700;
     color: #1e3a8a;
   }
+  .report-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 18px 0;
+    background: #f8fafc;
+    border-bottom: 2px solid #dbeafe;
+  }
+  .report-tab {
+    display: inline-block;
+    padding: 8px 14px;
+    border-radius: 10px 10px 0 0;
+    border: 1.5px solid #cbd5e1;
+    border-bottom: none;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .report-tab.active {
+    background: linear-gradient(135deg, #1e3a8a, #4f46e5);
+    color: #ffffff;
+    border-color: #4f46e5;
+  }
+  .chart-panel {
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 12px;
+    background: #ffffff;
+  }
+  .chart-panel-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #3730a3;
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1.5px solid #c7d2fe;
+  }
+  .chart-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .chart-label {
+    width: 28%;
+    font-size: 10px;
+    font-weight: 700;
+    color: #334155;
+  }
+  .chart-track {
+    flex: 1;
+    height: 16px;
+    background: #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+  }
+  .chart-fill {
+    height: 100%;
+    border-radius: 7px;
+    min-width: 2%;
+  }
+  .chart-value {
+    width: 42px;
+    text-align: right;
+    font-size: 10px;
+    font-weight: 800;
+    color: #1e3a8a;
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .kpi-box {
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #ffffff;
+    text-align: center;
+  }
+  .kpi-box-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: #64748b;
+    font-weight: 700;
+  }
+  .kpi-box-value {
+    margin-top: 4px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #1e3a8a;
+  }
 `;

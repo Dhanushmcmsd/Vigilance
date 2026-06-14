@@ -26,7 +26,13 @@
     "//supabase": "Supabase helpers — require the supabase CLI to be installed locally.",
     "db:diff": "supabase db diff --schema public",
     "db:push": "supabase db push",
-    "functions:deploy": "supabase functions deploy"
+    "functions:bundle": "node scripts/bundle-edge-function.mjs",
+    "functions:validate": "node scripts/validate-mcp-payloads.cjs",
+    "functions:clean": "node scripts/clean-deploy-artifacts.mjs",
+    "functions:deploy": "supabase functions deploy",
+    "functions:deploy:cli": "supabase functions deploy",
+    "functions:deploy:one": "node scripts/deploy-edge-function.mjs",
+    "functions:deploy:all": "node scripts/deploy-all-edge-functions.mjs"
   },
   "engines": {
     "node": ">=20.0.0",

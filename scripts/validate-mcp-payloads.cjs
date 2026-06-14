@@ -1,7 +1,8 @@
-/**
- * Validates deploy bundle JSON under scripts/ (UTF-8 safe, parseable).
- * Usage: node scripts/validate-mcp-payloads.cjs [slug ...]
- * Default slugs: export-csv, supervisor-otp
+/*
+ * Validates .deploy-{slug}.json bundles before API deployment.
+ * Checks structure, required fields, and file size limits.
+ * Run after bundle, before deploy.
+ * Usage: node scripts/validate-mcp-payloads.cjs [slug]
  */
 const fs = require('fs');
 const path = require('path');

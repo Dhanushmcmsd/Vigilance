@@ -36,6 +36,19 @@ function escapeCsv(value: unknown): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
+export function buildInspectionCsvLines(
+  rows: Array<Record<string, unknown>>,
+): string {
+  if (rows.length === 0) {
+    return 'inspectionId,date,branch,branchType,city,region,officer,status,complianceScore,riskLevel,section,item,response,remarks';
+  }
+  const headers = Object.keys(rows[0]);
+  return [
+    headers.join(','),
+    ...rows.map((row) => headers.map((h) => escapeCsv(row[h])).join(',')),
+  ].join('\n');
+}
+
 function fileStamp(date: Date) {
   return date.toISOString().slice(0, 10);
 }

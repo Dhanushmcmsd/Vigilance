@@ -1,9 +1,8 @@
-/**
- * Bundles a Supabase edge function for MCP deploy_edge_function.
- * Rewrites ../_shared imports to ./_shared for flat upload layout.
- *
- * Usage: node scripts/bundle-edge-function.mjs <function-name>
- * Prints JSON: { name, verify_jwt, entrypoint_path, files }
+/*
+ * Bundles a single edge function + _shared/ into a deploy-ready JSON.
+ * Output: .deploy-{slug}.json in scripts/ — consumed by deploy-edge-function.mjs
+ * Usage: node scripts/bundle-edge-function.mjs <function-slug>
+ * Note: validates UTF-8 — binary assets will be rejected.
  */
 import fs from 'node:fs';
 import path from 'node:path';

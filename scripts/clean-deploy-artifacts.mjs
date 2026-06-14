@@ -1,6 +1,7 @@
-/**
- * Remove generated deploy/MCP bundle files under scripts/.
- * Safe to run anytime — regenerate with bundle-edge-function.mjs after.
+/*
+ * Purges .deploy-*, .mcp-* build artifacts from scripts/.
+ * Run after a deploy session to avoid committing stale bundles.
+ * Usage: node scripts/clean-deploy-artifacts.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';

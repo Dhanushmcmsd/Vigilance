@@ -10,7 +10,12 @@
 
 import { Platform } from 'react-native';
 
-type HapticsModule = typeof import('expo-haptics');
+interface HapticsModule {
+  impactAsync(style: unknown): Promise<void>;
+  notificationAsync(type: unknown): Promise<void>;
+  ImpactFeedbackStyle: { Light: unknown; Medium: unknown };
+  NotificationFeedbackType: { Success: unknown; Warning: unknown; Error: unknown };
+}
 
 let cached: HapticsModule | null | undefined;
 

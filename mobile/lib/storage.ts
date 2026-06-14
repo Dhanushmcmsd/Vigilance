@@ -1,26 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { queueInspection } from './syncQueue';
-import type { ItemAttachment } from '../components/ItemAttachments';
+import type { DraftForm } from './draftForm';
 
-export interface DraftForm {
-  branchId: string;
-  branchName: string;
-  branchType: string;
-  date: string;
-  timeIn: string;
-  timeOut: string;
-  responses: Record<string, { response: 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null; remark: string }>;
-  generalRemark: string;
-  /** @deprecated Legacy flat file list — use itemFiles */
-  fileUris?: string[];
-  itemFiles?: Record<string, ItemAttachment[]>;
-  savedAt: string;
-  officerLat: number | null;
-  officerLon: number | null;
-  /** Checklist item IDs flagged as previously at-risk (offline sync scoring). */
-  previousRiskItemIds?: string[];
-}
-
+export type { DraftForm } from './draftForm';
 const DRAFT_PREFIX = 'draft_';
 const QUEUE_KEY = 'offline_submission_queue';
 

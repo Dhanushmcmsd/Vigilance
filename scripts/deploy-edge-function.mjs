@@ -1,28 +1,29 @@
-/**
- * Deploy edge function via Supabase Management API.
- * Reads deploy args from a JSON file (UTF-8 fs.readFileSync).
- *
- * Usage: node scripts/mcp-deploy-from-file.mjs <deploy-json-path>
+/*
+ * Deploys a single edge function to Supabase via Management API.
+ * Reads from .deploy-{slug}.json — run bundle + validate first.
+ * Requires: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF in env.
+ * Usage: node scripts/deploy-edge-function.mjs <function-slug>
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const PROJECT_REF = 'itxfffjepcdfhuzsrnwf';
-const deployPath = process.argv[2];
-if (!deployPath) {
-  console.error('Usage: node scripts/mcp-deploy-from-file.mjs <deploy-json-path>');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const slug = process.argv[2];
+const projectRef = process.env.SUPABASE_PROJECT_REF ?? 'itxfffjepcdfhuzsrnwf';
+
+if (!slug) {
+  console.error('Usage: node scripts/deploy-edge-function.mjs <function-slug>');
   process.exit(1);
 }
 
 function resolveToken() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN;
-  const candidates = [
+  for (const p of [
     path.join(os.homedir(), '.cursor', 'supabase-access-token'),
     path.join(os.homedir(), '.supabase', 'access-token'),
-    path.join(os.homedir(), '.config', 'supabase', 'access-token'),
-  ];
-  for (const p of candidates) {
+  ]) {
     if (fs.existsSync(p)) {
       const t = fs.readFileSync(p, 'utf8').trim();
       if (t) return t;
@@ -31,33 +32,39 @@ function resolveToken() {
   return null;
 }
 
-const args = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
+const bundlePath = path.join(__dirname, `.deploy-${slug}.json`);
+if (!fs.existsSync(bundlePath)) {
+  console.error(`Missing ${bundlePath} — run: npm run functions:bundle ${slug}`);
+  process.exit(1);
+}
+
+const payload = JSON.parse(fs.readFileSync(bundlePath, 'utf8'));
 const deployArgs = {
-  name: args.name,
-  entrypoint_path: args.entrypoint_path,
-  verify_jwt: args.verify_jwt,
-  files: args.files,
+  name: payload.name,
+  entrypoint_path: payload.entrypoint_path,
+  verify_jwt: payload.verify_jwt,
+  files: payload.files,
 };
 
-const TOKEN = resolveToken();
-if (!TOKEN) {
+const token = resolveToken();
+if (!token) {
   console.log(
     JSON.stringify({
       name: deployArgs.name,
       ok: false,
       verify_jwt: deployArgs.verify_jwt,
-      error: 'Missing SUPABASE_ACCESS_TOKEN — use MCP deploy_edge_function instead',
+      error: 'Missing SUPABASE_ACCESS_TOKEN',
     }),
   );
   process.exit(2);
 }
 
 const res = await fetch(
-  `https://api.supabase.com/v1/projects/${PROJECT_REF}/functions/deploy?slug=${encodeURIComponent(deployArgs.name)}`,
+  `https://api.supabase.com/v1/projects/${projectRef}/functions/deploy?slug=${encodeURIComponent(deployArgs.name)}`,
   {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(deployArgs),

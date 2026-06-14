@@ -22,7 +22,7 @@ import { claimBranchInspection } from './branchLocks';
 import { getDeviceAudit } from './deviceInfo';
 import { uploadInspectionFiles } from './uploadInspectionFiles';
 import { isCompliantResponse } from './checklistScoring';
-import type { DraftForm } from './storage';
+import type { DraftForm } from './draftForm';
 
 const normalizeTime = (value: string | null | undefined, fallback: string): string => {
   const normalized = value?.trim() ?? '';
@@ -53,7 +53,7 @@ const getStore = (): KVStore => {
   if (cached) return cached;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { MMKV } = require('react-native-mmkv') as typeof import('react-native-mmkv');
+    const { MMKV } = require('react-native-mmkv');
     const mmkv = new MMKV({ id: 'vigilance.sync' });
     cached = {
       getString: async (k) => mmkv.getString(k) ?? null,

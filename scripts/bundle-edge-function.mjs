@@ -37,6 +37,15 @@ indexContent = indexContent.replace(
 
 const files = [{ name: 'index.ts', content: indexContent }];
 
+const denoJsonPath = path.join(fnDir, 'deno.json');
+const import_map_path = fs.existsSync(denoJsonPath) ? 'deno.json' : undefined;
+if (import_map_path) {
+  files.push({
+    name: import_map_path,
+    content: fs.readFileSync(denoJsonPath, 'utf8'),
+  });
+}
+
 const sharedDir = path.join(root, 'supabase', 'functions', '_shared');
 const sharedImports = [...indexContent.matchAll(/from ['"]\.\/_shared\/([^'"]+)['"]/g)].map(
   (m) => m[1],
@@ -57,6 +66,7 @@ const payload = {
   name: fnName,
   entrypoint_path: 'index.ts',
   verify_jwt,
+  ...(import_map_path ? { import_map_path } : {}),
   files,
 };
 

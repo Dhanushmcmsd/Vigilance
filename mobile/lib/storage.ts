@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { queueInspection } from './syncQueue';
 import type { DraftForm } from './draftForm';
 
 export type { DraftForm } from './draftForm';
@@ -47,13 +46,6 @@ export const getAllDrafts = async (): Promise<{ key: string; draft: DraftForm }[
         },
       };
     });
-};
-
-/** @deprecated Use queueInspection from ./syncQueue */
-export const enqueueOfflineSubmission = async (
-  data: DraftForm & { inspectionId?: string }
-): Promise<void> => {
-  await queueInspection(data);
 };
 
 export const getOfflineQueue = async (): Promise<(DraftForm & { inspectionId?: string })[]> => {

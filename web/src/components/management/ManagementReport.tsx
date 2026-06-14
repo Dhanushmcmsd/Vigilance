@@ -35,6 +35,7 @@ import {
 import { computeDistrictReportSummaries, storeDistrict } from '../../lib/districtCalculations';
 import { sortStoresByRecency } from '../../lib/utils';
 import { BloomGradientPanel } from '../ui/BloomGradientPanel';
+import { LocationStatusBadge, LocationStatusCompact } from '../LocationStatusBadge';
 
 type StoreSortKey = 'recent' | 'compliance';
 
@@ -57,6 +58,7 @@ interface ReportDetail {
   status: string;
   compliance_score: number | null;
   risk_level: string | null;
+  location_status: 'inside' | 'outside' | 'unverified' | null;
   head_comment: string | null;
   submitted_at: string | null;
   time_in: string | null;
@@ -133,6 +135,9 @@ function ReportCard({ report, onOpen }: { report: AuditReportRow; onOpen: () => 
         <p className="text-xs font-semibold uppercase tracking-wider text-white/45">{weekday}</p>
         <p className="mt-0.5 text-base font-semibold text-white">{dateLine}</p>
         <p className="mt-1.5 text-sm text-white/55">Officer: {report.officer?.name ?? 'Unknown'}</p>
+        <div className="mt-2">
+          <LocationStatusCompact status={report.location_status} />
+        </div>
         <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-white/70">
           <FileText className="h-3.5 w-3.5" />
           Open report
@@ -208,7 +213,7 @@ export function ReportDetailModal({
         .from('inspections')
         .select(
           `
-          id, inspection_date, status, compliance_score, risk_level,
+          id, inspection_date, status, compliance_score, risk_level, location_status,
           head_comment, submitted_at, time_in, time_out,
           officer:user_roles!inspections_officer_id_fkey ( name ),
           inspection_responses (
@@ -336,6 +341,9 @@ export function ReportDetailModal({
                   })}
                 </h3>
                 <p className="text-sm text-slate-400">Officer: {data.officer?.name ?? '—'}</p>
+                <div className="mt-2">
+                  <LocationStatusBadge status={data.location_status} />
+                </div>
               </>
             )}
           </div>
@@ -672,7 +680,7 @@ export default function ManagementReport() {
         .from('inspections')
         .select(
           `
-          id, inspection_date, submitted_at, status, compliance_score, risk_level,
+          id, inspection_date, submitted_at, status, compliance_score, risk_level, location_status,
           officer:user_roles!inspections_officer_id_fkey ( name )
         `,
         )

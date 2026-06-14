@@ -44,6 +44,7 @@ const deployArgs = {
   entrypoint_path: payload.entrypoint_path,
   verify_jwt: payload.verify_jwt,
   files: payload.files,
+  ...(payload.import_map_path ? { import_map_path: payload.import_map_path } : {}),
 };
 
 const token = resolveToken();

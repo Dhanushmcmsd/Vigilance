@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+import { verifyAndPersistLocationStatus } from '../_shared/geofence.ts';
 import { rateLimit } from '../_shared/rateLimit.ts';
 import { resolveResendFrom } from '../_shared/resendFrom.ts';
 
@@ -49,6 +50,13 @@ serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    await verifyAndPersistLocationStatus(supabase, {
+      id: record.id,
+      officer_latitude: record.officer_latitude ?? null,
+      officer_longitude: record.officer_longitude ?? null,
+      location_status: record.location_status,
+    });
 
     // Fetch inspection details
     const { data: insp } = await supabase

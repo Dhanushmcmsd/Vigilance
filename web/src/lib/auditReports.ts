@@ -7,6 +7,7 @@ export interface AuditReportRow {
   status: string;
   compliance_score: number | null;
   risk_level: string | null;
+  location_status: 'inside' | 'outside' | 'unverified' | null;
   officer: { name: string } | null;
 }
 

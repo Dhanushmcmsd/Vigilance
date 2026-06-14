@@ -2,11 +2,11 @@
 
 ## Install (officers)
 
-Use the **production** Android APK (v1.1.0, build 3):
+Use the **production** Android APK (v1.1.0, build 7):
 
-https://expo.dev/artifacts/eas/4dRiwwpRDbTugeZnSwqfq3.apk
+https://expo.dev/artifacts/eas/pcvGeUNgAkl6juHo3qxdfyhUXMY41xhcqND929OuZn8.apk
 
-(Build dashboard: https://expo.dev/accounts/[YOUR_ACCOUNT]/projects/vigilance-management-system/builds?channel=production)
+Build dashboard: https://expo.dev/accounts/dhanushraghav/projects/vigilance-management-system/builds/13f81ad5-54f3-44cb-80b6-bbc9dd7aa1ee
 
 After install, open the app once on Wi‑Fi. When an OTA is available you will see **Update available** → tap **Update now** → after restart, **Update successful** confirms the bundle.
 

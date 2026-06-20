@@ -78,3 +78,5 @@ scripts/.tmp-*
 scripts/.utf8-*
 web/.env.vercel
 web/.env.vercel.*
+
+supabase/transfer/

@@ -94,9 +94,6 @@ def main() -> int:
     for i, path in enumerate(files, 1):
         rel = path.relative_to(ROOT).as_posix()
         data = path.read_bytes()
-        if b"\0" in data[:8192]:
-            print(f"  skip binary-ish: {rel}")
-            continue
         blob = api(
             session,
             "POST",

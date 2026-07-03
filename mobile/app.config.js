@@ -50,9 +50,10 @@ function resolveBuildNumber() {
 const version = resolveVersion();
 const buildNumber = resolveBuildNumber();
 
+// Dhanush Expo account — override with EXPO_OWNER / EAS_PROJECT_ID in CI if needed.
 const easProjectId =
   process.env.EAS_PROJECT_ID || 'aa8ccd7a-d071-4d7e-9b44-ecc1192f7b06';
-const expoOwner = process.env.EXPO_OWNER || 'vigilancecfcici';
+const expoOwner = process.env.EXPO_OWNER || 'dhanushraghav';
 
 const config = {
   expo: {

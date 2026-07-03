@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -50,6 +50,8 @@ interface Branch {
   location: string;
   city: string;
   region: string;
+  incharge_name?: string | null;
+  incharge_phone?: string | null;
   is_active: boolean;
   deleted_at?: string | null;
   latitude: number | null;
@@ -578,6 +580,7 @@ function BranchesTab() {
         .from('branches')
         .select(
           `id, branch_name, branch_type_id, location, city, region, latitude, longitude,
+           incharge_name, incharge_phone,
            geofence_radius, is_active, deleted_at,
            branch_types:branch_type_id ( type_name )`,
         )
@@ -823,6 +826,8 @@ function BranchModal({
       location: branch?.location ?? '',
       city: branch?.city ?? '',
       region: branch?.region ?? '',
+      incharge_name: branch?.incharge_name ?? '',
+      incharge_phone: branch?.incharge_phone ?? '',
       latitude: branch?.latitude ?? undefined,
       longitude: branch?.longitude ?? undefined,
       geofence_radius: branch?.geofence_radius ?? 200,
@@ -832,6 +837,8 @@ function BranchModal({
   const [customDistrict, setCustomDistrict] = useState('');
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGeocodedAddressRef = useRef('');
   const districtOptions = useMemo(() => {
     const current = form.watch('region')?.trim();
     const extra = customDistrict.trim();
@@ -843,30 +850,48 @@ function BranchModal({
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    };
+  }, []);
+
+  const scheduleAddressGeocode = (address: string) => {
+    const trimmed = address.trim();
+    if (trimmed.length < 15) return;
+    if (trimmed === lastGeocodedAddressRef.current) return;
+
+    if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    geocodeTimerRef.current = setTimeout(() => {
+      lastGeocodedAddressRef.current = trimmed;
+      void handleAddressGeocode(trimmed);
+    }, 800);
+  };
+
   const handleAddressGeocode = async (address: string) => {
     const trimmed = address.trim();
     if (trimmed.length < 10) return;
 
     setGeocoding(true);
     setGeocodeError(null);
+    form.setValue('latitude', undefined, { shouldDirty: true });
+    form.setValue('longitude', undefined, { shouldDirty: true });
     try {
       const result = await geocodeAddress(trimmed);
-      form.setValue('location', trimmed);
-      if (result.city) form.setValue('city', result.city);
-      if (result.district) form.setValue('region', result.district);
+      form.setValue('location', trimmed, { shouldDirty: true });
+      if (result.city) form.setValue('city', result.city, { shouldDirty: true });
+      const currentDistrict = form.getValues('region')?.trim();
+      if (!currentDistrict && result.district) {
+        form.setValue('region', result.district, { shouldDirty: true });
+      }
       if (result.latitude != null && !Number.isNaN(result.latitude)) {
-        form.setValue('latitude', result.latitude);
+        form.setValue('latitude', result.latitude, { shouldDirty: true });
       }
       if (result.longitude != null && !Number.isNaN(result.longitude)) {
-        form.setValue('longitude', result.longitude);
+        form.setValue('longitude', result.longitude, { shouldDirty: true });
       }
-      if (
-        !result.city &&
-        !result.district &&
-        result.latitude == null &&
-        result.longitude == null
-      ) {
-        setGeocodeError('Could not detect location. Fill city and coordinates manually.');
+      if (result.latitude == null || result.longitude == null) {
+        setGeocodeError('Could not detect coordinates for this address. Try pasting the full Google Maps address or pincode.');
       }
     } catch {
       setGeocodeError('Address lookup failed. Fill fields manually.');
@@ -893,6 +918,8 @@ function BranchModal({
       location: values.location ?? null,
       city: values.city ?? null,
       region: values.region ?? null,
+      incharge_name: values.incharge_name ?? null,
+      incharge_phone: values.incharge_phone ?? null,
       latitude: values.latitude ?? null,
       longitude: values.longitude ?? null,
       geofence_radius: values.geofence_radius,
@@ -965,16 +992,24 @@ function BranchModal({
                         placeholder="Paste full address from Google Maps…"
                         {...field}
                         value={field.value ?? ''}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          scheduleAddressGeocode(e.target.value);
+                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text').trim();
-                          if (pasted.length >= 10) {
-                            window.setTimeout(() => void handleAddressGeocode(pasted), 0);
-                          }
+                          if (pasted.length < 10) return;
+                          e.preventDefault();
+                          field.onChange(pasted);
+                          if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+                          lastGeocodedAddressRef.current = pasted;
+                          void handleAddressGeocode(pasted);
                         }}
                         onBlur={(e) => {
                           field.onBlur();
                           const value = e.target.value.trim();
-                          if (value.length >= 20 && !form.getValues('latitude')) {
+                          if (value.length >= 15 && value !== lastGeocodedAddressRef.current) {
+                            lastGeocodedAddressRef.current = value;
                             void handleAddressGeocode(value);
                           }
                         }}
@@ -1016,7 +1051,12 @@ function BranchModal({
                   <FormItem>
                     <FormLabel>District</FormLabel>
                     <FormControl>
-                      <select className="input w-full" {...field} value={field.value ?? ''}>
+                      <select
+                        className="input w-full"
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      >
                         <option value="">Select district</option>
                         {districtOptions.map((district) => (
                           <option key={district} value={district}>
@@ -1031,6 +1071,13 @@ function BranchModal({
                         placeholder="Or type a new district name and press Enter"
                         value={customDistrict}
                         onChange={(e) => setCustomDistrict(e.target.value)}
+                        onBlur={() => {
+                          const value = customDistrict.trim();
+                          if (value) {
+                            field.onChange(value);
+                            setCustomDistrict('');
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -1050,6 +1097,34 @@ function BranchModal({
 
               <FormField
                 control={form.control}
+                name="incharge_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Incharge name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Manager name" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="incharge_phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Incharge phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. 9876543210" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="latitude"
                 render={({ field }) => (
                   <FormItem>
@@ -1058,7 +1133,7 @@ function BranchModal({
                       <Input
                         type="number"
                         step="any"
-                        placeholder="10.1076"
+                        placeholder="Auto-detected"
                         {...field}
                         value={field.value ?? ''}
                       />
@@ -1078,7 +1153,7 @@ function BranchModal({
                       <Input
                         type="number"
                         step="any"
-                        placeholder="76.3475"
+                        placeholder="Auto-detected"
                         {...field}
                         value={field.value ?? ''}
                       />
